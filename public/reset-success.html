@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Password Reset Successful</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      background-color: #f7f9fc;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 450px;
+      padding: 0 20px;
+      text-align: center;
+    }
+
+    .card {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+      animation: fadeInUp 0.6s ease-out;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .card-header {
+      background-color: #2e7d32;
+      color: white;
+      padding: 25px 30px;
+    }
+
+    .card-header h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .card-header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .card-body {
+      padding: 40px 30px;
+    }
+
+    .success-icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 25px;
+      background-color: #e8f5e9;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .success-icon i {
+      color: #2e7d32;
+      font-size: 40px;
+      animation: checkmark 0.8s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+    }
+
+    @keyframes checkmark {
+      0% {
+        transform: scale(0);
+        opacity: 0;
+      }
+
+      50% {
+        transform: scale(1.2);
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .success-message {
+      margin-bottom: 30px;
+    }
+
+    .success-message h2 {
+      font-size: 20px;
+      color: #333;
+      margin-bottom: 15px;
+    }
+
+    .success-message p {
+      color: #666;
+      font-size: 15px;
+      margin-bottom: 10px;
+    }
+
+    .btn {
+      display: inline-block;
+      background-color: #f4511e;
+      color: white;
+      text-decoration: none;
+      padding: 14px 30px;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background-color: #e23e0e;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(244, 81, 30, 0.2);
+    }
+
+    .btn i {
+      margin-right: 8px;
+    }
+
+    .timestamp {
+      margin-top: 25px;
+      font-size: 13px;
+      color: #999;
+    }
+
+    .brand-logo {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .brand-logo img {
+      height: 40px;
+      width: auto;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="brand-logo">
+      <!-- Add your logo here -->
+      <img
+        src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjYwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iNjAiIGZpbGw9IiNmNDUxMWUiIHJ4PSI4Ii8+PHRleHQgeD0iMzUiIHk9IjM4IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSI+U3BvcnRzQXBwPC90ZXh0Pjwvc3ZnPg=="
+        alt="SportsApp Logo" />
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h1>Password Reset Successful!</h1>
+        <p>Your account is now secured</p>
+      </div>
+
+      <div class="card-body">
+        <div class="success-icon">
+          <i class="fas fa-check"></i>
+        </div>
+
+        <div class="success-message">
+          <h2>Your password has been updated</h2>
+          <p>You can now sign in to your account using your new password.</p>
+          <p>
+            For security reasons, you'll be logged out of all your devices.
+          </p>
+        </div>
+
+        <a href="#" class="btn" id="openAppBtn">
+          <i class="fas fa-sign-in-alt"></i> Sign In Now
+        </a>
+
+        <script>
+          document.getElementById("openAppBtn").addEventListener("click", function (e) {
+            e.preventDefault();
+
+            const appUrl = "chalokhelne://login";  // <-- your Expo app scheme
+            const fallbackUrl = "/login";          // fallback to web login
+
+            const start = Date.now();
+            const timeout = setTimeout(() => {
+              if (Date.now() - start < 1600) {
+                // App not installed, redirect to web
+                window.location.href = fallbackUrl;
+              }
+            }, 1500);
+
+            // Try opening the app
+            window.location.href = appUrl;
+          });
+        </script>
+
+        <div class="timestamp">
+          <script>
+            // Display current date and time for reference
+            const now = new Date();
+            document.write(
+              `Password reset completed on ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}`
+            );
+          </script>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

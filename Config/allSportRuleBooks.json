@@ -1,0 +1,5400 @@
+[
+  {
+    "_id": "69b7ddc60e36d2417ad1fe95",
+    "sportId": "69b7ce0cf50e303a19ed610d",
+    "sportName": "Badminton",
+    "level": "district",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 21,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": 30,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": 1,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Feather shuttlecock",
+      "courtSize": "Singles: 13.4m x 5.18m, Doubles: 13.4m x 6.1m",
+      "netHeight": "1.55m at edges, 1.524m at center",
+      "tableSize": null,
+      "racketSpec": "Standard badminton racket",
+      "boardSize": null
+    },
+    "description": "District Badminton — Best of 3, 21 pts, cap 30",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.784Z",
+    "updatedAt": "2026-03-18T06:17:32.723Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "golden_point",
+      "rules": "At 29-29, next point wins (cap 30)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-difference",
+        "point-difference"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe9e",
+    "sportId": "69b7ce0cf50e303a19ed610d",
+    "sportName": "Badminton",
+    "level": "international",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 21,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": 30,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": 1,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": true,
+      "lineJudges": 6,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "BWF approved feather shuttlecock (speed tested)",
+      "courtSize": "Singles: 13.4m x 5.18m, Doubles: 13.4m x 6.1m",
+      "netHeight": "1.55m at edges, 1.524m at center",
+      "tableSize": null,
+      "racketSpec": "BWF approved racket",
+      "boardSize": null
+    },
+    "description": "International Badminton — BWF standard, instant review, full panel",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.888Z",
+    "updatedAt": "2026-03-18T06:17:32.915Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "golden_point",
+      "rules": "At 29-29, next point wins (cap 30)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "point-ratio",
+        "BWF-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe9b",
+    "sportId": "69b7ce0cf50e303a19ed610d",
+    "sportName": "Badminton",
+    "level": "national",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 21,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": 30,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": 1,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": 4,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "BWF approved feather shuttlecock",
+      "courtSize": "Singles: 13.4m x 5.18m, Doubles: 13.4m x 6.1m",
+      "netHeight": "1.55m at edges, 1.524m at center",
+      "tableSize": null,
+      "racketSpec": "BWF approved racket",
+      "boardSize": null
+    },
+    "description": "National Badminton — Best of 3, BWF standard, line judges",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.859Z",
+    "updatedAt": "2026-03-18T06:17:32.850Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "golden_point",
+      "rules": "At 29-29, next point wins (cap 30)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "point-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe98",
+    "sportId": "69b7ce0cf50e303a19ed610d",
+    "sportName": "Badminton",
+    "level": "state",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 21,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": 30,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": 1,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": 2,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "BWF approved feather shuttlecock",
+      "courtSize": "Singles: 13.4m x 5.18m, Doubles: 13.4m x 6.1m",
+      "netHeight": "1.55m at edges, 1.524m at center",
+      "tableSize": null,
+      "racketSpec": "BWF approved racket",
+      "boardSize": null
+    },
+    "description": "State Badminton — Best of 3, 21 pts, interval at 11",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.818Z",
+    "updatedAt": "2026-03-18T06:17:32.787Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "golden_point",
+      "rules": "At 29-29, next point wins (cap 30)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-difference",
+        "point-difference"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fee3",
+    "sportId": "69b7ce0cf50e303a19ed611f",
+    "sportName": "Basketball",
+    "level": "district",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": 4,
+      "quartersDuration": 8
+    },
+    "rules": {
+      "maxPlayersPerTeam": 5,
+      "minPlayersPerTeam": 5,
+      "substitutionsAllowed": 7,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": 60,
+      "warmupTime": 10,
+      "matchDuration": 32,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Size 7 basketball",
+      "courtSize": "28m x 15m",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Basketball — 4 x 8 min quarters",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.598Z",
+    "updatedAt": "2026-03-18T06:17:34.284Z",
+    "__v": 0,
+    "gameStructureType": "quarters",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 5,
+      "squadSize": 10
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "1 overtime period of 5 min. Repeat until winner."
+    },
+    "tournamentRules": {
+      "pointsForWin": 2,
+      "pointsForLoss": 1,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "point-difference",
+        "points-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1feec",
+    "sportId": "69b7ce0cf50e303a19ed611f",
+    "sportName": "Basketball",
+    "level": "international",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": 4,
+      "quartersDuration": 12
+    },
+    "rules": {
+      "maxPlayersPerTeam": 5,
+      "minPlayersPerTeam": 5,
+      "substitutionsAllowed": 7,
+      "timeoutsPerSet": 4,
+      "timeoutDuration": 60,
+      "warmupTime": 15,
+      "matchDuration": 48,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 3,
+      "thirdUmpire": true,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIBA/NBA approved match ball",
+      "courtSize": "28m x 15m (FIBA) / 28.65m x 15.24m (NBA)",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Basketball — 4 x 12 min (NBA) or 10 min (FIBA), instant replay",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.681Z",
+    "updatedAt": "2026-03-18T06:17:34.488Z",
+    "__v": 0,
+    "gameStructureType": "quarters",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 5,
+      "squadSize": 15
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "5 min overtime periods with instant replay. Unlimited until result."
+    },
+    "tournamentRules": {
+      "pointsForWin": 2,
+      "pointsForLoss": 1,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "point-difference",
+        "points-scored",
+        "FIBA-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fee9",
+    "sportId": "69b7ce0cf50e303a19ed611f",
+    "sportName": "Basketball",
+    "level": "national",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": 4,
+      "quartersDuration": 10
+    },
+    "rules": {
+      "maxPlayersPerTeam": 5,
+      "minPlayersPerTeam": 5,
+      "substitutionsAllowed": 7,
+      "timeoutsPerSet": 3,
+      "timeoutDuration": 60,
+      "warmupTime": 15,
+      "matchDuration": 40,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 3,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIBA approved ball",
+      "courtSize": "28m x 15m (FIBA standard)",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Basketball — 4 x 10 min, FIBA rules",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.653Z",
+    "updatedAt": "2026-03-18T06:17:34.420Z",
+    "__v": 0,
+    "gameStructureType": "quarters",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 5,
+      "squadSize": 12
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "5 min overtime. Unlimited OT periods until result."
+    },
+    "tournamentRules": {
+      "pointsForWin": 2,
+      "pointsForLoss": 1,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "point-difference",
+        "points-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fee6",
+    "sportId": "69b7ce0cf50e303a19ed611f",
+    "sportName": "Basketball",
+    "level": "state",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": 4,
+      "quartersDuration": 10
+    },
+    "rules": {
+      "maxPlayersPerTeam": 5,
+      "minPlayersPerTeam": 5,
+      "substitutionsAllowed": 7,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": 60,
+      "warmupTime": 10,
+      "matchDuration": 40,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Size 7 basketball (FIBA quality)",
+      "courtSize": "28m x 15m",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Basketball — 4 x 10 min quarters",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.626Z",
+    "updatedAt": "2026-03-18T06:17:34.353Z",
+    "__v": 0,
+    "gameStructureType": "quarters",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 5,
+      "squadSize": 12
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "5 min overtime periods until winner decided."
+    },
+    "tournamentRules": {
+      "pointsForWin": 2,
+      "pointsForLoss": 1,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "point-difference",
+        "points-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1feaf",
+    "sportId": "69b7ce0cf50e303a19ed612e",
+    "sportName": "Carrom",
+    "level": "district",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 25,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 1,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 60,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Wooden coins + striker",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": "29 inches (standard)"
+    },
+    "description": "District Carrom — Best of 3 boards, 25 pts",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.094Z",
+    "updatedAt": "2026-03-18T06:17:36.035Z",
+    "__v": 0,
+    "gameStructureType": "frames",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-frames",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_frame",
+      "rules": "One extra board. Higher points wins."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "board-difference",
+        "point-difference"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1feb8",
+    "sportId": "69b7ce0cf50e303a19ed612e",
+    "sportName": "Carrom",
+    "level": "international",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": 29,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 1,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 3,
+      "matchDuration": null,
+      "breakBetweenSets": 60,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "ICF championship approved coins + striker",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": "29 inches (ICF certified)"
+    },
+    "description": "International Carrom — Best of 5, ICF championship rules",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.176Z",
+    "updatedAt": "2026-03-18T06:17:36.233Z",
+    "__v": 0,
+    "gameStructureType": "frames",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-frames",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_frame",
+      "rules": "ICF championship tiebreak: extra board with time limit."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "board-ratio",
+        "point-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1feb5",
+    "sportId": "69b7ce0cf50e303a19ed612e",
+    "sportName": "Carrom",
+    "level": "national",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": 25,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 1,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 3,
+      "matchDuration": null,
+      "breakBetweenSets": 60,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "ICF approved coins + striker",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": "29 inches (ICF certified)"
+    },
+    "description": "National Carrom — Best of 5 boards",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.151Z",
+    "updatedAt": "2026-03-18T06:17:36.159Z",
+    "__v": 0,
+    "gameStructureType": "frames",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-frames",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_frame",
+      "rules": "One extra board. If still tied, coin toss for first strike."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "board-ratio",
+        "point-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1feb2",
+    "sportId": "69b7ce0cf50e303a19ed612e",
+    "sportName": "Carrom",
+    "level": "state",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 25,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 1,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 60,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "ICF approved coins + striker",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": "29 inches (ICF standard)"
+    },
+    "description": "State Carrom — Best of 3 boards, ICF rules",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.124Z",
+    "updatedAt": "2026-03-18T06:17:36.098Z",
+    "__v": 0,
+    "gameStructureType": "frames",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-frames",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_frame",
+      "rules": "One extra board with ICF tiebreak procedure."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "board-difference",
+        "point-difference"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1febc",
+    "sportId": "69b7ce0cf50e303a19ed612b",
+    "sportName": "Chess",
+    "level": "district",
+    "format": {
+      "totalSets": 1,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 0,
+      "matchDuration": 30,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Staunton pieces",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": "Standard tournament board"
+    },
+    "description": "District Chess — Rapid 15+10, single game",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.215Z",
+    "updatedAt": "2026-03-18T06:17:35.487Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "result",
+      "winCondition": {
+        "type": "single-result",
+        "value": 1,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "armageddon",
+      "rules": "Blitz tiebreak: 5 min vs 4 min. Black gets draw odds."
+    },
+    "tournamentRules": {
+      "pointsForWin": 1,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0.5,
+      "rankingCriteria": [
+        "points",
+        "buchholz",
+        "sonneborn-berger",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fec5",
+    "sportId": "69b7ce0cf50e303a19ed612b",
+    "sportName": "Chess",
+    "level": "international",
+    "format": {
+      "totalSets": 1,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 0,
+      "matchDuration": 240,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIDE approved Staunton pieces, weighted",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": "FIDE certified board with DGT"
+    },
+    "description": "International Chess — FIDE Classical 90+30+increment, DGT boards",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.302Z",
+    "updatedAt": "2026-03-18T06:17:35.699Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "result",
+      "winCondition": {
+        "type": "single-result",
+        "value": 1,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "armageddon",
+      "rules": "FIDE tiebreak protocol: 4 rapid (25+10), then 2 blitz (5+3), then armageddon."
+    },
+    "tournamentRules": {
+      "pointsForWin": 1,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0.5,
+      "rankingCriteria": [
+        "points",
+        "buchholz",
+        "sonneborn-berger",
+        "head-to-head",
+        "FIDE-rating"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fec2",
+    "sportId": "69b7ce0cf50e303a19ed612b",
+    "sportName": "Chess",
+    "level": "national",
+    "format": {
+      "totalSets": 1,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 0,
+      "matchDuration": 180,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIDE approved Staunton pieces",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": "FIDE certified board"
+    },
+    "description": "National Chess — Classical 90+30, FIDE rated",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.274Z",
+    "updatedAt": "2026-03-18T06:17:35.636Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "result",
+      "winCondition": {
+        "type": "single-result",
+        "value": 1,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "armageddon",
+      "rules": "Two rapid games (15+10). If tied, two blitz (5+3). If still tied, armageddon."
+    },
+    "tournamentRules": {
+      "pointsForWin": 1,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0.5,
+      "rankingCriteria": [
+        "points",
+        "buchholz",
+        "sonneborn-berger",
+        "head-to-head",
+        "FIDE-rating"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1febf",
+    "sportId": "69b7ce0cf50e303a19ed612b",
+    "sportName": "Chess",
+    "level": "state",
+    "format": {
+      "totalSets": 1,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 0,
+      "matchDuration": 30,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Staunton pieces, weighted",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": "FIDE standard tournament board"
+    },
+    "description": "State Chess — Rapid 15+10, arbiter required",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.244Z",
+    "updatedAt": "2026-03-18T06:17:35.565Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "result",
+      "winCondition": {
+        "type": "single-result",
+        "value": 1,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "armageddon",
+      "rules": "Two rapid games (10+5). If tied, armageddon."
+    },
+    "tournamentRules": {
+      "pointsForWin": 1,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0.5,
+      "rankingCriteria": [
+        "points",
+        "buchholz",
+        "sonneborn-berger",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fea2",
+    "sportId": "69b7ce0cf50e303a19ed6119",
+    "sportName": "Cricket",
+    "level": "district",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": 15,
+      "inningsCount": 2,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 8,
+      "substitutionsAllowed": 1,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": 180,
+      "breakBetweenSets": null,
+      "powerPlayOvers": 3,
+      "wideBallRule": true,
+      "noBallFreeHit": true,
+      "drsAvailable": false,
+      "batsmenPerInnings": 11,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Leather ball (standard)",
+      "courtSize": "Standard cricket ground",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Cricket — 15 overs, 2 innings, basic rules",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.952Z",
+    "updatedAt": "2026-03-18T06:17:33.623Z",
+    "__v": 0,
+    "gameStructureType": "innings",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 13
+    },
+    "scoring": {
+      "type": "runs",
+      "winCondition": {
+        "type": "most-runs",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "super_over",
+      "rules": "1 super over per side, 6 balls each. Higher runs wins. Repeat if tied."
+    },
+    "tournamentRules": {
+      "pointsForWin": 2,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "net-run-rate",
+        "head-to-head",
+        "runs-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1feab",
+    "sportId": "69b7ce0cf50e303a19ed6119",
+    "sportName": "Cricket",
+    "level": "international",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": 20,
+      "inningsCount": 2,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 11,
+      "substitutionsAllowed": 1,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 20,
+      "matchDuration": 240,
+      "breakBetweenSets": null,
+      "powerPlayOvers": 6,
+      "wideBallRule": true,
+      "noBallFreeHit": true,
+      "drsAvailable": true,
+      "batsmenPerInnings": 11,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": true,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Kookaburra / Dukes ICC approved",
+      "courtSize": "ICC standard ground, 65-82m boundary",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Cricket — ICC T20 rules, full DRS, Snickometer",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.047Z",
+    "updatedAt": "2026-03-18T06:17:33.856Z",
+    "__v": 0,
+    "gameStructureType": "innings",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 15
+    },
+    "scoring": {
+      "type": "runs",
+      "winCondition": {
+        "type": "most-runs",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "super_over",
+      "rules": "ICC super over rules. If tied again, repeated super overs until result."
+    },
+    "tournamentRules": {
+      "pointsForWin": 2,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "net-run-rate",
+        "head-to-head",
+        "runs-scored",
+        "ICC-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fea8",
+    "sportId": "69b7ce0cf50e303a19ed6119",
+    "sportName": "Cricket",
+    "level": "national",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": 20,
+      "inningsCount": 2,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 11,
+      "substitutionsAllowed": 1,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 15,
+      "matchDuration": 240,
+      "breakBetweenSets": null,
+      "powerPlayOvers": 6,
+      "wideBallRule": true,
+      "noBallFreeHit": true,
+      "drsAvailable": true,
+      "batsmenPerInnings": 11,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": true,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "SG Test / Kookaburra",
+      "courtSize": "Standard cricket ground, minimum 65m boundary",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Cricket — T20 (20 overs), DRS available",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.018Z",
+    "updatedAt": "2026-03-18T06:17:33.786Z",
+    "__v": 0,
+    "gameStructureType": "innings",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 15
+    },
+    "scoring": {
+      "type": "runs",
+      "winCondition": {
+        "type": "most-runs",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "super_over",
+      "rules": "1 super over per side. If still tied, repeated super over."
+    },
+    "tournamentRules": {
+      "pointsForWin": 2,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "net-run-rate",
+        "head-to-head",
+        "runs-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fea5",
+    "sportId": "69b7ce0cf50e303a19ed6119",
+    "sportName": "Cricket",
+    "level": "state",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": 20,
+      "inningsCount": 2,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 9,
+      "substitutionsAllowed": 1,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 15,
+      "matchDuration": 240,
+      "breakBetweenSets": null,
+      "powerPlayOvers": 6,
+      "wideBallRule": true,
+      "noBallFreeHit": true,
+      "drsAvailable": false,
+      "batsmenPerInnings": 11,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "SG or equivalent leather ball",
+      "courtSize": "Standard cricket ground, minimum 60m boundary",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Cricket — T20 (20 overs), DRS not available",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.982Z",
+    "updatedAt": "2026-03-18T06:17:33.701Z",
+    "__v": 0,
+    "gameStructureType": "innings",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 15
+    },
+    "scoring": {
+      "type": "runs",
+      "winCondition": {
+        "type": "most-runs",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "super_over",
+      "rules": "1 super over per side. If still tied, boundary count-back."
+    },
+    "tournamentRules": {
+      "pointsForWin": 2,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "net-run-rate",
+        "head-to-head",
+        "runs-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff31",
+    "sportId": "69b7ce0cf50e303a19ed6137",
+    "sportName": "Cricket Nets",
+    "level": "district",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": null,
+      "minPlayersPerTeam": null,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": null,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 0,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": false
+    },
+    "equipment": {
+      "ballType": "Leather / Tennis ball",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Cricket Nets — Practice session",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.318Z",
+    "updatedAt": "2026-03-18T06:17:37.211Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": null,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 1,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff3a",
+    "sportId": "69b7ce0cf50e303a19ed6137",
+    "sportName": "Cricket Nets",
+    "level": "international",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": null,
+      "minPlayersPerTeam": null,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": null,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 0,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "ICC approved match ball",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Cricket Nets — Practice session",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.403Z",
+    "updatedAt": "2026-03-18T06:17:37.409Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": null,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 1,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff37",
+    "sportId": "69b7ce0cf50e303a19ed6137",
+    "sportName": "Cricket Nets",
+    "level": "national",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": null,
+      "minPlayersPerTeam": null,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": null,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 0,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "SG / Kookaburra leather ball",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Cricket Nets — Practice session",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.377Z",
+    "updatedAt": "2026-03-18T06:17:37.347Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": null,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 1,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff34",
+    "sportId": "69b7ce0cf50e303a19ed6137",
+    "sportName": "Cricket Nets",
+    "level": "state",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": null,
+      "minPlayersPerTeam": null,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": null,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 0,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": false
+    },
+    "equipment": {
+      "ballType": "Leather ball",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Cricket Nets — Practice session",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.342Z",
+    "updatedAt": "2026-03-18T06:17:37.275Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": null,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 1,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fed6",
+    "sportId": "69b7ce0cf50e303a19ed611c",
+    "sportName": "Football",
+    "level": "district",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 30,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 3,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": 60,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Size 5 football",
+      "courtSize": "90-100m x 45-60m",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Football — 2 halves x 30 min, no extra time",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.472Z",
+    "updatedAt": "2026-03-18T06:17:33.974Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 16
+    },
+    "scoring": {
+      "type": "goals",
+      "winCondition": {
+        "type": "most-goals",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "penalty",
+      "rules": "Straight to penalty shootout (5 kicks per side)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "goal-difference",
+        "goals-scored",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fedf",
+    "sportId": "69b7ce0cf50e303a19ed611c",
+    "sportName": "Football",
+    "level": "international",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 45,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 15,
+      "matchDuration": 90,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": true,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIFA Quality Pro match ball",
+      "courtSize": "105m x 68m (FIFA standard)",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Football — FIFA standard, VAR, 2 x 45 min",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.561Z",
+    "updatedAt": "2026-03-18T06:17:34.193Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 23
+    },
+    "scoring": {
+      "type": "goals",
+      "winCondition": {
+        "type": "most-goals",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "2 x 15 min extra time with VAR. If still tied, penalty shootout (5 kicks, then sudden death)."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "goal-difference",
+        "goals-scored",
+        "head-to-head",
+        "fair-play",
+        "FIFA-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fedc",
+    "sportId": "69b7ce0cf50e303a19ed611c",
+    "sportName": "Football",
+    "level": "national",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 45,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 15,
+      "matchDuration": 90,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIFA Quality Pro ball",
+      "courtSize": "100-110m x 64-75m",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Football — 2 x 45 min, extra time + penalties",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.531Z",
+    "updatedAt": "2026-03-18T06:17:34.117Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 20
+    },
+    "scoring": {
+      "type": "goals",
+      "winCondition": {
+        "type": "most-goals",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "2 x 15 min extra time. If still tied, penalty shootout (5 kicks, then sudden death)."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "goal-difference",
+        "goals-scored",
+        "head-to-head",
+        "fair-play"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fed9",
+    "sportId": "69b7ce0cf50e303a19ed611c",
+    "sportName": "Football",
+    "level": "state",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 40,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 3,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 15,
+      "matchDuration": 80,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Size 5 football (FIFA quality)",
+      "courtSize": "100-110m x 64-75m",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Football — 2 halves x 40 min, penalty shootout",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.502Z",
+    "updatedAt": "2026-03-18T06:17:34.041Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 18
+    },
+    "scoring": {
+      "type": "goals",
+      "winCondition": {
+        "type": "most-goals",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "penalty",
+      "rules": "5 penalties per side. Sudden death if tied after 5."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "goal-difference",
+        "goals-scored",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fefd",
+    "sportId": "69b7ce0cf50e303a19ed6125",
+    "sportName": "Hockey",
+    "level": "district",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 25,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": 50,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Standard hockey ball",
+      "courtSize": "91.4m x 55m",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Hockey — 2 x 25 min halves",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.845Z",
+    "updatedAt": "2026-03-18T06:17:34.884Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 16
+    },
+    "scoring": {
+      "type": "goals",
+      "winCondition": {
+        "type": "most-goals",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "penalty",
+      "rules": "Penalty shootout (5 one-on-one penalty strokes)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "goal-difference",
+        "goals-scored",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1ff06",
+    "sportId": "69b7ce0cf50e303a19ed6125",
+    "sportName": "Hockey",
+    "level": "international",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 35,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": 70,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": true,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIH approved match ball",
+      "courtSize": "91.4m x 55m (FIH certified)",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Hockey — FIH standard, video referral",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.925Z",
+    "updatedAt": "2026-03-18T06:17:35.086Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 18
+    },
+    "scoring": {
+      "type": "goals",
+      "winCondition": {
+        "type": "most-goals",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "penalty",
+      "rules": "FIH shootout: 5 x 8-second one-on-one. Video referral available. Sudden death if tied."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "goal-difference",
+        "goals-scored",
+        "head-to-head",
+        "fair-play",
+        "FIH-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1ff03",
+    "sportId": "69b7ce0cf50e303a19ed6125",
+    "sportName": "Hockey",
+    "level": "national",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 35,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": 70,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIH approved hockey ball",
+      "courtSize": "91.4m x 55m",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Hockey — 4 x 15 min quarters (FIH format)",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.899Z",
+    "updatedAt": "2026-03-18T06:17:35.018Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 18
+    },
+    "scoring": {
+      "type": "goals",
+      "winCondition": {
+        "type": "most-goals",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "penalty",
+      "rules": "Penalty shootout (5 strokes, 8-second one-on-one). Sudden death if tied."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "goal-difference",
+        "goals-scored",
+        "head-to-head",
+        "fair-play"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1ff00",
+    "sportId": "69b7ce0cf50e303a19ed6125",
+    "sportName": "Hockey",
+    "level": "state",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 30,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 11,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": 60,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIH quality hockey ball",
+      "courtSize": "91.4m x 55m",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Hockey — 2 x 30 min halves",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.873Z",
+    "updatedAt": "2026-03-18T06:17:34.951Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 11,
+      "squadSize": 18
+    },
+    "scoring": {
+      "type": "goals",
+      "winCondition": {
+        "type": "most-goals",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "penalty",
+      "rules": "Penalty shootout (5 strokes). Sudden death after 5."
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "goal-difference",
+        "goals-scored",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1ff0a",
+    "sportId": "69b7ce0cf50e303a19ed6128",
+    "sportName": "Kabaddi",
+    "level": "district",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 15,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 7,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": 30,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": null,
+      "courtSize": "13m x 10m (men), 12m x 8m (women)",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Kabaddi — 2 x 15 min halves",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.962Z",
+    "updatedAt": "2026-03-18T06:17:35.186Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 7,
+      "squadSize": 10
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "2 x 5 min extra time halves. If still tied, golden raid (sudden death)."
+    },
+    "tournamentRules": {
+      "pointsForWin": 5,
+      "pointsForLoss": 0,
+      "pointsForDraw": 3,
+      "rankingCriteria": [
+        "points",
+        "score-difference",
+        "head-to-head",
+        "total-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff13",
+    "sportId": "69b7ce0cf50e303a19ed6128",
+    "sportName": "Kabaddi",
+    "level": "international",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 20,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 7,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": 40,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": true,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": null,
+      "courtSize": "13m x 10m (men), 12m x 8m (women)",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Kabaddi — IKF/PKL rules, video review",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.040Z",
+    "updatedAt": "2026-03-18T06:17:35.392Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 7,
+      "squadSize": 12
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "2 x 7 min extra time with video review. Golden raid if still tied."
+    },
+    "tournamentRules": {
+      "pointsForWin": 5,
+      "pointsForLoss": 0,
+      "pointsForDraw": 3,
+      "rankingCriteria": [
+        "points",
+        "score-difference",
+        "head-to-head",
+        "total-scored",
+        "IKF-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff10",
+    "sportId": "69b7ce0cf50e303a19ed6128",
+    "sportName": "Kabaddi",
+    "level": "national",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 20,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 7,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": 40,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": null,
+      "courtSize": "13m x 10m (men), 12m x 8m (women)",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Kabaddi — 2 x 20 min, full officiating",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.015Z",
+    "updatedAt": "2026-03-18T06:17:35.328Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 7,
+      "squadSize": 12
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "2 x 7 min extra time. If still tied, golden raid with toss advantage."
+    },
+    "tournamentRules": {
+      "pointsForWin": 5,
+      "pointsForLoss": 0,
+      "pointsForDraw": 3,
+      "rankingCriteria": [
+        "points",
+        "score-difference",
+        "head-to-head",
+        "total-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1ff0d",
+    "sportId": "69b7ce0cf50e303a19ed6128",
+    "sportName": "Kabaddi",
+    "level": "state",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": 2,
+      "halvesDuration": 20,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 7,
+      "minPlayersPerTeam": 7,
+      "substitutionsAllowed": 5,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": 40,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": null,
+      "courtSize": "13m x 10m (men), 12m x 8m (women)",
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Kabaddi — 2 x 20 min halves, PKL format",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.988Z",
+    "updatedAt": "2026-03-18T06:17:35.250Z",
+    "__v": 0,
+    "gameStructureType": "halves",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 7,
+      "squadSize": 12
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_time",
+      "rules": "2 x 5 min extra time. If tied, golden raid."
+    },
+    "tournamentRules": {
+      "pointsForWin": 5,
+      "pointsForLoss": 0,
+      "pointsForDraw": 3,
+      "rankingCriteria": [
+        "points",
+        "score-difference",
+        "head-to-head",
+        "total-scored"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe88",
+    "sportId": "69b7ce0cf50e303a19ed6116",
+    "sportName": "Pickleball",
+    "level": "district",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 11,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": 1,
+      "timeoutDuration": 60,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": 6,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Outdoor polymer ball (40 holes)",
+      "courtSize": "20ft x 44ft",
+      "netHeight": "36in at sidelines, 34in center",
+      "tableSize": null,
+      "racketSpec": "Paddle max 24in (length + width)",
+      "boardSize": null
+    },
+    "description": "District Pickleball — Best of 3, 11 pts, side-out scoring",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.649Z",
+    "updatedAt": "2026-03-18T06:17:33.009Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-difference",
+        "point-difference"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe91",
+    "sportId": "69b7ce0cf50e303a19ed6116",
+    "sportName": "Pickleball",
+    "level": "international",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": 11,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": 15,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": 60,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": 8,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": 4,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "IFP approved ball",
+      "courtSize": "20ft x 44ft",
+      "netHeight": "36in at sidelines, 34in center",
+      "tableSize": null,
+      "racketSpec": "IFP approved paddle",
+      "boardSize": null
+    },
+    "description": "International Pickleball — Best of 5, IFP standard",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.739Z",
+    "updatedAt": "2026-03-18T06:17:33.215Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "point-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe8e",
+    "sportId": "69b7ce0cf50e303a19ed6116",
+    "sportName": "Pickleball",
+    "level": "national",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 11,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": 15,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": 60,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": 8,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": 2,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "USAPA approved ball",
+      "courtSize": "20ft x 44ft",
+      "netHeight": "36in at sidelines, 34in center",
+      "tableSize": null,
+      "racketSpec": "USAPA approved paddle",
+      "boardSize": null
+    },
+    "description": "National Pickleball — Best of 3, deciding set 15 pts",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.708Z",
+    "updatedAt": "2026-03-18T06:17:33.150Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "point-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe8b",
+    "sportId": "69b7ce0cf50e303a19ed6116",
+    "sportName": "Pickleball",
+    "level": "state",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 11,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": 60,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": 6,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "USAPA approved ball",
+      "courtSize": "20ft x 44ft",
+      "netHeight": "36in at sidelines, 34in center",
+      "tableSize": null,
+      "racketSpec": "USAPA approved paddle",
+      "boardSize": null
+    },
+    "description": "State Pickleball — Best of 3, 11 pts, stricter officiating",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.676Z",
+    "updatedAt": "2026-03-18T06:17:33.077Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-difference",
+        "point-difference"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff17",
+    "sportId": "69b7ce0cf50e303a19ed6131",
+    "sportName": "Snooker",
+    "level": "district",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 3,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Standard snooker balls (22)",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": "12ft x 6ft",
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Snooker — Best of 3 frames",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.077Z",
+    "updatedAt": "2026-03-18T06:17:36.573Z",
+    "__v": 0,
+    "gameStructureType": "frames",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-frames",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_frame",
+      "rules": "Re-spotted black ball"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "frame-difference",
+        "centuries"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff20",
+    "sportId": "69b7ce0cf50e303a19ed6131",
+    "sportName": "Snooker",
+    "level": "international",
+    "format": {
+      "totalSets": 9,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "WSF approved match balls",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": "12ft x 6ft (WSF certified)",
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Snooker — Best of 9 frames, WSF standard",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.163Z",
+    "updatedAt": "2026-03-18T06:17:36.795Z",
+    "__v": 0,
+    "gameStructureType": "frames",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-frames",
+        "value": 5,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_frame",
+      "rules": "Re-spotted black ball with referee oversight"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "frame-ratio",
+        "centuries",
+        "highest-break",
+        "WSF-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff1d",
+    "sportId": "69b7ce0cf50e303a19ed6131",
+    "sportName": "Snooker",
+    "level": "national",
+    "format": {
+      "totalSets": 7,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "WSF approved snooker balls",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": "12ft x 6ft (tournament spec)",
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Snooker — Best of 7 frames",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.137Z",
+    "updatedAt": "2026-03-18T06:17:36.731Z",
+    "__v": 0,
+    "gameStructureType": "frames",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-frames",
+        "value": 4,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_frame",
+      "rules": "Re-spotted black ball"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "frame-ratio",
+        "centuries",
+        "highest-break"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff1a",
+    "sportId": "69b7ce0cf50e303a19ed6131",
+    "sportName": "Snooker",
+    "level": "state",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 3,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Standard snooker balls (22)",
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": "12ft x 6ft",
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Snooker — Best of 5 frames",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.108Z",
+    "updatedAt": "2026-03-18T06:17:36.656Z",
+    "__v": 0,
+    "gameStructureType": "frames",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-frames",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "extra_frame",
+      "rules": "Re-spotted black ball"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "frame-difference",
+        "centuries"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe7b",
+    "sportId": "69b7ce0cf50e303a19ed6110",
+    "sportName": "Table Tennis",
+    "level": "district",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": 11,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": 2,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": 1,
+      "timeoutDuration": 60,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 60,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": true,
+      "serviceFaults": 0,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "40mm plastic (3-star)",
+      "courtSize": null,
+      "netHeight": "15.25cm",
+      "tableSize": "Standard 9ft x 5ft",
+      "racketSpec": "ITTF approved rubber",
+      "boardSize": null
+    },
+    "description": "District TT — Best of 5, 11 pts, basic officiating",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.519Z",
+    "updatedAt": "2026-03-18T06:17:32.394Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-difference",
+        "point-difference"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe84",
+    "sportId": "69b7ce0cf50e303a19ed6110",
+    "sportName": "Table Tennis",
+    "level": "international",
+    "format": {
+      "totalSets": 7,
+      "pointsPerSet": 11,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": 2,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": 1,
+      "timeoutDuration": 60,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 60,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": true,
+      "serviceFaults": 0,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": 0,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "40mm plastic (3-star ITTF approved)",
+      "courtSize": null,
+      "netHeight": "15.25cm",
+      "tableSize": "Standard 9ft x 5ft ITTF certified",
+      "racketSpec": "ITTF approved rubber, max 4mm thickness",
+      "boardSize": null
+    },
+    "description": "International TT — Best of 7, ITTF standard, full panel",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.613Z",
+    "updatedAt": "2026-03-18T06:17:32.623Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 4,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "point-ratio",
+        "ITTF-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe81",
+    "sportId": "69b7ce0cf50e303a19ed6110",
+    "sportName": "Table Tennis",
+    "level": "national",
+    "format": {
+      "totalSets": 7,
+      "pointsPerSet": 11,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": 2,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": 1,
+      "timeoutDuration": 60,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 60,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": true,
+      "serviceFaults": 0,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": 0,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "40mm plastic (3-star ITTF)",
+      "courtSize": null,
+      "netHeight": "15.25cm",
+      "tableSize": "Standard 9ft x 5ft",
+      "racketSpec": "ITTF approved rubber",
+      "boardSize": null
+    },
+    "description": "National TT — Best of 7, 11 pts, strict officiating",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.586Z",
+    "updatedAt": "2026-03-18T06:17:32.557Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 4,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "point-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc60e36d2417ad1fe7e",
+    "sportId": "69b7ce0cf50e303a19ed6110",
+    "sportName": "Table Tennis",
+    "level": "state",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": 11,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": 2,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 1,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": 0,
+      "timeoutsPerSet": 1,
+      "timeoutDuration": 60,
+      "warmupTime": 2,
+      "matchDuration": null,
+      "breakBetweenSets": 60,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": true,
+      "serviceFaults": 0,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "40mm plastic (3-star ITTF)",
+      "courtSize": null,
+      "netHeight": "15.25cm",
+      "tableSize": "Standard 9ft x 5ft",
+      "racketSpec": "ITTF approved rubber",
+      "boardSize": null
+    },
+    "description": "State TT — Best of 5, 11 pts, referee mandatory",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:02.553Z",
+    "updatedAt": "2026-03-18T06:17:32.481Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-difference",
+        "point-difference"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fec9",
+    "sportId": "69b7ce0cf50e303a19ed6113",
+    "sportName": "Tennis",
+    "level": "district",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": null,
+      "gamesPerSet": 6,
+      "pointsPerGame": 4,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": true,
+      "tiebreakPoints": 7,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "ITF approved tennis ball",
+      "courtSize": "Singles: 23.77m x 8.23m, Doubles: 23.77m x 10.97m",
+      "netHeight": "0.914m at center",
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Tennis — Best of 3 sets, tiebreak at 6-6",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.342Z",
+    "updatedAt": "2026-03-18T06:17:33.311Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "golden_point",
+      "rules": "Tiebreak at 6-6 in each set, first to 7 (win by 2)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "game-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fed2",
+    "sportId": "69b7ce0cf50e303a19ed6113",
+    "sportName": "Tennis",
+    "level": "international",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": null,
+      "gamesPerSet": 6,
+      "pointsPerGame": 4,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": true,
+      "tiebreakPoints": 7,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": true,
+      "lineJudges": 9,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "ITF approved Grand Slam ball",
+      "courtSize": "Singles: 23.77m x 8.23m, Doubles: 23.77m x 10.97m",
+      "netHeight": "0.914m at center",
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Tennis — Best of 5 (Grand Slam), full officiating",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.430Z",
+    "updatedAt": "2026-03-18T06:17:33.515Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "golden_point",
+      "rules": "Tiebreak at 6-6 all sets including deciding set (first to 10, win by 2)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "game-ratio",
+        "ATP/WTA-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fecf",
+    "sportId": "69b7ce0cf50e303a19ed6113",
+    "sportName": "Tennis",
+    "level": "national",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": null,
+      "gamesPerSet": 6,
+      "pointsPerGame": 4,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": true,
+      "tiebreakPoints": 7,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": 6,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "ITF approved tennis ball",
+      "courtSize": "Singles: 23.77m x 8.23m, Doubles: 23.77m x 10.97m",
+      "netHeight": "0.914m at center",
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Tennis — Best of 3, Hawk-Eye available",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.401Z",
+    "updatedAt": "2026-03-18T06:17:33.446Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "golden_point",
+      "rules": "Tiebreak at 6-6, first to 7 (win by 2). Super tiebreak in deciding set (first to 10)"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "game-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fecc",
+    "sportId": "69b7ce0cf50e303a19ed6113",
+    "sportName": "Tennis",
+    "level": "state",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": null,
+      "gamesPerSet": 6,
+      "pointsPerGame": 4,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": true,
+      "tiebreakPoints": 7,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 2,
+      "minPlayersPerTeam": 1,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": 5,
+      "matchDuration": null,
+      "breakBetweenSets": 120,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": 2,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "ITF approved tennis ball",
+      "courtSize": "Singles: 23.77m x 8.23m, Doubles: 23.77m x 10.97m",
+      "netHeight": "0.914m at center",
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Tennis — Best of 3 sets, chair umpire mandatory",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.372Z",
+    "updatedAt": "2026-03-18T06:17:33.372Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "individual",
+      "playersPerSide": 1,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "golden_point",
+      "rules": "Tiebreak at 6-6, first to 7 (win by 2). Match tiebreak 10-point in deciding set"
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "head-to-head",
+        "set-ratio",
+        "game-ratio"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff24",
+    "sportId": "69b7ce0cf50e303a19ed6134",
+    "sportName": "Turf Games",
+    "level": "district",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": null,
+      "minPlayersPerTeam": null,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": null,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 0,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": false
+    },
+    "equipment": {
+      "ballType": null,
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Turf Games — Custom format, flexible rules",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.202Z",
+    "updatedAt": "2026-03-18T06:17:36.893Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": null,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff2d",
+    "sportId": "69b7ce0cf50e303a19ed6134",
+    "sportName": "Turf Games",
+    "level": "international",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": null,
+      "minPlayersPerTeam": null,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": null,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": true,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": null,
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Turf Games — Custom format",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.281Z",
+    "updatedAt": "2026-03-18T06:17:37.092Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": null,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff2a",
+    "sportId": "69b7ce0cf50e303a19ed6134",
+    "sportName": "Turf Games",
+    "level": "national",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": null,
+      "minPlayersPerTeam": null,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": null,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": null,
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Turf Games — Custom format",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.255Z",
+    "updatedAt": "2026-03-18T06:17:37.026Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": null,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc80e36d2417ad1ff27",
+    "sportId": "69b7ce0cf50e303a19ed6134",
+    "sportName": "Turf Games",
+    "level": "state",
+    "format": {
+      "totalSets": null,
+      "pointsPerSet": null,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": null,
+      "maxPointsCap": null,
+      "deuceEnabled": false,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": null,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": null,
+      "minPlayersPerTeam": null,
+      "substitutionsAllowed": null,
+      "timeoutsPerSet": null,
+      "timeoutDuration": null,
+      "warmupTime": null,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": false
+    },
+    "equipment": {
+      "ballType": null,
+      "courtSize": null,
+      "netHeight": null,
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Turf Games — Custom format",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:04.228Z",
+    "updatedAt": "2026-03-18T06:17:36.957Z",
+    "__v": 0,
+    "gameStructureType": "single",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": null,
+      "squadSize": null
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "most-points",
+        "value": null,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 1,
+      "rankingCriteria": [
+        "points",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fef0",
+    "sportId": "69b7ce0cf50e303a19ed6122",
+    "sportName": "Volleyball",
+    "level": "district",
+    "format": {
+      "totalSets": 3,
+      "pointsPerSet": 25,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": 15,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 6,
+      "minPlayersPerTeam": 6,
+      "substitutionsAllowed": 6,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": false,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "Standard volleyball",
+      "courtSize": "18m x 9m",
+      "netHeight": "Men: 2.43m, Women: 2.24m",
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "District Volleyball — Best of 3, 25 pts, deciding 15",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.721Z",
+    "updatedAt": "2026-03-18T06:17:34.588Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 6,
+      "squadSize": 10
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 2,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "set-ratio",
+        "point-ratio",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fef9",
+    "sportId": "69b7ce0cf50e303a19ed6122",
+    "sportName": "Volleyball",
+    "level": "international",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": 25,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": 15,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 6,
+      "minPlayersPerTeam": 6,
+      "substitutionsAllowed": 6,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": true,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIVB approved match ball",
+      "courtSize": "18m x 9m",
+      "netHeight": "Men: 2.43m, Women: 2.24m",
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "International Volleyball — Best of 5, FIVB standard, video challenge",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.798Z",
+    "updatedAt": "2026-03-18T06:17:34.792Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 6,
+      "squadSize": 14
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "set-ratio",
+        "point-ratio",
+        "head-to-head",
+        "FIVB-ranking"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fef6",
+    "sportId": "69b7ce0cf50e303a19ed6122",
+    "sportName": "Volleyball",
+    "level": "national",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": 25,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": 15,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 6,
+      "minPlayersPerTeam": 6,
+      "substitutionsAllowed": 6,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 2,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIVB approved volleyball",
+      "courtSize": "18m x 9m",
+      "netHeight": "Men: 2.43m, Women: 2.24m",
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "National Volleyball — Best of 5, FIVB rules",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.773Z",
+    "updatedAt": "2026-03-18T06:17:34.728Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 6,
+      "squadSize": 14
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "set-ratio",
+        "point-ratio",
+        "head-to-head"
+      ]
+    }
+  },
+  {
+    "_id": "69b7ddc70e36d2417ad1fef3",
+    "sportId": "69b7ce0cf50e303a19ed6122",
+    "sportName": "Volleyball",
+    "level": "state",
+    "format": {
+      "totalSets": 5,
+      "pointsPerSet": 25,
+      "gamesPerSet": null,
+      "pointsPerGame": null,
+      "winByMargin": 2,
+      "maxPointsCap": null,
+      "deuceEnabled": true,
+      "tiebreakEnabled": false,
+      "tiebreakPoints": null,
+      "decidingSetPoints": 15,
+      "serviceAlternate": null,
+      "oversCount": null,
+      "inningsCount": null,
+      "halvesCount": null,
+      "halvesDuration": null,
+      "quartersCount": null,
+      "quartersDuration": null
+    },
+    "rules": {
+      "maxPlayersPerTeam": 6,
+      "minPlayersPerTeam": 6,
+      "substitutionsAllowed": 6,
+      "timeoutsPerSet": 2,
+      "timeoutDuration": null,
+      "warmupTime": 10,
+      "matchDuration": null,
+      "breakBetweenSets": null,
+      "powerPlayOvers": null,
+      "wideBallRule": false,
+      "noBallFreeHit": false,
+      "drsAvailable": false,
+      "batsmenPerInnings": null,
+      "letServeReplay": false,
+      "serviceFaults": null,
+      "sideChangeAfterPoints": null,
+      "refereeRequired": true,
+      "umpiresCount": 1,
+      "thirdUmpire": false,
+      "lineJudges": null,
+      "scorerRequired": true
+    },
+    "equipment": {
+      "ballType": "FIVB quality volleyball",
+      "courtSize": "18m x 9m",
+      "netHeight": "Men: 2.43m, Women: 2.24m",
+      "tableSize": null,
+      "racketSpec": null,
+      "boardSize": null
+    },
+    "description": "State Volleyball — Best of 5, 25 pts, deciding 15",
+    "isDefault": true,
+    "createdAt": "2026-03-16T10:39:03.747Z",
+    "updatedAt": "2026-03-18T06:17:34.661Z",
+    "__v": 0,
+    "gameStructureType": "sets",
+    "participantConfig": {
+      "type": "team",
+      "playersPerSide": 6,
+      "squadSize": 12
+    },
+    "scoring": {
+      "type": "points",
+      "winCondition": {
+        "type": "best-of-sets",
+        "value": 3,
+        "margin": null
+      }
+    },
+    "tieBreaker": {
+      "type": "none",
+      "rules": null
+    },
+    "tournamentRules": {
+      "pointsForWin": 3,
+      "pointsForLoss": 0,
+      "pointsForDraw": 0,
+      "rankingCriteria": [
+        "points",
+        "set-ratio",
+        "point-ratio",
+        "head-to-head"
+      ]
+    }
+  }
+]
