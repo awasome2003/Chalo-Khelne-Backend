@@ -200,33 +200,13 @@ exports.getSavedPostsByUser = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Try to find user in both User and Manager models
-    let user = await User.findById(userId).populate({
-      path: 'savedPosts',
-      populate: {
-        path: 'user',
-        select: 'name profileImage email'
-      },
-      options: { sort: { createdAt: -1 } }
-    });
+    // Query posts where this user is in the saves array
+    const posts = await Post.find({ saves: userId })
+      .populate("user", "name profileImage email")
+      .populate("comments.user", "name profileImage")
+      .sort({ createdAt: -1 });
 
-    if (!user) {
-      // Try Manager model
-      user = await Manager.findById(userId).populate({
-        path: 'savedPosts',
-        populate: {
-          path: 'user',
-          select: 'name profileImage email'
-        },
-        options: { sort: { createdAt: -1 } }
-      });
-    }
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    res.json({ success: true, posts: user.savedPosts || [] });
+    res.json({ success: true, posts });
   } catch (err) {
     console.error("Error fetching saved posts:", err);
     res.status(500).json({ success: false, message: err.message });

@@ -1587,8 +1587,9 @@ router.post("/turf-bookings/create", async (req, res) => {
       paymentMethod: "cash",
     });
 
-    // Notify turf owner + assigned managers (socket + push)
+    // Notify turf owner + assigned managers (DB record + socket + push)
     try {
+      const BookingNotification = require("../Modal/Notification_Booking");
       const formattedDate = new Date(date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
       const notifTitle = `New Booking — ${turf.name}`;
       const notifBody = `${user.name} booked ${sport.name} on ${formattedDate} (${timeSlot}) • ₹${sport.pricePerHour}`;
@@ -1600,7 +1601,6 @@ router.post("/turf-bookings/create", async (req, res) => {
         turf.assignedManagers.forEach((m) => managerIds.add(m.toString()));
       }
 
-      // Emit socket event to each manager's room + their club admin (for web dashboard)
       const io = req.app.get("io");
       const managers = await Manager.find({ _id: { $in: [...managerIds] } }).select("expoPushToken clubId");
       const notifPayload = {
@@ -1616,12 +1616,30 @@ router.post("/turf-bookings/create", async (req, res) => {
         amount: sport.pricePerHour,
       };
 
+      // Save notification records in DB for each manager
+      for (const mgrId of managerIds) {
+        await BookingNotification.create({
+          managerId: mgrId,
+          userId: user._id,
+          turfId,
+          bookingId: booking._id,
+          type: "booking_new",
+          title: notifTitle,
+          message: notifBody,
+          turfName: turf.name,
+          sport: sport.name,
+          date: formattedDate,
+          timeSlot,
+          amount: sport.pricePerHour,
+        });
+      }
+
+      // Emit socket events
       if (io) {
         const notifiedClubAdmins = new Set();
         for (const mgrId of managerIds) {
           io.to(`user_${mgrId}`).emit("booking:new", notifPayload);
         }
-        // Also notify club admins who own these managers
         for (const mgr of managers) {
           if (mgr.clubId && !notifiedClubAdmins.has(mgr.clubId.toString())) {
             io.to(`user_${mgr.clubId}`).emit("booking:new", notifPayload);

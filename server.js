@@ -38,6 +38,8 @@ const chatRoutes = require("./routes/chatRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const clubAdminFinanceRoutes = require("./routes/clubAdminFinanceRoutes");
 const rbacRoutes = require("./routes/rbacRoutes");
+const vendorRoutes = require("./routes/vendorRoutes");
+const invitationRoutes = require("./routes/invitationRoutes");
 const { Server } = require("socket.io");
 const setupSocket = require("./socket/socketHandler");
 
@@ -141,6 +143,8 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/club-admin/finance", clubAdminFinanceRoutes);
 app.use("/api/roles", rbacRoutes);
+app.use("/api/equipment", vendorRoutes);
+app.use("/api/invitations", invitationRoutes);
 app.use((err, req, res, next) => {
   console.error(err.stack);
 

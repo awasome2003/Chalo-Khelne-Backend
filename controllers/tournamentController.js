@@ -618,6 +618,29 @@ exports.createTournament = async (req, res) => {
     const newTournament = new Tournament(tournamentData);
     await newTournament.save();
 
+    // --- Notify all players about new tournament ---
+    try {
+      const { notifyPlayers } = require("../utils/playerNotify");
+      const User = require("../Modal/User");
+      const allPlayers = await User.find({ role: "Player" }).select("_id").lean();
+      const playerIds = allPlayers.map(p => p._id.toString());
+
+      if (playerIds.length > 0) {
+        // Don't await — fire and forget to not slow down response
+        notifyPlayers(req.app, playerIds, {
+          type: "tournament_new",
+          title: `New Tournament — ${title}`,
+          message: `${sportsType} tournament "${title}" is now open! ${eventLocation ? `📍 ${eventLocation}` : ""}`,
+          data: {
+            tournamentId: newTournament._id.toString(),
+            tournamentName: title,
+          },
+        }).catch(err => console.error("[TOURNAMENT_NOTIFY] Error:", err.message));
+      }
+    } catch (notifErr) {
+      console.error("[TOURNAMENT_NOTIFY] Error:", notifErr.message);
+    }
+
     res.status(201).json({
       message: "Tournament created successfully",
       tournament: newTournament,

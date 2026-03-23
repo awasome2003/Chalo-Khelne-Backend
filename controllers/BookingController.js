@@ -379,6 +379,25 @@ const bookingController = {
         { new: true }
       );
 
+      // Notify player about registration status change
+      try {
+        const { notifyPlayer } = require("../utils/playerNotify");
+        const Tournament = require("../Modal/Tournament");
+        const tournament = await Tournament.findById(tournamentId).select("title").lean();
+        const tName = tournament?.title || "Tournament";
+
+        await notifyPlayer(req.app, userId, {
+          type: decision === "accepted" ? "registration_accepted" : "registration_rejected",
+          title: decision === "accepted" ? `Registration Confirmed` : `Registration Rejected`,
+          message: decision === "accepted"
+            ? `Your registration for "${tName}" has been confirmed!`
+            : `Your registration for "${tName}" has been rejected.`,
+          data: { tournamentId, tournamentName: tName },
+        });
+      } catch (notifErr) {
+        console.error("[BOOKING_STATUS_NOTIFY] Error:", notifErr.message);
+      }
+
       res.json({
         success: true,
         message: `Booking ${booking.status}`,

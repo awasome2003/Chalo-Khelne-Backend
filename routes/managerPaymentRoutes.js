@@ -28,4 +28,19 @@ router.patch("/booking/update-status", bookingController.updateBookingStatus);
 router.patch("/booking/bulk-update", bookingController.bulkUpdateBookingStatus);
 router.get("/:managerId/notifications", getNotificationsForManager);
 
+// Booking notifications (turf bookings)
+router.get("/:managerId/booking-notifications", async (req, res) => {
+  try {
+    const BookingNotification = require("../Modal/Notification_Booking");
+    const { managerId } = req.params;
+    const notifications = await BookingNotification.find({ managerId })
+      .populate("userId", "_id name email mobile profileImage")
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json({ success: true, notifications });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

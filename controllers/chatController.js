@@ -179,6 +179,21 @@ const chatController = {
         });
       }
 
+      // Save notification record for chat message
+      try {
+        const { notifyPlayer } = require("../utils/playerNotify");
+        const senderName = message.sender?.name || "Someone";
+        // Only save DB record, skip push (handled separately below)
+        const PlayerNotification = require("../Modal/PlayerNotification");
+        await PlayerNotification.create({
+          userId: otherUserId,
+          type: "chat_message",
+          title: senderName,
+          message: text.trim().substring(0, 100),
+          data: { conversationId, senderName },
+        });
+      } catch (notifErr) {}
+
       // Send push notification to offline user
       try {
         const otherUser = await User.findById(otherUserId).select("expoPushToken name");

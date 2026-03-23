@@ -123,6 +123,37 @@ const equipmentListingSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    // ── Vendor Marketplace Fields (managed by SuperAdmin) ──
+    vendorLink: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    vendorName: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 200,
+    },
+    vendorPrice: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    vendorLinkAddedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Superadminmodel",
+      default: null,
+    },
+    vendorLinkAddedAt: {
+      type: Date,
+      default: null,
+    },
+    vendorClickCount: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
