@@ -541,5 +541,39 @@ router.post(
 
 router.get("/team-knockout/health", teamKnockoutController.healthCheck);
 
+// ═══════════════════════════════════════════════════════════════
+// BULK RESULT UPLOAD (CSV/Excel file upload)
+// ═══════════════════════════════════════════════════════════════
+const bulkResultUploadController = require("../controllers/bulkResultUploadController");
+
+// Multer config for result files (CSV/XLSX, max 10MB)
+const resultUploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, "../uploads/results");
+    const fs = require("fs");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `results-${Date.now()}-${file.originalname}`);
+  },
+});
+const resultUpload = multer({
+  storage: resultUploadStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = [".csv", ".xlsx", ".xls"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type: ${ext}. Allowed: ${allowed.join(", ")}`));
+    }
+  },
+});
+
+router.post("/bulk-result-upload", resultUpload.single("file"), bulkResultUploadController.uploadResults);
+router.post("/bulk-result-upload/preview", resultUpload.single("file"), bulkResultUploadController.previewFile);
+router.get("/bulk-result-upload/template", bulkResultUploadController.downloadTemplate);
 
 module.exports = router;

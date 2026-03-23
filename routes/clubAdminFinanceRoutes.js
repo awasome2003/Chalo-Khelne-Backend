@@ -15,4 +15,7 @@ router.get("/manager/:managerId", clubAdminFinanceController.getManagerDetail);
 // Tournament detail — registrations + category breakdown
 router.get("/tournament/:tournamentId", clubAdminFinanceController.getTournamentDetail);
 
+// All payments — combined tournament + turf bookings (paginated + filtered)
+router.get("/payments", clubAdminFinanceController.getAllPayments);
+
 module.exports = router;

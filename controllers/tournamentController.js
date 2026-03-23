@@ -514,6 +514,24 @@ exports.createTournament = async (req, res) => {
         return res.status(400).json({ message: "Invalid matchFormatOverrides format" });
       }
 
+      // Flatten nested sport-specific format structures into flat keys
+      // The frontend ruleBook engine sends nested objects like { format: { oversCount: 20 }, scoring: {...} }
+      // but the validator expects flat keys like { oversCount: 20 }
+      const flattenOverrides = (obj) => {
+        const flat = {};
+        for (const [key, val] of Object.entries(obj)) {
+          if (val && typeof val === "object" && !Array.isArray(val)) {
+            // Recurse into nested objects, pull up known matchFormat keys
+            const nested = flattenOverrides(val);
+            Object.assign(flat, nested);
+          } else {
+            flat[key] = val;
+          }
+        }
+        return flat;
+      };
+      parsedMatchFormatOverrides = flattenOverrides(parsedMatchFormatOverrides);
+
       // Backend safety: validate + sanitize against sport config
       if (sportsType) {
         const sportDoc = await Sport.findOne({

@@ -55,8 +55,8 @@ const clubAdminFinanceController = {
             tournaments: {
               $push: {
                 _id: "$_id",
-                tournamentName: "$tournamentName",
-                sport: "$sportName",
+                tournamentName: "$title",
+                sport: "$sportsType",
                 type: "$type",
                 status: "$status",
                 startDate: "$startDate",
@@ -231,7 +231,7 @@ const clubAdminFinanceController = {
 
       // Get all tournaments by this manager
       const tournaments = await Tournament.find({ managerId: managerId })
-        .select("tournamentName sportName type status startDate endDate category registeredTeams maxTeams")
+        .select("title sportsType type currentStage startDate endDate category registeredTeams maxTeams")
         .sort({ createdAt: -1 })
         .lean();
 
@@ -354,7 +354,7 @@ const clubAdminFinanceController = {
       const { tournamentId } = req.params;
 
       const tournament = await Tournament.findById(tournamentId)
-        .select("tournamentName sportName type status startDate endDate category registeredTeams maxTeams managerId")
+        .select("title sportsType type currentStage startDate endDate category registeredTeams maxTeams managerId")
         .lean();
 
       if (!tournament) {
@@ -418,6 +418,155 @@ const clubAdminFinanceController = {
     } catch (error) {
       console.error("[CLUB_ADMIN_FINANCE] Tournament detail error:", error);
       res.status(500).json({ success: false, message: "Failed to fetch tournament details", error: error.message });
+    }
+  },
+
+  // =============================
+  // GET ALL PAYMENTS — Combined tournament + turf bookings
+  // =============================
+  getAllPayments: async (req, res) => {
+    try {
+      const clubAdminId = req.user.id || req.user._id;
+      const { type, status, search, page = 1, limit = 30 } = req.query;
+
+      // Get all managers under this club admin
+      const managers = await ManagerModel.find({ clubId: clubAdminId }).select("_id name").lean();
+      if (managers.length === 0) {
+        return res.status(200).json({ success: true, payments: [], totals: { count: 0, revenue: 0, pending: 0, completed: 0 } });
+      }
+
+      const managerIds = managers.map((m) => m._id);
+      const managerNameMap = {};
+      managers.forEach((m) => { managerNameMap[m._id.toString()] = m.name; });
+
+      // Get tournaments by these managers
+      const allTournaments = await Tournament.find({ managerId: { $in: managerIds } })
+        .select("_id title managerId")
+        .lean();
+      const tournamentIds = allTournaments.map((t) => t._id);
+      const tournamentNameMap = {};
+      const tournamentManagerMap = {};
+      allTournaments.forEach((t) => {
+        tournamentNameMap[t._id.toString()] = t.title;
+        const mgrId = Array.isArray(t.managerId) ? t.managerId[0]?.toString() : t.managerId?.toString();
+        tournamentManagerMap[t._id.toString()] = mgrId;
+      });
+
+      // Get turfs by these managers
+      const turfs = await Turf.find({ owner: { $in: managerIds } }).select("_id name owner").lean();
+      const turfIds = turfs.map((t) => t._id);
+      const turfNameMap = {};
+      const turfOwnerMap = {};
+      turfs.forEach((t) => {
+        turfNameMap[t._id.toString()] = t.name;
+        turfOwnerMap[t._id.toString()] = t.owner.toString();
+      });
+
+      // Fetch tournament bookings
+      const tournamentBookings = await Booking.find({ tournamentId: { $in: tournamentIds } })
+        .select("userName userEmail paymentAmount paymentStatus paymentMethod status tournamentId tournamentName selectedCategories createdAt")
+        .sort({ createdAt: -1 })
+        .lean();
+
+      // Fetch turf bookings
+      const turfBookings = await TurfBooking.find({ turfId: { $in: turfIds } })
+        .select("userName userEmail amount status paymentStatus paymentMethod turfId turfName sport date timeSlot createdAt")
+        .sort({ createdAt: -1 })
+        .lean();
+
+      // Normalize into unified payment list
+      let payments = [];
+
+      tournamentBookings.forEach((b) => {
+        const mgrId = tournamentManagerMap[b.tournamentId?.toString()];
+        payments.push({
+          _id: b._id,
+          type: "tournament",
+          playerName: b.userName,
+          playerEmail: b.userEmail,
+          amount: b.paymentAmount || 0,
+          status: b.status,
+          paymentStatus: b.paymentStatus,
+          paymentMethod: b.paymentMethod || "cash",
+          reference: b.tournamentName || tournamentNameMap[b.tournamentId?.toString()] || "Tournament",
+          categories: (b.selectedCategories || []).map((c) => c.name).join(", "),
+          manager: mgrId ? managerNameMap[mgrId] : "—",
+          date: b.createdAt,
+        });
+      });
+
+      turfBookings.forEach((b) => {
+        const mgrId = turfOwnerMap[b.turfId?.toString()];
+        payments.push({
+          _id: b._id,
+          type: "turf",
+          playerName: b.userName,
+          playerEmail: b.userEmail,
+          amount: b.amount || 0,
+          status: b.status,
+          paymentStatus: b.paymentStatus || (b.status === "confirmed" || b.status === "completed" ? "paid" : "pending"),
+          paymentMethod: b.paymentMethod || "cash",
+          reference: b.turfName || turfNameMap[b.turfId?.toString()] || "Turf",
+          categories: b.sport?.name || "",
+          manager: mgrId ? managerNameMap[mgrId] : "—",
+          date: b.createdAt || b.date,
+          timeSlot: b.timeSlot,
+        });
+      });
+
+      // Sort by date descending
+      payments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      // Apply filters
+      if (type && type !== "all") {
+        payments = payments.filter((p) => p.type === type);
+      }
+      if (status && status !== "all") {
+        if (status === "paid") payments = payments.filter((p) => p.paymentStatus === "paid");
+        else if (status === "pending") payments = payments.filter((p) => p.paymentStatus === "pending" || p.status === "pending");
+        else if (status === "cancelled") payments = payments.filter((p) => p.status === "cancelled");
+        else payments = payments.filter((p) => p.status === status || p.paymentStatus === status);
+      }
+      if (search) {
+        const q = search.toLowerCase();
+        payments = payments.filter((p) =>
+          p.playerName?.toLowerCase().includes(q) ||
+          p.reference?.toLowerCase().includes(q) ||
+          p.manager?.toLowerCase().includes(q)
+        );
+      }
+
+      // Calculate totals before pagination
+      const totalRevenue = payments
+        .filter((p) => p.paymentStatus === "paid" && p.status !== "cancelled")
+        .reduce((sum, p) => sum + p.amount, 0);
+      const completedCount = payments.filter((p) => p.paymentStatus === "paid").length;
+      const pendingCount = payments.filter((p) => p.paymentStatus === "pending" || p.paymentStatus === "waived").length;
+
+      // Paginate
+      const total = payments.length;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const paginated = payments.slice(skip, skip + parseInt(limit));
+
+      res.status(200).json({
+        success: true,
+        payments: paginated,
+        totals: {
+          count: total,
+          revenue: totalRevenue,
+          completed: completedCount,
+          pending: pendingCount,
+        },
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit)),
+        },
+      });
+    } catch (error) {
+      console.error("[CLUB_ADMIN_FINANCE] Get all payments error:", error);
+      res.status(500).json({ success: false, message: "Failed to fetch payments", error: error.message });
     }
   },
 };

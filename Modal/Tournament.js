@@ -153,14 +153,14 @@ const tournamentSchema = new mongoose.Schema(
     // Per-stage play formats (allows different formats for group stage vs knockout)
     groupStageFormat: {
       type: String,
-      enum: ["Singles", "Doubles"],
+      enum: ["Singles", "Doubles", "Teams"],
       required: function () {
         return this.type && this.type.includes("group stage");
       },
     },
     knockoutFormat: {
       type: String,
-      enum: ["Singles", "Doubles", "Teams Knockout"],
+      enum: ["Singles", "Doubles", "Teams", "Teams Knockout"],
       required: function () {
         return this.type && this.type.includes("knockout");
       },

@@ -1600,29 +1600,39 @@ router.post("/turf-bookings/create", async (req, res) => {
         turf.assignedManagers.forEach((m) => managerIds.add(m.toString()));
       }
 
-      // Emit socket event to each manager's room (for web dashboard)
+      // Emit socket event to each manager's room + their club admin (for web dashboard)
       const io = req.app.get("io");
+      const managers = await Manager.find({ _id: { $in: [...managerIds] } }).select("expoPushToken clubId");
+      const notifPayload = {
+        title: notifTitle,
+        message: notifBody,
+        bookingId: booking._id.toString(),
+        turfId,
+        turfName: turf.name,
+        playerName: user.name,
+        sport: sport.name,
+        date: formattedDate,
+        timeSlot,
+        amount: sport.pricePerHour,
+      };
+
       if (io) {
+        const notifiedClubAdmins = new Set();
         for (const mgrId of managerIds) {
-          io.to(`user_${mgrId}`).emit("booking:new", {
-            title: notifTitle,
-            message: notifBody,
-            bookingId: booking._id.toString(),
-            turfId,
-            turfName: turf.name,
-            playerName: user.name,
-            sport: sport.name,
-            date: formattedDate,
-            timeSlot,
-            amount: sport.pricePerHour,
-          });
+          io.to(`user_${mgrId}`).emit("booking:new", notifPayload);
+        }
+        // Also notify club admins who own these managers
+        for (const mgr of managers) {
+          if (mgr.clubId && !notifiedClubAdmins.has(mgr.clubId.toString())) {
+            io.to(`user_${mgr.clubId}`).emit("booking:new", notifPayload);
+            notifiedClubAdmins.add(mgr.clubId.toString());
+          }
         }
       }
 
       // Also send Expo push for mobile (if manager has mobile app)
       const { Expo } = require("expo-server-sdk");
       const expo = new Expo();
-      const managers = await Manager.find({ _id: { $in: [...managerIds] } }).select("expoPushToken");
       const pushMessages = [];
       for (const mgr of managers) {
         if (mgr.expoPushToken && Expo.isExpoPushToken(mgr.expoPushToken)) {
@@ -1716,17 +1726,28 @@ router.post("/turf-bookings/cancel", async (req, res) => {
           turf.assignedManagers.forEach((m) => managerIds.add(m.toString()));
         }
 
-        // Emit socket event for web dashboard
+        // Emit socket event for web dashboard (managers + club admin)
         const io = req.app.get("io");
+        const cancelNotifPayload = {
+          title: notifTitle,
+          message: notifBody,
+          bookingId: booking._id.toString(),
+          turfName: turf.name,
+          playerName: booking.userName,
+        };
+
         if (io) {
           for (const mgrId of managerIds) {
-            io.to(`user_${mgrId}`).emit("booking:cancel", {
-              title: notifTitle,
-              message: notifBody,
-              bookingId: booking._id.toString(),
-              turfName: turf.name,
-              playerName: booking.userName,
-            });
+            io.to(`user_${mgrId}`).emit("booking:cancel", cancelNotifPayload);
+          }
+          // Notify club admins
+          const cancelManagers = await Manager.find({ _id: { $in: [...managerIds] } }).select("clubId");
+          const notifiedAdmins = new Set();
+          for (const mgr of cancelManagers) {
+            if (mgr.clubId && !notifiedAdmins.has(mgr.clubId.toString())) {
+              io.to(`user_${mgr.clubId}`).emit("booking:cancel", cancelNotifPayload);
+              notifiedAdmins.add(mgr.clubId.toString());
+            }
           }
         }
 
