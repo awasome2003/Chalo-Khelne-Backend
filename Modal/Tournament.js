@@ -166,7 +166,7 @@ const tournamentSchema = new mongoose.Schema(
     },
     knockoutFormat: {
       type: String,
-      enum: ["Singles", "Doubles", "Teams", "Teams Knockout"],
+      enum: ["Singles", "Doubles", "Teams", "Teams Knockout", "Davis Cup"],
       required: function () {
         return this.type && this.type.includes("knockout");
       },
