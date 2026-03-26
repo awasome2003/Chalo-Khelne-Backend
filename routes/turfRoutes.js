@@ -6,6 +6,12 @@ const { uploadMiddleware } = require("../middleware/uploads");
 // Get all turfs owned by the current user
 router.get("/owner", turfController.getUserTurfs);
 
+// Get turfs assigned to a manager (alias for /owner with userId param)
+router.get("/assigned/:managerId", async (req, res) => {
+  req.query.userId = req.params.managerId;
+  return turfController.getUserTurfs(req, res);
+});
+
 // Get all turfs (with optional filtering)
 router.get("/", turfController.getAllTurfs);
 
