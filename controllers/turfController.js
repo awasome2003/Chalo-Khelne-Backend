@@ -64,14 +64,16 @@ const turfController = {
           : req.body.availableTimeSlots;
       }
 
-      // ✅ Location input: coordinates & address
-      const location = {
-        type: "Point",
-        coordinates: [
-          parseFloat(req.body.longitude),
-          parseFloat(req.body.latitude),
-        ],
-        address: req.body.address,
+      // Build address object matching Turf schema
+      const address = {
+        fullAddress: req.body.address || "",
+        area: req.body.area || "",
+        city: req.body.city || "",
+        pincode: req.body.pincode || "",
+        coordinates: {
+          lat: parseFloat(req.body.latitude) || 0,
+          lng: parseFloat(req.body.longitude) || 0,
+        },
       };
 
       const newTurf = new Turf({
@@ -79,7 +81,7 @@ const turfController = {
         owner: ownerId,
         clubName,
         images: imagePaths,
-        location,
+        address,
         sports,
         facilities,
         availableTimeSlots,
