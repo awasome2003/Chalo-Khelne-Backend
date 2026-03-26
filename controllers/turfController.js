@@ -504,7 +504,12 @@ const turfController = {
           .json({ message: "User ID is required as a query parameter" });
       }
 
-      const turfs = await Turf.find({ owner: userId })
+      const turfs = await Turf.find({
+        $or: [
+          { owner: userId },
+          { assignedManagers: userId },
+        ],
+      })
         .sort({ createdAt: -1 })
         .lean();
 
