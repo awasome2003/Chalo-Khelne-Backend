@@ -157,16 +157,24 @@ function getValidationRules(sport) {
   const visibleKeys = getVisibleFields(sport);
   const rules = {};
 
+  // Fields that are conditionally visible and should NOT be required
+  const optionalFields = new Set([
+    "deuceMinPoints", "tiebreakPoints", "decidingSetPoints",
+    "serviceRules", "maxPointsCap",
+  ]);
+
   visibleKeys.forEach((key) => {
     const meta = FIELD_META[key];
     if (!meta) return;
 
+    const isOptional = optionalFields.has(key);
+
     if (meta.type === "number") {
-      rules[key] = { required: true, type: "number", min: meta.min, max: meta.max };
+      rules[key] = { required: !isOptional, type: "number", min: meta.min, max: meta.max };
     } else if (meta.type === "boolean") {
       rules[key] = { required: false, type: "boolean" };
     } else if (meta.type === "select") {
-      rules[key] = { required: true, type: "string", options: meta.options };
+      rules[key] = { required: !isOptional, type: "string", options: meta.options };
     }
   });
 

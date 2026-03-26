@@ -229,10 +229,15 @@ exports.updatePaymentOption = async (req, res) => {
 exports.getQrCodes = async (req, res) => {
     try {
         const { managerId, tournamentId } = req.params;
-        const filter = { managerId };
-        if (tournamentId) filter.tournamentId = tournamentId;
 
-        const setup = await ManagerPayment.findOne(filter).lean();
+        // Try with tournamentId first, then fallback to manager-only
+        let setup = null;
+        if (tournamentId) {
+            setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
+        }
+        if (!setup) {
+            setup = await ManagerPayment.findOne({ managerId }).lean();
+        }
         if (!setup || !setup.qrCodes?.length) return res.status(404).json({ message: "No QR codes found" });
 
         const activeQrCodes = setup.qrCodes.filter(qr => qr.isActive);
@@ -246,10 +251,14 @@ exports.getQrCodes = async (req, res) => {
 exports.getUpiIds = async (req, res) => {
     try {
         const { managerId, tournamentId } = req.params;
-        const filter = { managerId };
-        if (tournamentId) filter.tournamentId = tournamentId;
 
-        const setup = await ManagerPayment.findOne(filter).lean();
+        let setup = null;
+        if (tournamentId) {
+            setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
+        }
+        if (!setup) {
+            setup = await ManagerPayment.findOne({ managerId }).lean();
+        }
         if (!setup || !setup.upiIds?.length) return res.status(404).json({ message: "No UPI IDs found" });
 
         const activeUpiIds = setup.upiIds.filter(upi => upi.isActive);
@@ -263,10 +272,14 @@ exports.getUpiIds = async (req, res) => {
 exports.getOfflinePayments = async (req, res) => {
     try {
         const { managerId, tournamentId } = req.params;
-        const filter = { managerId };
-        if (tournamentId) filter.tournamentId = tournamentId;
 
-        const setup = await ManagerPayment.findOne(filter).lean();
+        let setup = null;
+        if (tournamentId) {
+            setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
+        }
+        if (!setup) {
+            setup = await ManagerPayment.findOne({ managerId }).lean();
+        }
         if (!setup || !setup.offlinePayments?.length) return res.status(404).json({ message: "No offline payments found" });
 
         const activeOffline = setup.offlinePayments.filter(off => off.isActive);

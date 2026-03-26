@@ -1145,6 +1145,47 @@ const completeGame = async (req, res) => {
 
     await session.commitTransaction();
 
+    // Emit real-time events via Socket.io
+    const io = req.app.get("io");
+    if (io) {
+      const tournamentRoom = `tournament_${match.tournamentId}`;
+      const matchRoom = `match_${matchId}`;
+
+      // Score update event (always)
+      const scorePayload = {
+        matchId,
+        tournamentId: match.tournamentId?.toString(),
+        player1: match.player1?.userName || match.player1?.playerName,
+        player2: match.player2?.userName || match.player2?.playerName,
+        currentSet: match.currentSet,
+        currentGame: match.currentGame,
+        liveScore: match.liveScore,
+        sets: match.sets,
+      };
+      io.to(matchRoom).emit("score:update", scorePayload);
+      io.to(tournamentRoom).emit("score:update", scorePayload);
+
+      // Set completed
+      if (setCompleted) {
+        io.to(matchRoom).emit("set:complete", { matchId, setNumber: match.currentSet - 1, ...scorePayload });
+        io.to(tournamentRoom).emit("set:complete", { matchId, setNumber: match.currentSet - 1, ...scorePayload });
+      }
+
+      // Match completed
+      if (matchCompleted) {
+        const completePayload = {
+          matchId,
+          tournamentId: match.tournamentId?.toString(),
+          winner: match.winner,
+          result: match.result,
+          player1: match.player1?.userName || match.player1?.playerName,
+          player2: match.player2?.userName || match.player2?.playerName,
+        };
+        io.to(matchRoom).emit("match:complete", completePayload);
+        io.to(tournamentRoom).emit("match:complete", completePayload);
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: "Game completed successfully",

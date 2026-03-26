@@ -111,7 +111,7 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
       default: 3,
       min: 1,
       max: 10,
-      comment: "Number of games needed to win set (calculated from totalGames)"
+      comment: "Number of games needed to win a set (best of 5 games = 3)"
     },
     maxGames: {
       type: Number,

@@ -85,6 +85,40 @@ router.post(
   directKnockoutController.progressWinnerToNextMatch
 );
 
+// Standalone mode — no group stage needed
+router.post(
+  "/direct-knockout/standalone/validate",
+  directKnockoutController.validateStandalonePlayers
+);
+router.post(
+  "/direct-knockout/standalone/create",
+  directKnockoutController.createStandaloneKnockout
+);
+
+// Live scoring for Direct Knockout
+router.post(
+  "/direct-knockout/matches/:matchId/complete-game",
+  directKnockoutController.completeGame
+);
+
+// Give BYE to a player in a match
+router.post(
+  "/direct-knockout/matches/:matchId/bye",
+  directKnockoutController.giveBye
+);
+
+// Bulk score upload for Direct Knockout
+router.post(
+  "/direct-knockout/bulk-upload-scores",
+  directKnockoutController.bulkUploadScores
+);
+
+// Reset bracket
+router.delete(
+  "/direct-knockout/:tournamentId/reset",
+  directKnockoutController.resetBracket
+);
+
 //*GROUP STAGE TOURNAMENT ROUTES*//
 //*Registred Players*//
 
@@ -422,6 +456,20 @@ router.get("/:id/logo", tournamentController.getLogo);
 router.post(
   "/team-knockout/create",
   teamKnockoutController.createTournamentFromBookings
+);
+
+// Round Robin
+router.post(
+  "/team-knockout/round-robin/generate",
+  teamKnockoutController.generateRoundRobinMatches
+);
+router.get(
+  "/team-knockout/round-robin/standings/:tournamentId",
+  teamKnockoutController.getRoundRobinStandings
+);
+router.post(
+  "/team-knockout/round-robin/delete",
+  teamKnockoutController.deleteRoundRobinMatches
 );
 
 // Bulk upload scores for team knockout matches

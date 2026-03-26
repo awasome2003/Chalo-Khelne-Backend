@@ -66,6 +66,12 @@ const tournamentSchema = new mongoose.Schema(
       type: Number,
       default: 2,
     },
+    // Draw size for standalone knockout (16, 32, 64)
+    drawSize: {
+      type: Number,
+      enum: [16, 32, 64, null],
+      default: null,
+    },
 
     sportsType: {
       type: String,

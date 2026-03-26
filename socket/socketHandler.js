@@ -47,6 +47,24 @@ module.exports = function setupSocket(io) {
       socket.leave(`conv_${conversationId}`);
     });
 
+    // Join match room (for live scoring updates)
+    socket.on("join:match", ({ matchId }) => {
+      socket.join(`match_${matchId}`);
+    });
+
+    socket.on("leave:match", ({ matchId }) => {
+      socket.leave(`match_${matchId}`);
+    });
+
+    // Join tournament room (for dashboard updates)
+    socket.on("join:tournament", ({ tournamentId }) => {
+      socket.join(`tournament_${tournamentId}`);
+    });
+
+    socket.on("leave:tournament", ({ tournamentId }) => {
+      socket.leave(`tournament_${tournamentId}`);
+    });
+
     // Disconnect
     socket.on("disconnect", () => {
       socket.broadcast.emit("user:online", { userId, online: false });

@@ -589,6 +589,290 @@ const teamKnockoutController = {
   },
 
   // ================================
+  // ROUND ROBIN MATCH GENERATION
+  // ================================
+
+  generateRoundRobinMatches: async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const {
+        tournamentId,
+        scheduleDetails,
+        tournamentType = "Singles",
+        setCount = 3,
+      } = req.body;
+
+      if (!tournamentId || !scheduleDetails) {
+        return res.status(400).json({
+          success: false,
+          message: "tournamentId and scheduleDetails are required",
+        });
+      }
+
+      // Get all active teams for this tournament
+      const teams = await TeamKnockoutTeams.find({
+        tournamentId,
+        status: { $in: ["ACTIVE", "BYE_ASSIGNED"] },
+      }).session(session);
+
+      if (teams.length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: "Need at least 2 teams to generate round robin matches",
+        });
+      }
+
+      // Check if round robin matches already exist (round = 0 means round robin)
+      const existingRR = await TeamKnockoutMatches.countDocuments({
+        tournamentId,
+        round: 0,
+      }).session(session);
+
+      if (existingRR > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Round robin matches already generated. Delete them first to regenerate.",
+        });
+      }
+
+      // Load tournament for game rules
+      const tournament = await Tournament.findById(tournamentId).lean();
+      const tf = tournament?.matchFormat || {};
+      const gameRulesFromTournament = {
+        gamesPerSet: tf.totalGames || 3,
+        gamesToWin: tf.gamesToWin || 2,
+        pointsToWinGame: tf.pointsToWinGame || 11,
+        marginToWin: tf.marginToWin || 2,
+        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : true,
+        maxPointsCap: tf.maxPointsCap || null,
+      };
+
+      // Determine format
+      const useTwoPlayerFormat = teams.every(
+        (t) => !t.playerPositions.C || t.playerPositions.C === null
+      );
+      let effectiveFormat = `${tournamentType} - ${setCount} Sets`;
+      if (useTwoPlayerFormat) effectiveFormat += " (2 Players)";
+
+      // Generate all possible matchups (round robin: every team plays every other team)
+      const matches = [];
+      const baseStartTime = new Date(scheduleDetails.matchStartTime);
+      const intervalMinutes = parseInt(scheduleDetails.matchInterval) || 30;
+      let matchIndex = 0;
+
+      for (let i = 0; i < teams.length; i++) {
+        for (let j = i + 1; j < teams.length; j++) {
+          const team1 = teams[i];
+          const team2 = teams[j];
+
+          const matchStartTime = new Date(
+            baseStartTime.getTime() + matchIndex * intervalMinutes * 60000
+          );
+
+          // Generate sets with proper player assignments
+          const matchSets = generateMatchSequence(effectiveFormat).map((seq) => ({
+            setNumber: seq.setNumber,
+            type: seq.type,
+            homePlayer: team1.playerPositions[seq.homePos] || null,
+            awayPlayer: team2.playerPositions[seq.awayPos] || null,
+            homePlayerB: seq.homePosB
+              ? team1.playerPositions[seq.homePosB] || null
+              : null,
+            awayPlayerZ: seq.awayPosZ
+              ? team2.playerPositions[seq.awayPosZ] || null
+              : null,
+            status: "PENDING",
+            games: [],
+            gamesWon: { home: 0, away: 0 },
+            setWinner: null,
+          }));
+
+          matches.push({
+            tournamentId: new mongoose.Types.ObjectId(tournamentId),
+            round: 0, // 0 = round robin (not knockout)
+            bracketPosition: matchIndex + 1,
+            team1Id: team1._id,
+            team2Id: team2._id,
+            format: effectiveFormat,
+            gameRules: gameRulesFromTournament,
+            matchDate: matchStartTime,
+            courtNumber: scheduleDetails.courtNumber || "TBD",
+            status: "SCHEDULED",
+            isBye: false,
+            sets: matchSets,
+            liveState: {
+              currentSetNumber: 1,
+              currentGameNumber: 1,
+              currentPoints: { home: 0, away: 0 },
+              lastUpdated: new Date(),
+            },
+            setsWon: { home: 0, away: 0 },
+            matchWinner: null,
+          });
+
+          matchIndex++;
+        }
+      }
+
+      // Insert all round robin matches
+      const createdMatches = await TeamKnockoutMatches.insertMany(matches, {
+        session,
+      });
+
+      await session.commitTransaction();
+
+      const totalMatches = teams.length * (teams.length - 1) / 2;
+
+      res.status(201).json({
+        success: true,
+        message: `Round robin matches generated: ${totalMatches} matches for ${teams.length} teams`,
+        data: {
+          totalTeams: teams.length,
+          totalMatches,
+          matches: createdMatches,
+        },
+      });
+    } catch (error) {
+      await session.abortTransaction();
+      console.error("[ROUND_ROBIN] Error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    } finally {
+      session.endSession();
+    }
+  },
+
+  // Get round robin standings (points table)
+  getRoundRobinStandings: async (req, res) => {
+    try {
+      const { tournamentId } = req.params;
+
+      // Get all round robin matches (round = 0)
+      const matches = await TeamKnockoutMatches.find({
+        tournamentId,
+        round: 0,
+        isBye: false,
+      })
+        .populate("team1Id team2Id winnerId")
+        .lean();
+
+      // Get all teams
+      const teams = await TeamKnockoutTeams.find({ tournamentId }).lean();
+
+      // Build standings
+      const standings = {};
+      teams.forEach((team) => {
+        standings[team._id.toString()] = {
+          teamId: team._id,
+          teamName: team.teamName,
+          playerPositions: team.playerPositions,
+          played: 0,
+          won: 0,
+          lost: 0,
+          setsWon: 0,
+          setsLost: 0,
+          gamesWon: 0,
+          gamesLost: 0,
+          points: 0,
+        };
+      });
+
+      // Calculate from matches
+      matches.forEach((match) => {
+        if (match.status !== "COMPLETED") return;
+
+        const t1Id = (match.team1Id?._id || match.team1Id).toString();
+        const t2Id = (match.team2Id?._id || match.team2Id).toString();
+
+        if (!standings[t1Id] || !standings[t2Id]) return;
+
+        // Both teams played
+        standings[t1Id].played++;
+        standings[t2Id].played++;
+
+        // Sets
+        standings[t1Id].setsWon += match.setsWon?.home || 0;
+        standings[t1Id].setsLost += match.setsWon?.away || 0;
+        standings[t2Id].setsWon += match.setsWon?.away || 0;
+        standings[t2Id].setsLost += match.setsWon?.home || 0;
+
+        // Games from sets
+        (match.sets || []).forEach((set) => {
+          standings[t1Id].gamesWon += set.gamesWon?.home || 0;
+          standings[t1Id].gamesLost += set.gamesWon?.away || 0;
+          standings[t2Id].gamesWon += set.gamesWon?.away || 0;
+          standings[t2Id].gamesLost += set.gamesWon?.home || 0;
+        });
+
+        // Winner
+        if (match.matchWinner === "home") {
+          standings[t1Id].won++;
+          standings[t1Id].points += 2;
+          standings[t2Id].lost++;
+        } else if (match.matchWinner === "away") {
+          standings[t2Id].won++;
+          standings[t2Id].points += 2;
+          standings[t1Id].lost++;
+        }
+      });
+
+      // Sort: points → set diff → game diff
+      const sorted = Object.values(standings).sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        const aDiff = a.setsWon - a.setsLost;
+        const bDiff = b.setsWon - b.setsLost;
+        if (bDiff !== aDiff) return bDiff - aDiff;
+        return (b.gamesWon - b.gamesLost) - (a.gamesWon - a.gamesLost);
+      });
+
+      const totalMatches = matches.length;
+      const completedMatches = matches.filter((m) => m.status === "COMPLETED").length;
+
+      res.json({
+        success: true,
+        data: {
+          standings: sorted,
+          totalMatches,
+          completedMatches,
+          allCompleted: completedMatches === totalMatches,
+        },
+      });
+    } catch (error) {
+      console.error("[RR_STANDINGS] Error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // Delete round robin matches (to regenerate)
+  deleteRoundRobinMatches: async (req, res) => {
+    try {
+      const { tournamentId } = req.body;
+
+      const result = await TeamKnockoutMatches.deleteMany({
+        tournamentId,
+        round: 0,
+      });
+
+      res.json({
+        success: true,
+        message: `Deleted ${result.deletedCount} round robin matches`,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  },
+
+  // ================================
   // LIVE SCORING
   // ================================
 
