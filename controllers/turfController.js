@@ -19,7 +19,9 @@ const turfController = {
         return res.status(400).json({ message: "Owner ID is required" });
       }
 
-      const owner = await User.findById(ownerId);
+      // Check both User and Manager models
+      let owner = await User.findById(ownerId);
+      if (!owner) owner = await Manager.findById(ownerId);
       if (!owner) {
         if (req.files) {
           for (const file of req.files) {
