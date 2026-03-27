@@ -148,6 +148,7 @@ app.use("/api/equipment", vendorRoutes);
 app.use("/api/invitations", invitationRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/forum", require("./routes/forumRoutes"));
+app.use("/api/forum-chat", require("./routes/forumChatRoutes"));
 app.use((err, req, res, next) => {
   console.error(err.stack);
 

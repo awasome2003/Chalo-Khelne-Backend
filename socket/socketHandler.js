@@ -65,6 +65,15 @@ module.exports = function setupSocket(io) {
       socket.leave(`tournament_${tournamentId}`);
     });
 
+    // Forum chat rooms
+    socket.on("join:forum", ({ forumId }) => {
+      socket.join(`forum_${forumId}`);
+    });
+
+    socket.on("leave:forum", ({ forumId }) => {
+      socket.leave(`forum_${forumId}`);
+    });
+
     // Disconnect
     socket.on("disconnect", () => {
       socket.broadcast.emit("user:online", { userId, online: false });
