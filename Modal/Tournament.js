@@ -73,6 +73,12 @@ const tournamentSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Team knockout format ID (e.g. "singles_bo5", "doubles_3p_bo7")
+    davisCupFormatId: {
+      type: String,
+      default: null,
+    },
+
     sportsType: {
       type: String,
       required: true,

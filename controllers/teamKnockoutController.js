@@ -4,10 +4,21 @@ const TeamKnockout = require("../Modal/TeamKnockout");
 const Booking = require("../Modal/BookingModel");
 const Tournament = require("../Modal/Tournament");
 const mongoose = require("mongoose");
+const { getFormat, resolveSetPlayers } = require("../Config/teamKnockoutFormats");
 
 // ================================
 // HELPER FUNCTIONS
 // ================================
+
+// Derive formatId from legacy params (backward compat for old tournaments)
+const deriveFormatId = (tournamentType, setCount, teams) => {
+  const isDoubles = (tournamentType || "").toLowerCase().includes("doubles");
+  const has3Players = (teams || []).some((t) => t.playerPositions?.C);
+  const prefix = has3Players ? (isDoubles ? "doubles_3p" : "singles_3p") : (isDoubles ? "doubles" : "singles");
+  if (setCount >= 7) return `${prefix}_bo7`;
+  if (setCount >= 5) return `${prefix}_bo5`;
+  return `${prefix}_bo3`;
+};
 
 const generateMatchSequence = (format) => {
   const sequences = {
@@ -197,8 +208,20 @@ const extractSubstitutes = (substitutesData) => {
   return extractedSubstitutes;
 };
 
-const getSetsRequiredToWin = (format) => {
-  return format.includes("3 Sets") ? 2 : 3;
+const getSetsRequiredToWin = (formatOrId) => {
+  // Try config-driven lookup first
+  try {
+    const fmt = getFormat(formatOrId);
+    return fmt.setsToWin;
+  } catch {
+    // Fallback to legacy string parsing
+    if (typeof formatOrId === "string") {
+      if (formatOrId.includes("7")) return 4;
+      if (formatOrId.includes("5")) return 3;
+      if (formatOrId.includes("3")) return 2;
+    }
+    return 3;
+  }
 };
 
 const getGamesRequiredToWin = (match) => {
@@ -436,35 +459,20 @@ const teamKnockoutController = {
             `Creating regular match: ${team1.teamName} vs ${team2.teamName}`
           );
 
-          // Check if we should use the 2-player format variants
-          const useTwoPlayerFormat = createdTeams.every(t => !t.playerPositions.C || t.playerPositions.C === null);
-          let effectiveFormat = `${tournamentType} - ${setCount} Sets`;
-
-          if (useTwoPlayerFormat) {
-            effectiveFormat += " (2 Players)";
-            console.log("Using 2-player specific format variant");
+          // Use config-driven format if davisCupFormatId is set, otherwise derive from legacy params
+          const formatId = tournament.davisCupFormatId || deriveFormatId(tournamentType, setCount, createdTeams);
+          let formatConfig;
+          try {
+            formatConfig = getFormat(formatId);
+          } catch {
+            // Fallback to singles_bo3 if format not found
+            formatConfig = getFormat("singles_bo3");
           }
 
-          // Generate match sets with proper player name extraction
-          const matchSets = generateMatchSequence(effectiveFormat).map((seq) => {
-            const setData = {
-              setNumber: seq.setNumber,
-              type: seq.type,
-              homePlayer: team1.playerPositions[seq.homePos] || null,
-              awayPlayer: team2.playerPositions[seq.awayPos] || null,
-              homePlayerB: seq.homePosB
-                ? team1.playerPositions[seq.homePosB] || null
-                : null,
-              awayPlayerZ: seq.awayPosZ
-                ? team2.playerPositions[seq.awayPosZ] || null
-                : null,
-              status: "PENDING",
-              games: [],
-              gamesWon: { home: 0, away: 0 },
-              setWinner: null,
-            };
-            return setData;
-          });
+          // Generate sets from config
+          const matchSets = formatConfig.sets.map((setDef) =>
+            resolveSetPlayers(setDef, team1, team2)
+          );
 
           matches.push({
             tournamentId: new mongoose.Types.ObjectId(tournamentId),
@@ -472,7 +480,8 @@ const teamKnockoutController = {
             bracketPosition: maxBracketPosition + Math.floor(i / 2) + 1,
             team1Id: team1._id,
             team2Id: team2._id,
-            format: effectiveFormat,
+            formatId: formatId,
+            format: formatConfig.name,
             gameRules: gameRulesFromTournament,
             matchDate: matchStartTime,
             courtNumber: scheduleDetails.courtNumber || "TBD",
@@ -1108,7 +1117,7 @@ const teamKnockoutController = {
           (s) => s.setWinner === "away"
         ).length;
 
-        const setsNeeded = getSetsRequiredToWin(match.format);
+        const setsNeeded = getSetsRequiredToWin(match.formatId || match.format);
 
         // Check if match is completed
         if (
@@ -2318,7 +2327,7 @@ const teamKnockoutController = {
             continue;
           }
 
-          const setsNeeded = getSetsRequiredToWin(match.format);
+          const setsNeeded = getSetsRequiredToWin(match.formatId || match.format);
           const gamesNeeded = getGamesRequiredToWin(match);
 
           // Validate enough sets
@@ -2448,6 +2457,70 @@ const teamKnockoutController = {
         message: "Failed to bulk upload scores",
         error: error.message,
       });
+    }
+  },
+
+  // ================================
+  // CAPTAIN DOUBLES SELECTION
+  // ================================
+
+  selectDoublesPairing: async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      const { setNumber, selectionId } = req.body;
+
+      if (!matchId || !setNumber || !selectionId) {
+        return res.status(400).json({ success: false, message: "matchId, setNumber, and selectionId are required" });
+      }
+
+      const match = await TeamKnockoutMatches.findById(matchId)
+        .populate("team1Id")
+        .populate("team2Id");
+
+      if (!match) return res.status(404).json({ success: false, message: "Match not found" });
+      if (match.status === "COMPLETED") return res.status(400).json({ success: false, message: "Match already completed" });
+
+      // Get format config
+      let formatConfig;
+      try {
+        formatConfig = getFormat(match.formatId);
+      } catch {
+        return res.status(400).json({ success: false, message: "Invalid format ID on match" });
+      }
+
+      // Find the set definition in config
+      const setDef = formatConfig.sets.find((s) => s.setNumber === setNumber);
+      if (!setDef) return res.status(400).json({ success: false, message: `Set ${setNumber} not found in format` });
+      if (!setDef.requiresSelection) return res.status(400).json({ success: false, message: `Set ${setNumber} does not require selection` });
+
+      // Validate selectionId exists in options
+      const option = (setDef.options || []).find((o) => o.id === selectionId);
+      if (!option) return res.status(400).json({ success: false, message: `Invalid selection: "${selectionId}"` });
+
+      // Resolve players from rosters
+      const resolved = resolveSetPlayers(setDef, match.team1Id, match.team2Id, selectionId);
+
+      // Update the set in the match
+      const setIdx = match.sets.findIndex((s) => s.setNumber === setNumber);
+      if (setIdx === -1) return res.status(400).json({ success: false, message: `Set ${setNumber} not found in match` });
+
+      match.sets[setIdx].selectionId = selectionId;
+      match.sets[setIdx].type = resolved.type;
+      match.sets[setIdx].homePlayer = resolved.homePlayer;
+      match.sets[setIdx].awayPlayer = resolved.awayPlayer;
+      match.sets[setIdx].homePlayerB = resolved.homePlayerB;
+      match.sets[setIdx].awayPlayerB = resolved.awayPlayerB;
+
+      await match.save();
+
+      res.json({
+        success: true,
+        message: `Doubles pairing selected for Set ${setNumber}`,
+        set: match.sets[setIdx],
+      });
+    } catch (error) {
+      console.error("Error selecting doubles pairing:", error);
+      res.status(500).json({ success: false, message: error.message });
     }
   },
 

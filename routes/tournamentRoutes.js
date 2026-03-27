@@ -492,6 +492,12 @@ router.post(
   teamKnockoutController.completeGame
 );
 
+// Captain's doubles pairing selection
+router.post(
+  "/team-knockout/matches/:matchId/select-pairing",
+  teamKnockoutController.selectDoublesPairing
+);
+
 // Match Queries
 router.get(
   "/team-knockout/matches/:tournamentId",

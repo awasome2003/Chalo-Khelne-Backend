@@ -413,6 +413,7 @@ exports.createTournament = async (req, res) => {
       matchFormatOverrides, // Dynamic match format from sport-driven form
       turfIds, // For backward compatibility
       tournamentLevel, // district, state, national, international
+      davisCupFormatId, // Team knockout format ID (e.g. "singles_bo5")
     } = req.body;
 
     // --- Basic validation ---
@@ -604,6 +605,7 @@ exports.createTournament = async (req, res) => {
       setFormat: parsedMatchFormatOverrides?.totalSets || (sportRulesData?.format?.totalSets) || 3,
       groupStageFormat: type.includes("group stage") ? groupStageFormat : undefined,
       knockoutFormat: type.includes("knockout") ? knockoutFormat : undefined,
+      davisCupFormatId: davisCupFormatId || null,
       qualifyPerGroup: qualifyPerGroup ? parseInt(qualifyPerGroup) : 2,
     };
 
@@ -960,6 +962,7 @@ exports.editTournament = async (req, res) => {
     // 🎯 NEW FIELDS FOR FULL EDIT FUNCTIONALITY
     if (req.body.groupStageFormat) tournament.groupStageFormat = req.body.groupStageFormat;
     if (req.body.knockoutFormat) tournament.knockoutFormat = req.body.knockoutFormat;
+    if (req.body.davisCupFormatId) tournament.davisCupFormatId = req.body.davisCupFormatId;
     if (req.body.qualifyPerGroup) tournament.qualifyPerGroup = parseInt(req.body.qualifyPerGroup);
     tournament.numTeams = req.body.numTeams || tournament.numTeams;
     tournament.playerNoValue = req.body.playerNoValue || tournament.playerNoValue;

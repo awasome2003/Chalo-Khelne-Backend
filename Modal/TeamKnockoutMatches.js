@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { getAllFormatIds } = require("../Config/teamKnockoutFormats");
 
 const gameSchema = new mongoose.Schema(
   {
@@ -20,11 +21,13 @@ const gameSchema = new mongoose.Schema(
 const setSchema = new mongoose.Schema(
   {
     setNumber: { type: Number, required: true },
-    type: { type: String, required: true }, // "Singles A-X", "Doubles AB-XY"
-    homePlayer: { type: String, required: false }, // Player name
-    awayPlayer: { type: String, required: false }, // Player name
-    homePlayerB: { type: String, default: null }, // For doubles
-    awayPlayerZ: { type: String, default: null }, // For doubles
+    type: { type: String, required: true }, // "Singles A-B", "Doubles AB-AB"
+    homePlayer: { type: String, default: null },
+    awayPlayer: { type: String, default: null },
+    homePlayerB: { type: String, default: null }, // 2nd home player (doubles)
+    awayPlayerB: { type: String, default: null }, // 2nd away player (doubles)
+    // Captain's doubles pairing selection (for requiresSelection sets)
+    selectionId: { type: String, default: null },
     status: {
       type: String,
       enum: ["PENDING", "IN_PROGRESS", "COMPLETED"],
@@ -47,29 +50,19 @@ const teamKnockoutMatchesSchema = new mongoose.Schema(
       ref: "Tournament",
       required: true,
     },
-
-    round: {
-      type: Number,
-      required: true,
-    },
-
-    bracketPosition: {
-      type: Number,
-      required: true,
-    },
+    round: { type: Number, required: true },
+    bracketPosition: { type: Number, required: true },
 
     team1Id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "TeamKnockoutTeams",
       required: true,
     },
-
     team2Id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "TeamKnockoutTeams",
       default: null,
     },
-
     winnerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "TeamKnockoutTeams",
@@ -82,35 +75,22 @@ const teamKnockoutMatchesSchema = new mongoose.Schema(
       default: "SCHEDULED",
     },
 
-    format: {
+    // Config-driven format ID (e.g. "singles_bo5", "doubles_3p_bo7")
+    formatId: {
       type: String,
       required: true,
-      enum: [
-        "Singles - 3 Sets",
-        "Singles - 5 Sets",
-        "Doubles - 3 Sets",
-        "Doubles - 5 Sets",
-        "Singles - 3 Sets (2 Players)",
-        "Singles - 5 Sets (2 Players)",
-        "Doubles - 3 Sets (2 Players)",
-        "Doubles - 5 Sets (2 Players)",
-      ],
+      validate: {
+        validator: (v) => getAllFormatIds().includes(v),
+        message: (props) => `"${props.value}" is not a valid format ID`,
+      },
     },
 
-    isBye: {
-      type: Boolean,
-      default: false,
-    },
+    // Legacy format string (kept for backward compat, auto-set from formatId)
+    format: { type: String, default: null },
 
-    matchDate: {
-      type: Date,
-      required: true,
-    },
-
-    courtNumber: {
-      type: String,
-      default: "TBD",
-    },
+    isBye: { type: Boolean, default: false },
+    matchDate: { type: Date, required: true },
+    courtNumber: { type: String, default: "TBD" },
 
     liveState: {
       currentSetNumber: { type: Number, default: 1 },
@@ -122,7 +102,6 @@ const teamKnockoutMatchesSchema = new mongoose.Schema(
       lastUpdated: { type: Date, default: Date.now },
     },
 
-    // Scoring rules per game (derived from tournament.matchFormat / sportRules)
     gameRules: {
       gamesPerSet: { type: Number, default: 3 },
       gamesToWin: { type: Number, default: 2 },
@@ -145,17 +124,9 @@ const teamKnockoutMatchesSchema = new mongoose.Schema(
       default: null,
     },
 
-    completedAt: {
-      type: Date,
-      default: null,
-    },
+    completedAt: { type: Date, default: null },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-module.exports = mongoose.model(
-  "TeamKnockoutMatches",
-  teamKnockoutMatchesSchema
-);
+module.exports = mongoose.model("TeamKnockoutMatches", teamKnockoutMatchesSchema);
