@@ -268,10 +268,20 @@ router.post("/superadminlogin", async (req, res) => {
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (isMatch) {
-      const token = jwt.sign({ email }, process.env.JWT_SECRET, {
+      const token = jwt.sign({ email, userId: user._id }, process.env.JWT_SECRET, {
         expiresIn: "1h",
       });
-      return res.json({ success: true, token });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: user._id,
+          _id: user._id,
+          email: user.email,
+          name: user.name || "Super Admin",
+          role: "superadmin",
+        },
+      });
     } else {
       return res
         .status(401)
