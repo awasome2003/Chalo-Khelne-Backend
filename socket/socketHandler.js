@@ -74,6 +74,15 @@ module.exports = function setupSocket(io) {
       socket.leave(`forum_${forumId}`);
     });
 
+    // Group chat rooms
+    socket.on("join:gchat", ({ chatId }) => {
+      socket.join(`gchat_${chatId}`);
+    });
+
+    socket.on("leave:gchat", ({ chatId }) => {
+      socket.leave(`gchat_${chatId}`);
+    });
+
     // Disconnect
     socket.on("disconnect", () => {
       socket.broadcast.emit("user:online", { userId, online: false });
