@@ -16,6 +16,42 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
 
 // ════════════════════════════════════
+// SEARCH USERS (for adding members)
+// ════════════════════════════════════
+const User = require("../Modal/User");
+const { Manager } = require("../Modal/ClubManager");
+
+router.get("/search-users", async (req, res) => {
+  try {
+    const q = req.query.q || req.query.search || "";
+    if (q.length < 1) return res.json({ success: true, users: [] });
+
+    const regex = { $regex: q, $options: "i" };
+
+    // Search Players/Trainers
+    const players = await User.find({ name: regex })
+      .select("name email role profileImage")
+      .limit(15)
+      .lean();
+
+    // Search Managers
+    const managers = await Manager.find({ name: regex })
+      .select("name email")
+      .limit(10)
+      .lean();
+
+    const all = [
+      ...players.map((p) => ({ _id: p._id, name: p.name, email: p.email, role: p.role || "Player" })),
+      ...managers.map((m) => ({ _id: m._id, name: m.name, email: m.email, role: "Manager" })),
+    ];
+
+    res.json({ success: true, users: all });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ════════════════════════════════════
 // FORUM ROOMS
 // ════════════════════════════════════
 
