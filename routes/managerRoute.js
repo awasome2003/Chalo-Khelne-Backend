@@ -114,6 +114,59 @@ router.get("/managers/me", async (req, res) => {
   }
 });
 
+// Get manager profile by ID
+router.get("/managers/:id/profile", async (req, res) => {
+  try {
+    const manager = await Manager.findById(req.params.id).select("-password").lean();
+    if (!manager) return res.status(404).json({ success: false, message: "Manager not found" });
+    res.json({ success: true, manager });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Update manager profile
+router.put("/managers/:id/profile", async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const manager = await Manager.findById(req.params.id);
+    if (!manager) return res.status(404).json({ success: false, message: "Manager not found" });
+
+    if (name) manager.name = name.trim();
+    if (email) {
+      const existing = await Manager.findOne({ email: email.trim().toLowerCase(), _id: { $ne: req.params.id } });
+      if (existing) return res.status(400).json({ success: false, message: "Email already in use" });
+      manager.email = email.trim().toLowerCase();
+    }
+    await manager.save();
+    res.json({ success: true, manager: { _id: manager._id, name: manager.name, email: manager.email } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Change manager password
+router.put("/managers/:id/change-password", async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ success: false, message: "Both passwords required" });
+    if (newPassword.length < 6) return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
+
+    const manager = await Manager.findById(req.params.id);
+    if (!manager) return res.status(404).json({ success: false, message: "Manager not found" });
+
+    const bcrypt = require("bcryptjs");
+    const isMatch = await bcrypt.compare(currentPassword, manager.password);
+    if (!isMatch) return res.status(401).json({ success: false, message: "Current password is incorrect" });
+
+    manager.password = await bcrypt.hash(newPassword, 10);
+    await manager.save();
+    res.json({ success: true, message: "Password updated successfully" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Fetching managers clubwise
 router.get("/club-admin/managers", async (req, res) => {
   try {
