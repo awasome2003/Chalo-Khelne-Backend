@@ -20,15 +20,15 @@ const turfSchema = new mongoose.Schema(
       },
       area: {
         type: String,
-        required: [true, "Area is required"],
+        default: "",
       },
       city: {
         type: String,
-        required: [true, "City is required"],
+        default: "",
       },
       pincode: {
         type: String,
-        required: [true, "Pincode is required"],
+        default: "",
       },
       coordinates: {
         lat: Number,
