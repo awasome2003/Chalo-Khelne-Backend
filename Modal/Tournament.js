@@ -86,9 +86,13 @@ const tournamentSchema = new mongoose.Schema(
     // Locked sport rules — auto-attached from SportRuleBook at creation
     tournamentLevel: {
       type: String,
-      enum: ["district", "state", "national", "international"],
+      enum: ["district", "state", "national", "international", "unranked"],
       default: "district",
     },
+    // True when level=unranked and rules are user-defined (not from ruleBook)
+    isCustomRules: { type: Boolean, default: false },
+    // Timestamp when rules were locked (after first match generated)
+    rulesLockedAt: { type: Date, default: null },
     sportRules: {
       ruleBookId: { type: mongoose.Schema.Types.ObjectId, ref: "SportRuleBook" },
       sportName: String,
@@ -191,15 +195,33 @@ const tournamentSchema = new mongoose.Schema(
       enum: [3, 5, 7], // Best of 3, 5, 7
       default: 3,
     },
-    // Match Format Configuration (Global tournament defaults)
+    // Canonical Match Format — single source of truth for scoring engine
+    // Derived fields (setsToWin, gamesToWin) are ALWAYS computed server-side
     matchFormat: {
-      totalSets: { type: Number, default: 5 },
-      setsToWin: { type: Number, default: 3 },
-      totalGames: { type: Number, default: 5 },
-      gamesToWin: { type: Number, default: 3 },
+      // Sets-based (TT, Badminton, Tennis, Pickleball, Volleyball)
+      totalSets: { type: Number, default: 3 },
+      setsToWin: { type: Number, default: 2 },       // DERIVED: ceil(totalSets/2)
+      totalGames: { type: Number, default: 3 },
+      gamesToWin: { type: Number, default: 2 },       // DERIVED: ceil(totalGames/2)
       pointsToWinGame: { type: Number, default: 11 },
       marginToWin: { type: Number, default: 2 },
-      deuceRule: { type: Boolean, default: true }
+      deuceRule: { type: Boolean, default: true },
+      maxPointsCap: { type: Number, default: null },
+      tiebreakEnabled: { type: Boolean, default: false },
+      tiebreakPoints: { type: Number, default: null },
+      decidingSetPoints: { type: Number, default: null },
+      serviceAlternate: { type: Number, default: 2 },
+      // Innings-based (Cricket)
+      oversCount: { type: Number, default: null },
+      inningsCount: { type: Number, default: null },
+      // Time-based (Football, Basketball, Kabaddi)
+      halvesCount: { type: Number, default: null },
+      halvesDuration: { type: Number, default: null },
+      quartersCount: { type: Number, default: null },
+      quartersDuration: { type: Number, default: null },
+      // Meta
+      scoringType: { type: String, enum: ["sets", "innings", "time", "single", null], default: null },
+      formatVersion: { type: Number, default: 1 },
     },
 
     termsAndConditions: String,

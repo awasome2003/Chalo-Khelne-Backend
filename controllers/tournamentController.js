@@ -8,6 +8,7 @@ const SuperMatch = require("../Modal/SuperMatch");
 const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
 const User = require("../Modal/User");
 const SportRuleBook = require("../Modal/SportRuleBook");
+const { sanitizeBySportType, validateCustomRules, normalizeMatchFormat, getScoringType } = require("../utils/matchFormatUtils");
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
@@ -480,8 +481,10 @@ exports.createTournament = async (req, res) => {
     // --- Auto-attach locked sport rules from rule book ---
     let sportRulesData = null;
     const level = tournamentLevel || "district";
+    const isUnranked = level === "unranked";
 
-    if (sportsType) {
+    // Only fetch ruleBook for ranked tournaments
+    if (sportsType && !isUnranked) {
       try {
         const ruleBook = await SportRuleBook.findOne({
           sportName: { $regex: new RegExp(`^${sportsType}$`, "i") },
@@ -555,12 +558,39 @@ exports.createTournament = async (req, res) => {
     }
 
     // --- Build tournament object ---
+    // --- SANITIZE overrides by sport type (strip irrelevant fields) ---
+    let sanitizedOverrides = null;
+    if (parsedMatchFormatOverrides) {
+      sanitizedOverrides = sanitizeBySportType(sportsType, parsedMatchFormatOverrides);
+    }
+
+    // --- VALIDATE custom rules for unranked tournaments ---
+    if (isUnranked && sanitizedOverrides) {
+      const validation = validateCustomRules(sportsType, sanitizedOverrides);
+      if (!validation.valid) {
+        return res.status(400).json({
+          message: "Custom rules validation failed",
+          errors: validation.errors,
+        });
+      }
+    }
+
+    // --- NORMALIZE matchFormat (all derived fields computed server-side) ---
+    const computedMatchFormat = normalizeMatchFormat(
+      sportsType,
+      sanitizedOverrides,
+      sportRulesData?.format
+    );
+
+    const computedSetFormat = computedMatchFormat.totalSets || 3;
+
     const tournamentData = {
       title,
       type,
       sportsType,
       tournamentLevel: level,
-      sportRules: sportRulesData,
+      isCustomRules: isUnranked,
+      sportRules: isUnranked ? null : sportRulesData,
       description: description || "",
       selectedTime: parsedSelectedTime,
       startDate,
@@ -574,38 +604,12 @@ exports.createTournament = async (req, res) => {
       numTeams: numTeams || 0,
       playerNoValue: playerNoValue || "2",
       tournamentFee: tournamentFee || "0",
-      // Derive matchFormat: prefer dynamic overrides > locked sportRules > hardcoded defaults
-      matchFormat: (() => {
-        const rf = sportRulesData?.format || {};
-        const ov = parsedMatchFormatOverrides || {};
-        // Dynamic overrides take priority, then sportRules, then defaults
-        const totalSets = ov.totalSets || rf.totalSets || 3;
-        return {
-          totalSets,
-          setsToWin: Math.ceil(totalSets / 2),
-          totalGames: ov.gamesPerSet || rf.gamesPerSet || 5,
-          gamesToWin: ov.gamesPerSet ? Math.ceil((ov.gamesPerSet || rf.gamesPerSet) / 2) : rf.gamesPerSet ? Math.ceil(rf.gamesPerSet / 2) : 3,
-          pointsToWinGame: ov.pointsPerGame || ov.pointsPerSet || rf.pointsPerGame || rf.pointsPerSet || 11,
-          marginToWin: ov.winByMargin != null ? ov.winByMargin : (rf.winByMargin != null ? rf.winByMargin : 2),
-          maxPointsCap: ov.maxPointsCap || rf.maxPointsCap || null,
-          deuceRule: ov.deuceEnabled != null ? ov.deuceEnabled : (rf.deuceEnabled != null ? rf.deuceEnabled : true),
-          // Pass through sport-specific fields for non-sets sports
-          ...(ov.oversCount != null && { oversCount: ov.oversCount }),
-          ...(ov.inningsCount != null && { inningsCount: ov.inningsCount }),
-          ...(ov.halvesCount != null && { halvesCount: ov.halvesCount }),
-          ...(ov.halvesDuration != null && { halvesDuration: ov.halvesDuration }),
-          ...(ov.quartersCount != null && { quartersCount: ov.quartersCount }),
-          ...(ov.quartersDuration != null && { quartersDuration: ov.quartersDuration }),
-          ...(ov.tiebreakEnabled != null && { tiebreakEnabled: ov.tiebreakEnabled }),
-          ...(ov.tiebreakPoints != null && { tiebreakPoints: ov.tiebreakPoints }),
-          ...(ov.decidingSetPoints != null && { decidingSetPoints: ov.decidingSetPoints }),
-          ...(ov.serviceRules != null && { serviceRules: ov.serviceRules }),
-        };
-      })(),
-      setFormat: parsedMatchFormatOverrides?.totalSets || (sportRulesData?.format?.totalSets) || 3,
+      matchFormat: computedMatchFormat,
+      setFormat: computedSetFormat,
       groupStageFormat: type.includes("group stage") ? groupStageFormat : undefined,
       knockoutFormat: type.includes("knockout") ? knockoutFormat : undefined,
       davisCupFormatId: davisCupFormatId || null,
+      drawSize: drawSize ? parseInt(drawSize) : null,
       qualifyPerGroup: qualifyPerGroup ? parseInt(qualifyPerGroup) : 2,
     };
 
@@ -885,10 +889,24 @@ exports.editTournament = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if tournament exists
     const tournament = await Tournament.findById(id);
     if (!tournament) {
       return res.status(404).json({ message: "Tournament not found" });
+    }
+
+    // ═══ BLOCK RULE EDITS AFTER TOURNAMENT STARTS ═══
+    const LOCKED_FIELDS = ["matchFormatOverrides", "groupStageFormat", "knockoutFormat", "sportsType", "type", "davisCupFormatId", "drawSize"];
+    const hasStarted = tournament.currentStage !== "registration";
+
+    if (hasStarted) {
+      const attemptedRuleChange = LOCKED_FIELDS.some((f) => req.body[f] !== undefined);
+      if (attemptedRuleChange) {
+        return res.status(400).json({
+          message: "Cannot modify rules after tournament has started. Only title, description, dates, location, and categories can be edited.",
+          lockedFields: LOCKED_FIELDS,
+          currentStage: tournament.currentStage,
+        });
+      }
     }
 
     // Parse selectedTime

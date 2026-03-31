@@ -4,6 +4,7 @@ const Tournament = require("../Modal/Tournament");
 const BookingGroup = require("../Modal/bookinggroup");
 const Booking = require("../Modal/BookingModel");
 const Referee = require("../Modal/Referee");
+const { freezeMatchFormat } = require("../utils/matchFormatUtils");
 
 // Create Matches — already provided
 const createMatches = async (req, res) => {
@@ -430,9 +431,10 @@ const generateGroupMatches = async (req, res) => {
 
     const createdMatches = await Match.insertMany(matchDocuments);
 
-    // Update tournament stage to group_stage if still in registration
+    // Update tournament stage + lock rules
     if (tournament.currentStage === "registration") {
       tournament.currentStage = "group_stage";
+      if (!tournament.rulesLockedAt) tournament.rulesLockedAt = new Date();
       await tournament.save();
     }
 
