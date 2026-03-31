@@ -26,6 +26,8 @@ const setSchema = new mongoose.Schema(
     awayPlayer: { type: String, default: null },
     homePlayerB: { type: String, default: null }, // 2nd home player (doubles)
     awayPlayerB: { type: String, default: null }, // 2nd away player (doubles)
+    homePlayerC: { type: String, default: null }, // 3rd home player (3-player formats)
+    awayPlayerC: { type: String, default: null }, // 3rd away player (3-player formats)
     // Captain's doubles pairing selection (for requiresSelection sets)
     selectionId: { type: String, default: null },
     status: {

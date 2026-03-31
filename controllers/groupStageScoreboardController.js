@@ -788,6 +788,16 @@ const completeGame = async (req, res) => {
       });
     }
 
+    // ═══ GUARD: Block scoring on completed matches ═══
+    if (match.status === "COMPLETED" || match.status === "completed") {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: "Cannot score a completed match. This match has already finished.",
+      });
+    }
+
     // 🔥 DYNAMIC MATCH FORMAT - Get from tournament or use intelligent defaults
     if (!match.matchFormat) {
       // Try to get format from tournament
@@ -1149,7 +1159,8 @@ const completeGame = async (req, res) => {
     // Emit real-time events via Socket.io
     const io = req.app.get("io");
     if (io) {
-      const tournamentRoom = `tournament_${match.tournamentId}`;
+      const tournamentId = match.tournamentId ? match.tournamentId.toString() : null;
+      const tournamentRoom = tournamentId ? `tournament_${tournamentId}` : null;
       const matchRoom = `match_${matchId}`;
 
       // Score update event (always)
@@ -1164,12 +1175,12 @@ const completeGame = async (req, res) => {
         sets: match.sets,
       };
       io.to(matchRoom).emit("score:update", scorePayload);
-      io.to(tournamentRoom).emit("score:update", scorePayload);
+      if (tournamentRoom) io.to(tournamentRoom).emit("score:update", scorePayload);
 
       // Set completed
       if (setCompleted) {
         io.to(matchRoom).emit("set:complete", { matchId, setNumber: match.currentSet - 1, ...scorePayload });
-        io.to(tournamentRoom).emit("set:complete", { matchId, setNumber: match.currentSet - 1, ...scorePayload });
+        if (tournamentRoom) io.to(tournamentRoom).emit("set:complete", { matchId, setNumber: match.currentSet - 1, ...scorePayload });
       }
 
       // Match completed
@@ -1183,7 +1194,7 @@ const completeGame = async (req, res) => {
           player2: match.player2?.userName || match.player2?.playerName,
         };
         io.to(matchRoom).emit("match:complete", completePayload);
-        io.to(tournamentRoom).emit("match:complete", completePayload);
+        if (tournamentRoom) io.to(tournamentRoom).emit("match:complete", completePayload);
       }
     }
 

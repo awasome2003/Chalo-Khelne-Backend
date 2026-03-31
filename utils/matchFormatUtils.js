@@ -132,12 +132,13 @@ function sanitizeBySportType(sportName, rawConfig) {
  * Returns { valid: true } or { valid: false, errors: [...] }
  */
 function validateCustomRules(sportName, config) {
+  if (!config || typeof config !== "object") return { valid: false, errors: ["Config is required"] };
+  if (!sportName) return { valid: false, errors: ["Sport name is required for validation"] };
+
   const errors = [];
   const scoringType = getScoringType(sportName);
 
   if (scoringType === "sets") {
-    const totalSets = config.totalSets || config.pointsPerSet ? undefined : null;
-
     if (config.totalSets != null) {
       if (config.totalSets < 1 || config.totalSets > 9) errors.push("totalSets must be 1-9");
       if (config.totalSets % 2 === 0) errors.push("totalSets must be odd (1, 3, 5, 7, 9)");
@@ -198,6 +199,9 @@ function validateCustomRules(sportName, config) {
  * CRITICAL: setsToWin and gamesToWin are NEVER user-input.
  */
 function normalizeMatchFormat(sportName, rawConfig, sportRulesFormat) {
+  if (!sportName || typeof sportName !== "string") {
+    throw new Error("sportName is required for normalizeMatchFormat");
+  }
   const scoringType = getScoringType(sportName);
   const rf = sportRulesFormat || {}; // Locked rules (if any)
   const ov = rawConfig || {};        // Overrides (user or custom)

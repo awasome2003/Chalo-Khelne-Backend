@@ -413,8 +413,9 @@ exports.createTournament = async (req, res) => {
       qualifyPerGroup,
       matchFormatOverrides, // Dynamic match format from sport-driven form
       turfIds, // For backward compatibility
-      tournamentLevel, // district, state, national, international
+      tournamentLevel, // district, state, national, international, unranked
       davisCupFormatId, // Team knockout format ID (e.g. "singles_bo5")
+      drawSize, // Knockout bracket size (16, 32, 64)
     } = req.body;
 
     // --- Basic validation ---
@@ -962,10 +963,8 @@ exports.editTournament = async (req, res) => {
       tournament.tournamentLogo = relativePath;
     }
 
-    // Update fields
+    // Update SAFE fields (allowed at any stage)
     tournament.title = req.body.title || tournament.title;
-    tournament.type = req.body.type || tournament.type;
-    tournament.sportsType = req.body.sportsType || tournament.sportsType;
     tournament.description = req.body.description || tournament.description;
     tournament.selectedTime = parsedSelectedTime;
     tournament.startDate = req.body.startDate || tournament.startDate;
@@ -976,16 +975,20 @@ exports.editTournament = async (req, res) => {
     tournament.managerId = managerIds;
     tournament.category = categories;
     tournament.termsAndConditions = termsAndConditions;
-
-    // 🎯 NEW FIELDS FOR FULL EDIT FUNCTIONALITY
-    if (req.body.groupStageFormat) tournament.groupStageFormat = req.body.groupStageFormat;
-    if (req.body.knockoutFormat) tournament.knockoutFormat = req.body.knockoutFormat;
-    if (req.body.davisCupFormatId) tournament.davisCupFormatId = req.body.davisCupFormatId;
-    if (req.body.qualifyPerGroup) tournament.qualifyPerGroup = parseInt(req.body.qualifyPerGroup);
     tournament.numTeams = req.body.numTeams || tournament.numTeams;
     tournament.playerNoValue = req.body.playerNoValue || tournament.playerNoValue;
-    tournament.setNo = req.body.setNo || tournament.setNo;
     tournament.tournamentFee = req.body.tournamentFee || tournament.tournamentFee;
+
+    // Update LOCKED fields ONLY if tournament hasn't started
+    if (!hasStarted) {
+      if (req.body.type) tournament.type = req.body.type;
+      if (req.body.sportsType) tournament.sportsType = req.body.sportsType;
+      if (req.body.groupStageFormat) tournament.groupStageFormat = req.body.groupStageFormat;
+      if (req.body.knockoutFormat) tournament.knockoutFormat = req.body.knockoutFormat;
+      if (req.body.davisCupFormatId) tournament.davisCupFormatId = req.body.davisCupFormatId;
+      if (req.body.drawSize) tournament.drawSize = parseInt(req.body.drawSize);
+      if (req.body.qualifyPerGroup) tournament.qualifyPerGroup = parseInt(req.body.qualifyPerGroup);
+    }
 
     // Handle setFormat update (mapping from setsFormat string)
     if (req.body.setsFormat) {

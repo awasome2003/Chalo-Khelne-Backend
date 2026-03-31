@@ -85,8 +85,51 @@ const generateMatchSequence = (format) => {
       { setNumber: 4, type: "Singles A-Y", homePos: "A", awayPos: "B" },
       { setNumber: 5, type: "Singles B-X", homePos: "B", awayPos: "A" },
     ],
+    // BO7 formats
+    "Singles - 7 Sets": [
+      { setNumber: 1, type: "Singles A-X", homePos: "A", awayPos: "A" },
+      { setNumber: 2, type: "Singles B-Y", homePos: "B", awayPos: "B" },
+      { setNumber: 3, type: "Singles A-Y", homePos: "A", awayPos: "B" },
+      { setNumber: 4, type: "Singles B-X", homePos: "B", awayPos: "A" },
+      { setNumber: 5, type: "Singles A-X", homePos: "A", awayPos: "A" },
+      { setNumber: 6, type: "Singles B-Y", homePos: "B", awayPos: "B" },
+      { setNumber: 7, type: "Singles A-Y", homePos: "A", awayPos: "B" },
+    ],
+    "Doubles - 7 Sets": [
+      { setNumber: 1, type: "Singles A-X", homePos: "A", awayPos: "A" },
+      { setNumber: 2, type: "Singles B-Y", homePos: "B", awayPos: "B" },
+      { setNumber: 3, type: "Doubles AB-XY", homePos: "A", awayPos: "A", homePosB: "B", awayPosZ: "B" },
+      { setNumber: 4, type: "Singles A-Y", homePos: "A", awayPos: "B" },
+      { setNumber: 5, type: "Singles B-X", homePos: "B", awayPos: "A" },
+      { setNumber: 6, type: "Doubles AB-XY", homePos: "A", awayPos: "A", homePosB: "B", awayPosZ: "B" },
+      { setNumber: 7, type: "Singles A-X", homePos: "A", awayPos: "A" },
+    ],
+    "Singles - 7 Sets (2 Players)": [
+      { setNumber: 1, type: "Singles A-X", homePos: "A", awayPos: "A" },
+      { setNumber: 2, type: "Singles B-Y", homePos: "B", awayPos: "B" },
+      { setNumber: 3, type: "Singles A-Y", homePos: "A", awayPos: "B" },
+      { setNumber: 4, type: "Singles B-X", homePos: "B", awayPos: "A" },
+      { setNumber: 5, type: "Singles A-X", homePos: "A", awayPos: "A" },
+      { setNumber: 6, type: "Singles B-Y", homePos: "B", awayPos: "B" },
+      { setNumber: 7, type: "Singles A-Y", homePos: "A", awayPos: "B" },
+    ],
+    "Doubles - 7 Sets (2 Players)": [
+      { setNumber: 1, type: "Singles A-X", homePos: "A", awayPos: "A" },
+      { setNumber: 2, type: "Singles B-Y", homePos: "B", awayPos: "B" },
+      { setNumber: 3, type: "Doubles AB-XY", homePos: "A", awayPos: "A", homePosB: "B", awayPosZ: "B" },
+      { setNumber: 4, type: "Singles A-Y", homePos: "A", awayPos: "B" },
+      { setNumber: 5, type: "Singles B-X", homePos: "B", awayPos: "A" },
+      { setNumber: 6, type: "Doubles AB-XY", homePos: "A", awayPos: "A", homePosB: "B", awayPosZ: "B" },
+      { setNumber: 7, type: "Singles A-X", homePos: "A", awayPos: "A" },
+    ],
   };
-  return sequences[format] || [];
+
+  const seq = sequences[format];
+  if (!seq) {
+    console.error(`[TEAM_KNOCKOUT] Unsupported format: "${format}". Available: ${Object.keys(sequences).join(", ")}`);
+    throw new Error(`Unsupported team knockout format: "${format}"`);
+  }
+  return seq;
 };
 
 const extractPlayerName = (player) => {
