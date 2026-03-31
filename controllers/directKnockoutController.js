@@ -774,7 +774,7 @@ const completeGame = async (req, res) => {
     }
 
     // Guard: check if set is already decided before adding game
-    const gamesToWinCheck = match.matchFormat.gamesToWin || 3;
+    const gamesToWinCheck = match.matchFormat?.gamesToWin || 3;
     const existingP1Games = (currentSet.games || []).filter((g) => g.winner?.playerName === match.player1.playerName).length;
     const existingP2Games = (currentSet.games || []).filter((g) => g.winner?.playerName === match.player2.playerName).length;
     if (existingP1Games >= gamesToWinCheck || existingP2Games >= gamesToWinCheck) {
@@ -808,7 +808,7 @@ const completeGame = async (req, res) => {
     const p1Games = currentSet.games.filter((g) => g.winner?.playerName === match.player1.playerName).length;
     const p2Games = currentSet.games.filter((g) => g.winner?.playerName === match.player2.playerName).length;
 
-    const gamesToWin = match.matchFormat.gamesToWin || 3;
+    const gamesToWin = match.matchFormat?.gamesToWin || 3;
 
     if (p1Games >= gamesToWin || p2Games >= gamesToWin) {
       // Set complete
@@ -820,7 +820,7 @@ const completeGame = async (req, res) => {
       const p1Sets = match.sets.filter((s) => s.winner?.playerName === match.player1.playerName).length;
       const p2Sets = match.sets.filter((s) => s.winner?.playerName === match.player2.playerName).length;
 
-      const setsToWin = match.matchFormat.setsToWin || 3;
+      const setsToWin = match.matchFormat?.setsToWin || 3;
 
       if (p1Sets >= setsToWin || p2Sets >= setsToWin) {
         // Match complete

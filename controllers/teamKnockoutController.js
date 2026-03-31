@@ -251,20 +251,24 @@ const extractSubstitutes = (substitutesData) => {
   return extractedSubstitutes;
 };
 
-const getSetsRequiredToWin = (formatOrId) => {
-  // Try config-driven lookup first
+const getSetsRequiredToWin = (formatOrId, match) => {
+  // Method 1: Config-driven lookup by formatId
   try {
     const fmt = getFormat(formatOrId);
-    return fmt.setsToWin;
-  } catch {
-    // Fallback to legacy string parsing
-    if (typeof formatOrId === "string") {
-      if (formatOrId.includes("7")) return 4;
-      if (formatOrId.includes("5")) return 3;
-      if (formatOrId.includes("3")) return 2;
-    }
-    return 3;
+    if (fmt?.setsToWin) return fmt.setsToWin;
+  } catch {}
+
+  // Method 2: Numeric computation from match's frozen matchFormat
+  if (match?.matchFormat?.setsToWin) return match.matchFormat.setsToWin;
+  if (match?.matchFormat?.totalSets) return Math.ceil(match.matchFormat.totalSets / 2);
+
+  // Method 3: Extract number from format string → compute
+  if (typeof formatOrId === "string") {
+    const numMatch = formatOrId.match(/(\d+)\s*Sets/);
+    if (numMatch) return Math.ceil(parseInt(numMatch[1]) / 2);
   }
+
+  return 3; // Safe default
 };
 
 const getGamesRequiredToWin = (match) => {
@@ -1160,7 +1164,7 @@ const teamKnockoutController = {
           (s) => s.setWinner === "away"
         ).length;
 
-        const setsNeeded = getSetsRequiredToWin(match.formatId || match.format);
+        const setsNeeded = getSetsRequiredToWin(match.formatId || match.format, match);
 
         // Check if match is completed
         if (
@@ -2370,7 +2374,7 @@ const teamKnockoutController = {
             continue;
           }
 
-          const setsNeeded = getSetsRequiredToWin(match.formatId || match.format);
+          const setsNeeded = getSetsRequiredToWin(match.formatId || match.format, match);
           const gamesNeeded = getGamesRequiredToWin(match);
 
           // Validate enough sets
