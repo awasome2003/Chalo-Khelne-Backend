@@ -281,14 +281,65 @@ function freezeMatchFormat(tournamentMatchFormat) {
 }
 
 /**
- * Read a match format field with safe fallback.
- * Scoring engine should use this instead of direct access.
+ * STRICT match format reader for scoring engine.
  *
- * @param {object} matchFormat - match-level frozen format
- * @param {string} field - field name
- * @returns {*} value with safe default fallback
+ * Usage:
+ *   const fmt = readMatchFormat(match);
+ *   // fmt.gamesToWin, fmt.setsToWin, fmt.pointsToWinGame etc.
+ *
+ * Behavior:
+ * - If match.matchFormat exists and has required fields → returns it
+ * - If match.matchFormat exists but incomplete → fills gaps + warns
+ * - If match.matchFormat is null → throws (scoring MUST NOT proceed with blind defaults)
+ *
+ * @param {object} match - the match document (must have matchFormat)
+ * @returns {object} validated format object with all required fields
  */
-function readMatchFormat(matchFormat, field) {
+function readMatchFormat(match) {
+  const REQUIRED_FIELDS = ["gamesToWin", "setsToWin", "pointsToWinGame", "marginToWin"];
+
+  if (!match) throw new Error("[SCORING] readMatchFormat called with null match");
+
+  const fmt = match.matchFormat;
+
+  if (!fmt) {
+    // STRICT: do not silently default — this match was created without frozen format
+    console.error(`[SCORING] CRITICAL: Match ${match._id || match.matchId || "unknown"} has NO matchFormat. This match was not properly initialized.`);
+    throw new Error(`Match ${match._id || match.matchId} has no matchFormat. Cannot score without format configuration.`);
+  }
+
+  // Check for missing required fields — warn but fill from SAFE_DEFAULTS
+  const result = { ...fmt };
+  const warnings = [];
+
+  for (const field of REQUIRED_FIELDS) {
+    if (result[field] == null) {
+      result[field] = SAFE_DEFAULTS[field];
+      warnings.push(field);
+    }
+  }
+
+  // Fill optional fields
+  if (result.totalSets == null) result.totalSets = SAFE_DEFAULTS.totalSets;
+  if (result.totalGames == null) result.totalGames = SAFE_DEFAULTS.totalGames;
+  if (result.deuceRule == null) result.deuceRule = SAFE_DEFAULTS.deuceRule;
+
+  // Enforce derived fields are consistent
+  result.setsToWin = Math.ceil(result.totalSets / 2);
+  result.gamesToWin = Math.ceil(result.totalGames / 2);
+
+  if (warnings.length > 0) {
+    console.warn(`[SCORING] Match ${match._id || match.matchId || "unknown"} has incomplete matchFormat. Missing: ${warnings.join(", ")}. Using defaults.`);
+  }
+
+  return result;
+}
+
+/**
+ * Legacy single-field reader (backward compat).
+ * Prefer readMatchFormat(match) for full validation.
+ */
+function readMatchFormatField(matchFormat, field) {
   if (matchFormat && matchFormat[field] != null) return matchFormat[field];
   return SAFE_DEFAULTS[field] ?? null;
 }
@@ -300,6 +351,7 @@ module.exports = {
   normalizeMatchFormat,
   freezeMatchFormat,
   readMatchFormat,
+  readMatchFormatField,
   SAFE_DEFAULTS,
   FIELD_WHITELIST,
 };

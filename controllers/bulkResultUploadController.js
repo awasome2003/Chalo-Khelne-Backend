@@ -108,8 +108,9 @@ async function processPlayerMatch(matchId, sets, rowIndex) {
   if (!match) return { row: rowIndex, error: `Match ${matchId} not found` };
   if (match.status === "COMPLETED") return { row: rowIndex, error: `Match ${matchId} already completed`, skipped: true };
 
-  const maxSets = match.matchFormat?.maxSets || 5;
-  const setsToWin = match.matchFormat?.setsToWin || Math.ceil(maxSets / 2);
+  if (!match.matchFormat) return { row: rowIndex, error: `Match ${matchId} has no format configuration` };
+  const maxSets = match.matchFormat.maxSets || match.matchFormat.totalSets || 5;
+  const setsToWin = match.matchFormat.setsToWin || Math.ceil(maxSets / 2);
 
   const validation = validateWinner(sets, setsToWin);
   if (!validation.valid) return { row: rowIndex, error: validation.error };

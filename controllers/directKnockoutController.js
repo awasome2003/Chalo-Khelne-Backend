@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
 const Tournament = require("../Modal/Tournament");
 const TopPlayers = require("../Modal/TopPlayers");
+const { readMatchFormat } = require("../utils/matchFormatUtils");
 
 // 🎯 Power of 2 Validation - The Foundation
 const isPowerOfTwo = (n) => {
@@ -773,8 +774,11 @@ const completeGame = async (req, res) => {
       return res.status(400).json({ success: false, message: `Set ${match.currentSet} is already completed` });
     }
 
+    // Read validated match format (throws if missing — match was not properly initialized)
+    const fmt = readMatchFormat(match);
+
     // Guard: check if set is already decided before adding game
-    const gamesToWinCheck = match.matchFormat?.gamesToWin || 3;
+    const gamesToWinCheck = fmt.gamesToWin;
     const existingP1Games = (currentSet.games || []).filter((g) => g.winner?.playerName === match.player1.playerName).length;
     const existingP2Games = (currentSet.games || []).filter((g) => g.winner?.playerName === match.player2.playerName).length;
     if (existingP1Games >= gamesToWinCheck || existingP2Games >= gamesToWinCheck) {
@@ -808,7 +812,7 @@ const completeGame = async (req, res) => {
     const p1Games = currentSet.games.filter((g) => g.winner?.playerName === match.player1.playerName).length;
     const p2Games = currentSet.games.filter((g) => g.winner?.playerName === match.player2.playerName).length;
 
-    const gamesToWin = match.matchFormat?.gamesToWin || 3;
+    const gamesToWin = fmt.gamesToWin;
 
     if (p1Games >= gamesToWin || p2Games >= gamesToWin) {
       // Set complete
@@ -820,7 +824,7 @@ const completeGame = async (req, res) => {
       const p1Sets = match.sets.filter((s) => s.winner?.playerName === match.player1.playerName).length;
       const p2Sets = match.sets.filter((s) => s.winner?.playerName === match.player2.playerName).length;
 
-      const setsToWin = match.matchFormat?.setsToWin || 3;
+      const setsToWin = fmt.setsToWin;
 
       if (p1Sets >= setsToWin || p2Sets >= setsToWin) {
         // Match complete
@@ -909,7 +913,8 @@ const bulkUploadScores = async (req, res) => {
         if (!match) { errors.push({ matchId, error: "Match not found" }); continue; }
         if (match.status === "COMPLETED") { errors.push({ matchId, error: "Already completed" }); continue; }
 
-        const setsToWin = match.matchFormat?.setsToWin || 3;
+        const byeFmt = readMatchFormat(match);
+        const setsToWin = byeFmt.setsToWin;
         let p1SetsWon = 0, p2SetsWon = 0;
         let matchDone = false;
 
