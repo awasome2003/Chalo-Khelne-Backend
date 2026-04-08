@@ -4,7 +4,7 @@ const Booking = require("../Modal/BookingModel");
 
 exports.createBookingGroup = async (req, res) => {
   try {
-    const { tournamentId, groupName, players, category } = req.body;
+    const { tournamentId, groupName, players, category, round, roundType } = req.body;
 
     // 1. Validate input
     if (!tournamentId || !groupName || !players || players.length === 0 || !category) {
@@ -23,31 +23,46 @@ exports.createBookingGroup = async (req, res) => {
       });
     }
 
-    // 3. Validate players exist (from Booking)
+    // 3. Build player docs — handle both Round 1 (booking IDs) and Round 2 (player objects)
     const playerDocs = [];
-    for (let playerId of players) {
-      const booking = await Booking.findById(playerId).populate("userId");
-      if (!booking) {
-        return res.status(404).json({
-          success: false,
-          message: `Booking with ID ${playerId} not found`,
+    const isRound2 = round === 2;
+
+    if (isRound2) {
+      // Round 2: players are already { playerId, userName } objects from Top Players
+      for (const player of players) {
+        playerDocs.push({
+          playerId: player.playerId,
+          userName: player.userName || player.playerName || "Player",
+          bookingDate: player.bookingDate || new Date(),
+          joinedAt: player.joinedAt || new Date(),
         });
       }
-
-      // push user info into group players
-      playerDocs.push({
-        playerId: booking.userId._id,
-        userName: booking.userId.name,
-        bookingDate: booking.bookingDate || null,
-      });
+    } else {
+      // Round 1: players are booking IDs — lookup from Booking collection
+      for (let playerId of players) {
+        const booking = await Booking.findById(playerId).populate("userId");
+        if (!booking) {
+          return res.status(404).json({
+            success: false,
+            message: `Booking with ID ${playerId} not found`,
+          });
+        }
+        playerDocs.push({
+          playerId: booking.userId._id,
+          userName: booking.userId.name,
+          bookingDate: booking.bookingDate || null,
+        });
+      }
     }
 
-    // 4. Create and save new booking group
+    // 4. Create and save new booking group (with round info)
     const newGroup = new BookingGroup({
       tournamentId,
       groupName,
       category,
       players: playerDocs,
+      round: round || 1,
+      roundType: roundType || "group_stage",
     });
 
     await newGroup.save();

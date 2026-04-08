@@ -28,15 +28,6 @@ const BookingSchema = new mongoose.Schema(
     },
     tournamentType: {
       type: String,
-      enum: [
-        "Team Knockouts",
-        "Group Stage",
-        "Single Elimination",
-        "Double Elimination",
-        "Round Robin",
-        "knockout",
-        "group stage"
-      ],
       required: true,
       lowercase: true,
     },
@@ -64,6 +55,7 @@ const BookingSchema = new mongoose.Schema(
     cancellationDate: Date,
     team: {
       name: String,
+      // Legacy positions (A/B/C) — kept for backward compatibility
       positions: {
         A: String, // Captain
         B: String, // First Player
@@ -72,22 +64,31 @@ const BookingSchema = new mongoose.Schema(
       captain: {
         name: String,
         id: String,
-        profileImage: String, // Captain Profile Image
+        profileImage: String,
       },
       players: [
         {
           name: String,
           id: String,
-          profileImage: String, // Player Profile Image
+          profileImage: String,
         },
       ],
       substitutes: [
         {
           name: String,
           id: String,
-          profileImage: String, // Substitute Profile Image
+          profileImage: String,
         },
       ],
+      // Multi-sport roster — flexible player list for any team size
+      roster: [{
+        userId: String,
+        name: String,
+        role: { type: String, enum: ["captain", "player", "substitute"], default: "player" },
+        position: String, // Sport-specific position
+        profileImage: String,
+      }],
+      teamSize: Number, // Expected team size for this sport
     },
     selectedCategories: [
       {
@@ -100,6 +101,11 @@ const BookingSchema = new mongoose.Schema(
     ],
     employeeId: {
       type: String,
+    },
+    // Sport-specific booking data (dynamic fields per sport type)
+    customFields: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
   },
   {

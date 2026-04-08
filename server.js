@@ -28,6 +28,7 @@ const Search = require("./routes/search")
 const BulkUpload = require("./routes/bulkUpload")
 const sportRoutes = require("./routes/sportRoutes");
 const sportRuleBookRoutes = require("./routes/sportRuleBookRoutes");
+const debugRoutes = require("./routes/debugRoutes");
 const ManagerPayment = require("./routes/managerPaymentRoutes")
 const corporateRoutes = require("./routes/corporateRoutes");
 const inquiryRoutes = require("./routes/inquiryRoutes");
@@ -41,6 +42,8 @@ const rbacRoutes = require("./routes/rbacRoutes");
 const vendorRoutes = require("./routes/vendorRoutes");
 const invitationRoutes = require("./routes/invitationRoutes");
 const couponRoutes = require("./routes/couponRoutes");
+const staffApplicationRoutes = require("./routes/staffApplicationRoutes");
+const playerStatsRoutes = require("./routes/playerStatsRoutes");
 const { Server } = require("socket.io");
 const setupSocket = require("./socket/socketHandler");
 
@@ -134,6 +137,7 @@ app.use("/api/search", Search)
 app.use("/api/bulk-upload", BulkUpload)
 app.use("/api/sports", sportRoutes);
 app.use("/api/sport-rules", sportRuleBookRoutes);
+app.use("/api/debug", debugRoutes);
 app.use("/api/payments", ManagerPayment);// Error handling middleware
 app.use("/api/corporate", corporateRoutes);
 app.use("/api/inquiries", inquiryRoutes);
@@ -147,6 +151,8 @@ app.use("/api/roles", rbacRoutes);
 app.use("/api/equipment", vendorRoutes);
 app.use("/api/invitations", invitationRoutes);
 app.use("/api/coupons", couponRoutes);
+app.use("/api/staff-applications", staffApplicationRoutes);
+app.use("/api/player-stats", playerStatsRoutes);
 app.use("/api/group-chat", require("./routes/groupChatRoutes"));
 app.use((err, req, res, next) => {
   console.error(err.stack);

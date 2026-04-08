@@ -21,7 +21,15 @@ router.post(
 // Certificate management
 router.post(
   "/certificate/:id",
-  uploadMiddleware.single("certificate"),
+  (req, res, next) => {
+    uploadMiddleware.single("certificate")(req, res, (err) => {
+      if (err) {
+        console.error("[CERT_UPLOAD] Multer error:", err.message, "| Code:", err.code);
+        return res.status(400).json({ success: false, message: `Upload failed: ${err.message}` });
+      }
+      next();
+    });
+  },
   trainerController.addCertificate
 );
 router.delete("/certificate/:id/:certId", trainerController.removeCertificate);

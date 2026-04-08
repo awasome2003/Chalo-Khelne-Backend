@@ -5,6 +5,7 @@ const Booking = require("../Modal/BookingModel");
 const Tournament = require("../Modal/Tournament");
 const mongoose = require("mongoose");
 const { getFormat, resolveSetPlayers } = require("../Config/teamKnockoutFormats");
+const { readMatchResult } = require("../utils/matchUtils");
 
 // ================================
 // HELPER FUNCTIONS
@@ -268,11 +269,13 @@ const getSetsRequiredToWin = (formatOrId, match) => {
     if (numMatch) return Math.ceil(parseInt(numMatch[1]) / 2);
   }
 
-  return 3; // Safe default
+  // Fallback: compute from format string or use 1 as sport-neutral minimum
+  return 1;
 };
 
 const getGamesRequiredToWin = (match) => {
-  return match?.gameRules?.gamesToWin || 2;
+  // Read from gameRules (frozen at match creation) — no hardcoded sport defaults
+  return match?.gameRules?.gamesToWin || 1;
 };
 
 const teamKnockoutController = {
@@ -306,11 +309,11 @@ const teamKnockoutController = {
       const tournament = await Tournament.findById(tournamentId).lean();
       const tf = tournament?.matchFormat || {};
       const gameRulesFromTournament = {
-        gamesPerSet: tf.totalGames || 3,
-        gamesToWin: tf.gamesToWin || 2,
-        pointsToWinGame: tf.pointsToWinGame || 11,
-        marginToWin: tf.marginToWin || 2,
-        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : true,
+        gamesPerSet: tf.totalGames || null,
+        gamesToWin: tf.gamesToWin || null,
+        pointsToWinGame: tf.pointsToWinGame || null,
+        marginToWin: tf.marginToWin ?? null,
+        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : false,
         maxPointsCap: tf.maxPointsCap || null,
       };
 
@@ -697,11 +700,11 @@ const teamKnockoutController = {
       const tournament = await Tournament.findById(tournamentId).lean();
       const tf = tournament?.matchFormat || {};
       const gameRulesFromTournament = {
-        gamesPerSet: tf.totalGames || 3,
-        gamesToWin: tf.gamesToWin || 2,
-        pointsToWinGame: tf.pointsToWinGame || 11,
-        marginToWin: tf.marginToWin || 2,
-        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : true,
+        gamesPerSet: tf.totalGames || null,
+        gamesToWin: tf.gamesToWin || null,
+        pointsToWinGame: tf.pointsToWinGame || null,
+        marginToWin: tf.marginToWin ?? null,
+        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : false,
         maxPointsCap: tf.maxPointsCap || null,
       };
 
@@ -819,7 +822,7 @@ const teamKnockoutController = {
       // Get all teams
       const teams = await TeamKnockoutTeams.find({ tournamentId }).lean();
 
-      // Build standings
+      // Build standings — sport-neutral using readMatchResult
       const standings = {};
       teams.forEach((team) => {
         standings[team._id.toString()] = {
@@ -829,6 +832,11 @@ const teamKnockoutController = {
           played: 0,
           won: 0,
           lost: 0,
+          roundsWon: 0,
+          roundsLost: 0,
+          scoreFor: 0,
+          scoreAgainst: 0,
+          // Legacy aliases for backward compatibility
           setsWon: 0,
           setsLost: 0,
           gamesWon: 0,
@@ -837,7 +845,7 @@ const teamKnockoutController = {
         };
       });
 
-      // Calculate from matches
+      // Calculate from matches using sport-neutral abstraction
       matches.forEach((match) => {
         if (match.status !== "COMPLETED") return;
 
@@ -850,18 +858,45 @@ const teamKnockoutController = {
         standings[t1Id].played++;
         standings[t2Id].played++;
 
-        // Sets
-        standings[t1Id].setsWon += match.setsWon?.home || 0;
-        standings[t1Id].setsLost += match.setsWon?.away || 0;
-        standings[t2Id].setsWon += match.setsWon?.away || 0;
-        standings[t2Id].setsLost += match.setsWon?.home || 0;
+        // Use readMatchResult for sport-neutral score extraction
+        try {
+          const result = readMatchResult(match);
+          const homeScore = result.player1Score || 0;
+          const awayScore = result.player2Score || 0;
 
-        // Games from sets
+          standings[t1Id].roundsWon += homeScore;
+          standings[t1Id].roundsLost += awayScore;
+          standings[t2Id].roundsWon += awayScore;
+          standings[t2Id].roundsLost += homeScore;
+
+          // Legacy aliases
+          standings[t1Id].setsWon += homeScore;
+          standings[t1Id].setsLost += awayScore;
+          standings[t2Id].setsWon += awayScore;
+          standings[t2Id].setsLost += homeScore;
+        } catch (e) {
+          // Fallback: use raw setsWon if readMatchResult fails (legacy data)
+          standings[t1Id].setsWon += match.setsWon?.home || 0;
+          standings[t1Id].setsLost += match.setsWon?.away || 0;
+          standings[t2Id].setsWon += match.setsWon?.away || 0;
+          standings[t2Id].setsLost += match.setsWon?.home || 0;
+          standings[t1Id].roundsWon += match.setsWon?.home || 0;
+          standings[t1Id].roundsLost += match.setsWon?.away || 0;
+          standings[t2Id].roundsWon += match.setsWon?.away || 0;
+          standings[t2Id].roundsLost += match.setsWon?.home || 0;
+        }
+
+        // Games from sets (sub-round detail — keep for backward compat)
         (match.sets || []).forEach((set) => {
           standings[t1Id].gamesWon += set.gamesWon?.home || 0;
           standings[t1Id].gamesLost += set.gamesWon?.away || 0;
           standings[t2Id].gamesWon += set.gamesWon?.away || 0;
           standings[t2Id].gamesLost += set.gamesWon?.home || 0;
+          // Also accumulate into scoreFor/Against
+          standings[t1Id].scoreFor += set.gamesWon?.home || 0;
+          standings[t1Id].scoreAgainst += set.gamesWon?.away || 0;
+          standings[t2Id].scoreFor += set.gamesWon?.away || 0;
+          standings[t2Id].scoreAgainst += set.gamesWon?.home || 0;
         });
 
         // Winner
@@ -876,13 +911,13 @@ const teamKnockoutController = {
         }
       });
 
-      // Sort: points → set diff → game diff
+      // Sort: points → round diff → score diff (sport-neutral)
       const sorted = Object.values(standings).sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
-        const aDiff = a.setsWon - a.setsLost;
-        const bDiff = b.setsWon - b.setsLost;
+        const aDiff = a.roundsWon - a.roundsLost;
+        const bDiff = b.roundsWon - b.roundsLost;
         if (bDiff !== aDiff) return bDiff - aDiff;
-        return (b.gamesWon - b.gamesLost) - (a.gamesWon - a.gamesLost);
+        return (b.scoreFor - b.scoreAgainst) - (a.scoreFor - a.scoreAgainst);
       });
 
       const totalMatches = matches.length;
@@ -1402,11 +1437,11 @@ const teamKnockoutController = {
       const tournament = await Tournament.findById(tournamentId).lean();
       const tf = tournament?.matchFormat || {};
       const gameRulesFromTournament = {
-        gamesPerSet: tf.totalGames || 3,
-        gamesToWin: tf.gamesToWin || 2,
-        pointsToWinGame: tf.pointsToWinGame || 11,
-        marginToWin: tf.marginToWin || 2,
-        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : true,
+        gamesPerSet: tf.totalGames || null,
+        gamesToWin: tf.gamesToWin || null,
+        pointsToWinGame: tf.pointsToWinGame || null,
+        marginToWin: tf.marginToWin ?? null,
+        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : false,
         maxPointsCap: tf.maxPointsCap || null,
       }
 

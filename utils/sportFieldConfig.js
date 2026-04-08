@@ -56,8 +56,8 @@ function getVisibleFields(sport) {
   const hasValue = (key) => mf[key] !== null && mf[key] !== undefined;
   const push = (key) => { if (!visible.includes(key)) visible.push(key); };
 
-  // Rule 1: Sets-games-points scoring
-  if (scoringType === "sets-games-points") {
+  // Rule 1: Sets-based scoring (TT, Badminton, Tennis, Pickleball, Volleyball, Squash)
+  if (scoringType === "sets") {
     if (hasValue("totalSets"))        push("totalSets");
     if (hasValue("pointsPerSet"))     push("pointsPerSet");
     if (hasValue("gamesPerSet"))      push("gamesPerSet");
@@ -73,26 +73,26 @@ function getVisibleFields(sport) {
     if (hasValue("serviceRules"))      push("serviceRules");
   }
 
-  // Rule 2: Innings-overs scoring
-  if (scoringType === "innings-overs") {
+  // Rule 2: Innings-based scoring (Cricket)
+  if (scoringType === "innings") {
     if (hasValue("oversCount"))   push("oversCount");
     if (hasValue("inningsCount")) push("inningsCount");
   }
 
   // Rule 3: Halves (Football, Hockey, Kabaddi, or any future sport)
-  if (hasValue("halvesCount") || scoringType === "halves-goals") {
+  if (hasValue("halvesCount") || scoringType === "time") {
     if (hasValue("halvesCount"))    push("halvesCount");
     if (hasValue("halvesDuration")) push("halvesDuration");
   }
 
   // Rule 4: Quarters (Basketball, or any future sport)
-  if (hasValue("quartersCount") || scoringType === "quarters-points") {
+  if (hasValue("quartersCount") || scoringType === "time") {
     if (hasValue("quartersCount"))    push("quartersCount");
     if (hasValue("quartersDuration")) push("quartersDuration");
   }
 
-  // Rule 5: single-score / custom — show any non-null, non-false-boolean fields
-  if (scoringType === "single-score" || scoringType === "custom") {
+  // Rule 5: single / custom — show any non-null, non-false-boolean fields
+  if (scoringType === "single") {
     for (const key of Object.keys(FIELD_META)) {
       if (hasValue(key) && !visible.includes(key)) {
         // Skip boolean fields that are false (no point showing disabled toggles)

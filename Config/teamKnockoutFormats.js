@@ -107,6 +107,16 @@ const TEAM_KNOCKOUT_FORMATS = [
     ],
   },
   {
+    id: "doubles_3p_bo5_v2", name: "3-Player Mixed — Best of 5 (Classic)", totalSets: 5, setsToWin: 3, hasDoubles: true, minPlayers: 3,
+    sets: [
+      { setNumber: 1, type: "singles", homePos: ["A"], awayPos: ["X"] },
+      { setNumber: 2, type: "singles", homePos: ["B"], awayPos: ["Y"] },
+      { setNumber: 3, type: "doubles", homePos: ["A", "B"], awayPos: ["X", "Z"] },
+      { setNumber: 4, type: "singles", homePos: ["A"], awayPos: ["Y"] },
+      { setNumber: 5, type: "singles", homePos: ["C"], awayPos: ["Z"] },
+    ],
+  },
+  {
     id: "doubles_3p_bo7", name: "3-Player Mixed — Best of 7", totalSets: 7, setsToWin: 4, hasDoubles: true, minPlayers: 3,
     sets: [
       { setNumber: 1, type: "singles", homePos: ["A"], awayPos: ["A"] },

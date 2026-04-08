@@ -4,7 +4,8 @@ const Tournament = require("../Modal/Tournament");
 const BookingGroup = require("../Modal/bookinggroup");
 const Booking = require("../Modal/BookingModel");
 const Referee = require("../Modal/Referee");
-const { freezeMatchFormat } = require("../utils/matchFormatUtils");
+const { freezeMatchFormat, getScoringType } = require("../utils/matchFormatUtils");
+const { createGroupStageMatch } = require("../factories/MatchFactory");
 
 // Create Matches — already provided
 const createMatches = async (req, res) => {
@@ -32,46 +33,10 @@ const createMatches = async (req, res) => {
     // Collect all valid playerIds from group
     const validPlayerIds = new Set(groupExists.players.map(p => p.playerId.toString()));
 
-    // Resolve Match Format
-    let detailedMatchFormat = {};
-
-    if (groupExists.matchFormat && groupExists.matchFormat.totalSets) {
-      // Use group-specific format
-      detailedMatchFormat = {
-        maxSets: groupExists.matchFormat.totalSets,
-        setsToWin: groupExists.matchFormat.setsToWin || Math.ceil(groupExists.matchFormat.totalSets / 2),
-        maxGames: groupExists.matchFormat.totalGames || 5,
-        gamesToWin: groupExists.matchFormat.gamesToWin || 3,
-        pointsToWinGame: groupExists.matchFormat.pointsToWinGame || 11,
-        marginToWin: groupExists.matchFormat.marginToWin || 2,
-        deuceRule: groupExists.matchFormat.deuceRule !== undefined ? groupExists.matchFormat.deuceRule : true
-      };
-    } else if (tournamentExists.matchFormat && tournamentExists.matchFormat.totalSets) {
-      // Use tournament-level matchFormat (derived from sportRules at creation)
-      const tf = tournamentExists.matchFormat;
-      detailedMatchFormat = {
-        maxSets: tf.totalSets,
-        setsToWin: tf.setsToWin || Math.ceil(tf.totalSets / 2),
-        maxGames: tf.totalGames || 5,
-        gamesToWin: tf.gamesToWin || 3,
-        pointsToWinGame: tf.pointsToWinGame || 11,
-        marginToWin: tf.marginToWin || 2,
-        maxPointsCap: tf.maxPointsCap || null,
-        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : true
-      };
-    } else {
-      // Last resort fallback to tournament setFormat
-      const sets = parseInt(tournamentExists.setFormat) || 3;
-      detailedMatchFormat = {
-        maxSets: sets,
-        setsToWin: Math.ceil(sets / 2),
-        maxGames: 5,
-        gamesToWin: 3,
-        pointsToWinGame: 11,
-        marginToWin: 2,
-        deuceRule: true
-      };
-    }
+    // Resolve match format override: group-level takes priority over tournament-level
+    const matchFormatOverride = (groupExists.matchFormat && (groupExists.matchFormat.totalSets || groupExists.matchFormat.scoringType))
+      ? groupExists.matchFormat
+      : null;
 
     const matchDocuments = [];
 
@@ -112,18 +77,18 @@ const createMatches = async (req, res) => {
         }
       }
 
-      matchDocuments.push({
+      matchDocuments.push(createGroupStageMatch({
+        tournament: tournamentExists,
         tournamentId,
         groupId,
-        matchNumber: matchNumber.toString(),
+        matchNumber,
         player1,
         player2,
         referee: refereeData,
         courtNumber,
-        startTime: new Date(startTime),
-        matchFormat: detailedMatchFormat,
-        status: "SCHEDULED"
-      });
+        startTime,
+        matchFormatOverride,
+      }));
     }
 
     const createdMatches = await Match.insertMany(matchDocuments);
@@ -269,6 +234,28 @@ const deleteMatch = async (req, res) => {
   }
 };
 
+// Delete all matches for a specific group
+const deleteGroupMatches = async (req, res) => {
+  try {
+    const { tournamentId, groupId } = req.params;
+
+    if (!tournamentId || !groupId) {
+      return res.status(400).json({ success: false, message: "Tournament ID and Group ID are required" });
+    }
+
+    const result = await Match.deleteMany({ tournamentId, groupId });
+
+    res.status(200).json({
+      success: true,
+      message: `Deleted ${result.deletedCount} matches from this group`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("Error deleting group matches:", error);
+    res.status(500).json({ success: false, message: "Failed to delete group matches", error: error.message });
+  }
+};
+
 // Auto-generate all round-robin matches for a group
 const generateGroupMatches = async (req, res) => {
   try {
@@ -308,43 +295,10 @@ const generateGroupMatches = async (req, res) => {
       });
     }
 
-    // Resolve match format (same logic as createMatches)
-    let detailedMatchFormat = {};
-
-    if (group.matchFormat && group.matchFormat.totalSets) {
-      detailedMatchFormat = {
-        maxSets: group.matchFormat.totalSets,
-        setsToWin: group.matchFormat.setsToWin || Math.ceil(group.matchFormat.totalSets / 2),
-        maxGames: group.matchFormat.totalGames || 5,
-        gamesToWin: group.matchFormat.gamesToWin || 3,
-        pointsToWinGame: group.matchFormat.pointsToWinGame || 11,
-        marginToWin: group.matchFormat.marginToWin || 2,
-        deuceRule: group.matchFormat.deuceRule !== undefined ? group.matchFormat.deuceRule : true,
-      };
-    } else if (tournament.matchFormat && tournament.matchFormat.totalSets) {
-      const tf = tournament.matchFormat;
-      detailedMatchFormat = {
-        maxSets: tf.totalSets,
-        setsToWin: tf.setsToWin || Math.ceil(tf.totalSets / 2),
-        maxGames: tf.totalGames || 5,
-        gamesToWin: tf.gamesToWin || 3,
-        pointsToWinGame: tf.pointsToWinGame || 11,
-        marginToWin: tf.marginToWin || 2,
-        maxPointsCap: tf.maxPointsCap || null,
-        deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : true,
-      };
-    } else {
-      const sets = parseInt(tournament.setFormat) || 3;
-      detailedMatchFormat = {
-        maxSets: sets,
-        setsToWin: Math.ceil(sets / 2),
-        maxGames: 5,
-        gamesToWin: 3,
-        pointsToWinGame: 11,
-        marginToWin: 2,
-        deuceRule: true,
-      };
-    }
+    // Resolve match format override: group-level takes priority
+    const matchFormatOverride2 = (group.matchFormat && (group.matchFormat.totalSets || group.matchFormat.scoringType))
+      ? group.matchFormat
+      : null;
 
     // Determine match type from tournament format
     const isDoubles = tournament.groupStageFormat === "Doubles";
@@ -374,11 +328,11 @@ const generateGroupMatches = async (req, res) => {
       for (let i = 0; i < pairs.length; i++) {
         for (let j = i + 1; j < pairs.length; j++) {
           matchCount++;
-          matchDocuments.push({
+          const doc = createGroupStageMatch({
+            tournament,
             tournamentId,
             groupId,
             matchNumber: `M${matchCount}`,
-            matchType: "doubles",
             player1: {
               playerId: pairs[i].lead.playerId,
               userName: pairs[i].lead.userName,
@@ -397,9 +351,10 @@ const generateGroupMatches = async (req, res) => {
             },
             courtNumber: courtNumber || "1",
             startTime: new Date(baseTime.getTime() + (matchCount - 1) * interval * 60000),
-            matchFormat: detailedMatchFormat,
-            status: "SCHEDULED",
+            matchFormatOverride: matchFormatOverride2,
           });
+          doc.matchType = "doubles";
+          matchDocuments.push(doc);
         }
       }
     } else {
@@ -407,11 +362,11 @@ const generateGroupMatches = async (req, res) => {
       for (let i = 0; i < players.length; i++) {
         for (let j = i + 1; j < players.length; j++) {
           matchCount++;
-          matchDocuments.push({
+          const doc = createGroupStageMatch({
+            tournament,
             tournamentId,
             groupId,
             matchNumber: `M${matchCount}`,
-            matchType: "singles",
             player1: {
               playerId: players[i].playerId,
               userName: players[i].userName,
@@ -422,9 +377,10 @@ const generateGroupMatches = async (req, res) => {
             },
             courtNumber: courtNumber || "1",
             startTime: new Date(baseTime.getTime() + (matchCount - 1) * interval * 60000),
-            matchFormat: detailedMatchFormat,
-            status: "SCHEDULED",
+            matchFormatOverride: matchFormatOverride2,
           });
+          doc.matchType = "singles";
+          matchDocuments.push(doc);
         }
       }
     }
@@ -576,4 +532,5 @@ module.exports = {
   getMatchesByGroup,
   updateMatch,
   deleteMatch,
+  deleteGroupMatches,
 };

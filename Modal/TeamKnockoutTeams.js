@@ -19,11 +19,23 @@ const teamKnockoutTeamsSchema = new mongoose.Schema(
       required: true,
     },
 
+    // Legacy positions (A/B/C) — kept for backward compatibility with TT team formats
     playerPositions: {
       A: { type: String, required: true }, // Captain
       B: { type: String, required: true }, // Player 1
       C: { type: String, required: false }, // Player 2 (Optional for 2-player teams)
     },
+
+    // Multi-sport roster — flexible player list for any sport (Cricket: 11, Football: 11+, etc.)
+    roster: [{
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      name: { type: String, required: true },
+      role: { type: String, enum: ["captain", "player", "substitute"], default: "player" },
+      position: { type: String, default: null }, // Sport-specific: "bowler", "goalkeeper", etc.
+      _id: false,
+    }],
+
+    teamSize: { type: Number, default: null }, // Expected team size for this sport
 
     substitutes: {
       type: [String],

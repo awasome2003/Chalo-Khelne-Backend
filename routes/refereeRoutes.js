@@ -3,6 +3,7 @@ const router = express.Router();
 
 // Import the controller for referee-related routes
 const refereeController = require("../controllers/refereeController");
+const { uploadMiddleware } = require("../middleware/uploads");
 
 // Import the controller for referee request-related routes
 const {
@@ -18,7 +19,15 @@ router.get("/profile/:id", refereeController.getRefereeProfile);
 
 // Protected routes (auth required)
 router.put("/profile/:id", refereeController.updateRefereeProfile);
-router.post("/certificate/:id", refereeController.addCertificate);
+router.post("/certificate/:id", (req, res, next) => {
+  uploadMiddleware.single("certificate")(req, res, (err) => {
+    if (err) {
+      console.error("[CERT_UPLOAD_REF] Multer error:", err.message);
+      return res.status(400).json({ success: false, message: `Upload failed: ${err.message}` });
+    }
+    next();
+  });
+}, refereeController.addCertificate);
 router.delete("/certificate/:id/:certId", refereeController.removeCertificate);
 router.get("/assignments/:id", refereeController.getRefereeAssignments);
 router.get("/assignments/completed/:id", refereeController.getCompletedAssignments);

@@ -1,4 +1,14 @@
+/**
+ * GroupStageMatch (historically "Tournnamentmatch" — filename preserved for backward compat).
+ *
+ * CONSOLIDATION NOTE: This is the canonical schema for group stage matches.
+ * All match creation MUST go through MatchFactory.createGroupStageMatch().
+ * All score reads MUST go through readMatchResult(match).
+ *
+ * Required fields for multi-sport: scoringType, matchResult, matchFormat
+ */
 const mongoose = require("mongoose");
+const { addFactoryEnforcement } = require("./shared/BaseMatchFields");
 
 const matchSchema = new mongoose.Schema({
   tournamentId: {
@@ -87,18 +97,18 @@ const matchSchema = new mongoose.Schema({
       comment: "Maximum games per set"
     },
 
-    // Points Configuration
+    // Points Configuration — no sport-specific defaults
     pointsToWinGame: {
       type: Number,
-      default: 11,
+      default: null,
       min: 1,
-      comment: "Points to win a game (table tennis standard: 11)"
+      comment: "Points to win a game (set by tournament config, not hardcoded)"
     },
     marginToWin: {
       type: Number,
-      default: 2,
+      default: null,
       min: 1,
-      comment: "Minimum point margin to win (deuce rule)"
+      comment: "Minimum point margin to win (set by tournament config)"
     },
 
     // Rules Configuration
@@ -177,7 +187,22 @@ const matchSchema = new mongoose.Schema({
     }]
   }],
 
-  // Match Result
+  // Sport identification
+  sportName: { type: String, default: null },
+
+  // Multi-sport scoring type
+  scoringType: {
+    type: String,
+    default: null,
+  },
+
+  // Normalized multi-sport result (populated by scoring engine + migration)
+  matchResult: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
+
+  // Match Result (legacy — kept for backward compat)
   result: {
     winner: {
       playerId: {
@@ -197,6 +222,9 @@ const matchSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// Runtime enforcement: blocks direct instantiation (must use MatchFactory)
+addFactoryEnforcement(matchSchema);
 
 const Match = mongoose.model("Match", matchSchema);
 

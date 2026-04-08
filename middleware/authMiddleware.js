@@ -71,15 +71,23 @@ exports.allowUserOrManager = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const id = decoded.id || decoded.userId; // Support both token formats
 
-    let user = await User.findById(decoded.id);
+    // SuperAdmin — allow directly
+    if (decoded.role === "superadmin") {
+      req.user = { _id: id, role: "superadmin", email: decoded.email };
+      req.userRole = "SuperAdmin";
+      return next();
+    }
+
+    let user = await User.findById(id);
     if (user) {
       req.user = user;
       req.userRole = "User";
       return next();
     }
 
-    const manager = await Manager.findById(decoded.id);
+    const manager = await Manager.findById(id);
     if (manager) {
       req.user = manager;
       req.userRole = "Manager";

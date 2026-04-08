@@ -1,4 +1,13 @@
+/**
+ * DirectKnockoutMatch — Standalone and post-group knockout matches.
+ *
+ * All match creation MUST go through MatchFactory.createKnockoutMatch().
+ * All score reads MUST go through readMatchResult(match).
+ *
+ * Required fields for multi-sport: scoringType, matchResult, matchFormat
+ */
 const mongoose = require("mongoose");
+const { addFactoryEnforcement } = require("./shared/BaseMatchFields");
 
 const DirectKnockoutMatchSchema = new mongoose.Schema({
   // Tournament Context
@@ -120,18 +129,18 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
       comment: "Maximum games per set"
     },
 
-    // Points Configuration
+    // Points Configuration — no sport-specific defaults
     pointsToWinGame: {
       type: Number,
-      default: 11,
+      default: null,
       min: 1,
-      comment: "Points to win a game (table tennis standard: 11)"
+      comment: "Points to win a game (set by tournament config, not hardcoded)"
     },
     marginToWin: {
       type: Number,
-      default: 2,
+      default: null,
       min: 1,
-      comment: "Minimum point margin to win (deuce rule)"
+      comment: "Minimum point margin to win (set by tournament config)"
     },
 
     // Rules Configuration
@@ -210,7 +219,22 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
     }]
   }],
 
-  // Match Result
+  // Sport identification
+  sportName: { type: String, default: null },
+
+  // Multi-sport scoring type
+  scoringType: {
+    type: String,
+    default: null,
+  },
+
+  // Normalized multi-sport result (populated by scoring engine + migration)
+  matchResult: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
+
+  // Match Result (legacy — kept for backward compat)
   result: {
     winner: {
       playerId: {
@@ -251,6 +275,9 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// Runtime enforcement: blocks direct instantiation (must use MatchFactory)
+addFactoryEnforcement(DirectKnockoutMatchSchema);
 
 // Indexes for better query performance
 DirectKnockoutMatchSchema.index({ tournamentId: 1, round: 1, matchNumber: 1 });

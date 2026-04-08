@@ -2,6 +2,7 @@ const KnockoutMatch = require("../Modal/KnockoutMatch");
 const Tournament = require("../Modal/Tournament");
 const User = require("../Modal/User");
 const mongoose = require("mongoose");
+const { createLegacyKnockoutMatch } = require("../factories/MatchFactory");
 
 // Get knockout matches by tournament and type
 exports.getKnockoutMatches = async (req, res) => {
@@ -222,6 +223,9 @@ exports.generateNextRound = async (req, res) => {
       6: "Final"
     };
 
+    // Load tournament for sport config (MatchFactory needs it)
+    const tournament = await Tournament.findById(tournamentId);
+
     const nextRoundMatches = [];
     let bracketPosition = 1;
 
@@ -229,70 +233,39 @@ exports.generateNextRound = async (req, res) => {
       const player1 = winners[i];
       const player2 = winners[i + 1];
 
-      // Handle odd number of winners
       if (!player2) {
-        // Give bye to last player
-        const byeMatch = new KnockoutMatch({
+        // BYE match — odd number of winners
+        const byeDoc = createLegacyKnockoutMatch({
+          tournament,
           tournamentId,
           matchType,
           round: nextRound,
           roundName: roundNames[nextRound] || `Round ${nextRound}`,
           bracketPosition,
-          player1: {
-            playerId: player1.playerId,
-            playerName: player1.playerName,
-            playerType: player1.playerType
-          },
-          player2: {
-            playerId: new mongoose.Types.ObjectId(),
-            playerName: "BYE",
-            playerType: "general"
-          },
+          player1: { playerId: player1.playerId, playerName: player1.playerName, playerType: player1.playerType },
+          player2: { playerId: new mongoose.Types.ObjectId(), playerName: "BYE", playerType: "general" },
           category: category || "Open",
           status: "BYE",
           isBye: true,
-          winner: {
-            playerId: player1.playerId,
-            playerName: player1.playerName,
-            playerType: player1.playerType
-          },
-          scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          scheduledTime: {
-            startTime: "10:00",
-            endTime: "11:00"
-          }
+          winner: { playerId: player1.playerId, playerName: player1.playerName, playerType: player1.playerType },
         });
-
+        const byeMatch = new KnockoutMatch(byeDoc);
         await byeMatch.save();
         nextRoundMatches.push(byeMatch);
       } else {
         // Regular match
-        const match = new KnockoutMatch({
+        const matchDoc = createLegacyKnockoutMatch({
+          tournament,
           tournamentId,
           matchType,
           round: nextRound,
           roundName: roundNames[nextRound] || `Round ${nextRound}`,
           bracketPosition,
-          player1: {
-            playerId: player1.playerId,
-            playerName: player1.playerName,
-            playerType: player1.playerType
-          },
-          player2: {
-            playerId: player2.playerId,
-            playerName: player2.playerName,
-            playerType: player2.playerType
-          },
+          player1: { playerId: player1.playerId, playerName: player1.playerName, playerType: player1.playerType },
+          player2: { playerId: player2.playerId, playerName: player2.playerName, playerType: player2.playerType },
           category: category || "Open",
-          status: "SCHEDULED",
-          isBye: false,
-          scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          scheduledTime: {
-            startTime: "10:00",
-            endTime: "11:00"
-          }
         });
-
+        const match = new KnockoutMatch(matchDoc);
         await match.save();
         nextRoundMatches.push(match);
       }

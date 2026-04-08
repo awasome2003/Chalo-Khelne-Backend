@@ -189,10 +189,10 @@ const tournamentSchema = new mongoose.Schema(
       },
     ],
 
-    // 🔹 New field for Table Tennis set format
+    // Set format (legacy — kept for backward compat)
     setFormat: {
       type: Number,
-      enum: [3, 5, 7], // Best of 3, 5, 7
+      enum: [1, 3, 5, 7], // 1 for single-result sports, 3/5/7 for set-based
       default: 3,
     },
     // Canonical Match Format — single source of truth for scoring engine
@@ -203,8 +203,8 @@ const tournamentSchema = new mongoose.Schema(
       setsToWin: { type: Number, default: 2 },       // DERIVED: ceil(totalSets/2)
       totalGames: { type: Number, default: 3 },
       gamesToWin: { type: Number, default: 2 },       // DERIVED: ceil(totalGames/2)
-      pointsToWinGame: { type: Number, default: 11 },
-      marginToWin: { type: Number, default: 2 },
+      pointsToWinGame: { type: Number, default: null },
+      marginToWin: { type: Number, default: null },
       deuceRule: { type: Boolean, default: true },
       maxPointsCap: { type: Number, default: null },
       tiebreakEnabled: { type: Boolean, default: false },
@@ -223,6 +223,9 @@ const tournamentSchema = new mongoose.Schema(
       scoringType: { type: String, enum: ["sets", "innings", "time", "single", null], default: null },
       formatVersion: { type: Number, default: 1 },
     },
+
+    // Registration deadline — last date/time for players to register
+    registrationDeadline: { type: Date, default: null },
 
     termsAndConditions: String,
     // 🔹 New field

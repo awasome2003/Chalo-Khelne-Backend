@@ -1,4 +1,14 @@
+/**
+ * KnockoutMatch — Legacy knockout match schema (group-to-knockout flow).
+ *
+ * @deprecated FUTURE: Merge with DirectKnockoutMatch into unified schema.
+ * All match creation MUST go through MatchFactory.createLegacyKnockoutMatch().
+ * All score reads MUST go through readMatchResult(match).
+ *
+ * Required fields for multi-sport: scoringType, matchResult
+ */
 const mongoose = require("mongoose");
+const { addFactoryEnforcement } = require("./shared/BaseMatchFields");
 
 const knockoutMatchSchema = new mongoose.Schema({
   tournamentId: {
@@ -105,8 +115,8 @@ const knockoutMatchSchema = new mongoose.Schema({
 
   // Match Format
   matchFormat: {
-    setsToWin: { type: Number, default: 2, comment: "Best of 3 sets" },
-    pointsPerSet: { type: Number, default: 11 }
+    setsToWin: { type: Number, default: null, comment: "Sets needed to win (set by tournament config)" },
+    pointsPerSet: { type: Number, default: null, comment: "Points per set (set by tournament config)" }
   },
 
   // Referee Assignment
@@ -134,11 +144,27 @@ const knockoutMatchSchema = new mongoose.Schema({
     }
   },
 
+  // Multi-sport fields
+  // Sport identification
+  sportName: { type: String, default: null },
+
+  scoringType: {
+    type: String,
+    default: null,
+  },
+  matchResult: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null,
+  },
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, {
   timestamps: true
 });
+
+// Runtime enforcement: blocks direct instantiation (must use MatchFactory)
+addFactoryEnforcement(knockoutMatchSchema);
 
 // Indexes for performance
 knockoutMatchSchema.index({ tournamentId: 1, round: 1 });

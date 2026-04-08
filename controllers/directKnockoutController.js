@@ -3,6 +3,7 @@ const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
 const Tournament = require("../Modal/Tournament");
 const TopPlayers = require("../Modal/TopPlayers");
 const { readMatchFormat } = require("../utils/matchFormatUtils");
+const { createKnockoutMatch, resolveMatchFormat } = require("../factories/MatchFactory");
 
 // 🎯 Power of 2 Validation - The Foundation
 const isPowerOfTwo = (n) => {
@@ -254,21 +255,15 @@ const createDirectKnockoutMatches = async (req, res) => {
       });
     }
 
-    // Extract dynamic match format from tournament settings (like SuperMatch!)
-    const matchFormat = tournament.matchFormat || {
-      setsToWin: 3,
-      maxSets: 5,
-      gamesToWin: 3,
-      maxGames: 5,
-      pointsToWinGame: 11,
-      marginToWin: 2,
-      deuceRule: true,
-      maxPointsPerGame: null,
-      serviceRule: {
-        pointsPerService: 2,
-        deuceServicePoints: 1
-      }
-    };
+    // Extract dynamic match format from tournament settings
+    // NO hardcoded TT defaults — tournament MUST have matchFormat configured
+    if (!tournament.matchFormat) {
+      return res.status(400).json({
+        success: false,
+        message: "Tournament matchFormat is not configured. Please set match format before creating knockout matches."
+      });
+    }
+    const matchFormat = tournament.matchFormat;
 
     // Generate bracket structure for ALL rounds
     const bracket = generateBracketStructure(selectedPlayers, drawMethod, seededPlayers);
@@ -320,7 +315,8 @@ const createDirectKnockoutMatches = async (req, res) => {
 
         const matchStartTime = new Date(baseDateTime.getTime() + (matchesBefore * schedule.intervalMinutes * 60000));
 
-        allMatchDocs.push({
+        allMatchDocs.push(createKnockoutMatch({
+          tournament,
           tournamentId,
           matchId,
           round: match.round,
@@ -329,29 +325,16 @@ const createDirectKnockoutMatches = async (req, res) => {
           player1: match.player1 ? {
             playerId: match.player1.playerId,
             playerName: match.player1.userName
-          } : { playerId: null, playerName: "TBD" },
+          } : null,
           player2: match.player2 ? {
             playerId: match.player2.playerId,
             playerName: match.player2.userName
-          } : { playerId: null, playerName: "TBD" },
+          } : null,
           courtNumber: schedule.courtNumber || 1,
           matchStartTime,
           nextMatchId,
           bracketPosition: match.bracketPosition,
-          status: "SCHEDULED",
-          winner: null,
-          matchFormat: {
-            setsToWin: matchFormat.setsToWin,
-            maxSets: matchFormat.maxSets,
-            gamesToWin: matchFormat.gamesToWin,
-            maxGames: matchFormat.maxGames,
-            pointsToWinGame: matchFormat.pointsToWinGame,
-            marginToWin: matchFormat.marginToWin,
-            deuceRule: matchFormat.deuceRule,
-            maxPointsPerGame: matchFormat.maxPointsPerGame,
-            serviceRule: matchFormat.serviceRule
-          }
-        });
+        }));
       }
     }
 
@@ -641,21 +624,16 @@ const createStandaloneKnockout = async (req, res) => {
       userName: p.userName || p.playerName || p.name || `Player ${i + 1}`,
     }));
 
-    // Build match format from tournament
-    const mf = tournament.matchFormat || {};
-    const totalSets = mf.totalSets || mf.maxSets || 5;
-    const totalGames = mf.totalGames || mf.maxGames || 5;
-    const matchFormat = {
-      setsToWin: mf.setsToWin || Math.ceil(totalSets / 2),
-      maxSets: totalSets,
-      gamesToWin: mf.gamesToWin || Math.ceil(totalGames / 2),
-      maxGames: totalGames,
-      pointsToWinGame: mf.pointsToWinGame || mf.pointsPerGame || 11,
-      marginToWin: mf.marginToWin || 2,
-      deuceRule: mf.deuceRule !== false,
-      maxPointsPerGame: mf.maxPointsPerGame || null,
-      serviceRule: mf.serviceRule || { pointsPerService: 2, deuceServicePoints: 1 },
-    };
+    // Build match format from tournament — NO hardcoded TT defaults
+    if (!tournament.matchFormat) {
+      return res.status(400).json({
+        success: false,
+        message: "Tournament matchFormat is not configured. Please set match format before creating knockout matches."
+      });
+    }
+    const mf = tournament.matchFormat;
+    // MatchFactory resolves format from tournament config — no inline building
+    const matchFormatResolved = resolveMatchFormat(tournament);
 
     // Generate bracket
     const bracket = generateBracketStructure(normalizedPlayers, drawMethod || "global", seededPlayers || []);
@@ -686,26 +664,25 @@ const createStandaloneKnockout = async (req, res) => {
 
         const matchStartTime = new Date(baseDateTime.getTime() + allMatchDocs.length * interval * 60000);
 
-        allMatchDocs.push({
+        allMatchDocs.push(createKnockoutMatch({
+          tournament,
           tournamentId,
           matchId,
-          mode: "direct-knockout",
           round: match.round,
           roundNumber: round.roundNumber,
           matchNumber: match.matchNumber,
           player1: match.player1
             ? { playerId: match.player1.playerId || null, playerName: match.player1.userName || "TBD" }
-            : { playerId: null, playerName: "TBD" },
+            : null,
           player2: match.player2
             ? { playerId: match.player2.playerId || null, playerName: match.player2.userName || "TBD" }
-            : { playerId: null, playerName: "TBD" },
+            : null,
           courtNumber: court,
           matchStartTime,
           nextMatchId,
           bracketPosition: match.bracketPosition,
-          status: "SCHEDULED",
-          matchFormat,
-        });
+          mode: "direct-knockout",
+        }));
       }
     }
 

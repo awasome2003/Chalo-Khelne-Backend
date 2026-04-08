@@ -39,8 +39,12 @@ const ALLOWED_IMAGE_TYPES = [
 const ALLOWED_CERTIFICATE_TYPES = [
   "image/jpeg",
   "image/png",
-  "application/pdf",
   "image/jpg",
+  "image/webp",
+  "application/pdf",
+  "application/msword",                                                    // .doc
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+  "application/octet-stream",                                              // React Native fallback
 ];
 
 const ALLOWED_IDENTITY_TYPES = [

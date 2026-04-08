@@ -1,5 +1,14 @@
+/**
+ * TeamKnockoutMatches — Team-based knockout match schema.
+ *
+ * All match creation MUST go through MatchFactory.createTeamKnockoutMatch().
+ * All score reads MUST go through readMatchResult(match).
+ *
+ * Required fields for multi-sport: scoringType, matchResult
+ */
 const mongoose = require("mongoose");
 const { getAllFormatIds } = require("../Config/teamKnockoutFormats");
+const { addFactoryEnforcement } = require("./shared/BaseMatchFields");
 
 const gameSchema = new mongoose.Schema(
   {
@@ -105,11 +114,11 @@ const teamKnockoutMatchesSchema = new mongoose.Schema(
     },
 
     gameRules: {
-      gamesPerSet: { type: Number, default: 3 },
-      gamesToWin: { type: Number, default: 2 },
-      pointsToWinGame: { type: Number, default: 11 },
-      marginToWin: { type: Number, default: 2 },
-      deuceRule: { type: Boolean, default: true },
+      gamesPerSet: { type: Number, default: null },
+      gamesToWin: { type: Number, default: null },
+      pointsToWinGame: { type: Number, default: null },
+      marginToWin: { type: Number, default: null },
+      deuceRule: { type: Boolean, default: false },
       maxPointsCap: { type: Number, default: null },
     },
 
@@ -127,8 +136,24 @@ const teamKnockoutMatchesSchema = new mongoose.Schema(
     },
 
     completedAt: { type: Date, default: null },
+
+    // Multi-sport fields
+    // Sport identification
+    sportName: { type: String, default: null },
+
+    scoringType: {
+      type: String,
+      default: null,
+    },
+    matchResult: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
+// Runtime enforcement: blocks direct instantiation (must use MatchFactory)
+addFactoryEnforcement(teamKnockoutMatchesSchema);
 
 module.exports = mongoose.model("TeamKnockoutMatches", teamKnockoutMatchesSchema);

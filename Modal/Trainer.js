@@ -13,7 +13,7 @@ const TrainerSchema = new mongoose.Schema({
   },
   lastName: {
     type: String,
-    required: true,
+    default: "",
   },
   dob: {
     type: Date,
@@ -55,15 +55,15 @@ const TrainerSchema = new mongoose.Schema({
     {
       name: {
         type: String,
-        required: true,
+        default: "Document",
       },
       issuedBy: {
         type: String,
-        required: true,
+        default: "",
       },
       issueDate: {
         type: Date,
-        required: true,
+        default: null,
       },
       expiryDate: {
         type: Date,

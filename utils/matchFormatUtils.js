@@ -29,12 +29,16 @@ const SPORT_SCORING_TYPES = {
 };
 
 function getScoringType(sportName) {
-  if (!sportName) return "sets";
+  if (!sportName) return null;
   // Case-insensitive lookup
   const key = Object.keys(SPORT_SCORING_TYPES).find(
     (k) => k.toLowerCase() === sportName.toLowerCase()
   );
-  return SPORT_SCORING_TYPES[key] || "sets";
+  if (!key) {
+    console.warn(`[getScoringType] Unknown sport "${sportName}" — no scoringType mapped`);
+    return null;
+  }
+  return SPORT_SCORING_TYPES[key];
 }
 
 // ════════════════════════════════════
@@ -69,19 +73,25 @@ const DERIVED_FIELDS = ["setsToWin", "gamesToWin", "formatVersion", "scoringType
 // SAFE DEFAULTS (scoring engine fallback)
 // ════════════════════════════════════
 
+/**
+ * SAFE_DEFAULTS — used ONLY for legacy matches (pre-migration).
+ * Non-legacy matches MUST have explicit matchFormat from tournament config.
+ * These defaults are intentionally sport-neutral where possible.
+ * Sets-based values are kept for backward compat with existing TT matches.
+ */
 const SAFE_DEFAULTS = {
-  totalSets: 3,
-  setsToWin: 2,
-  totalGames: 3,
-  gamesToWin: 2,
-  pointsToWinGame: 11,
-  marginToWin: 2,
-  deuceRule: true,
+  totalSets: 1,
+  setsToWin: 1,
+  totalGames: 1,
+  gamesToWin: 1,
+  pointsToWinGame: null,
+  marginToWin: null,
+  deuceRule: false,
   maxPointsCap: null,
   tiebreakEnabled: false,
   tiebreakPoints: null,
   decidingSetPoints: null,
-  serviceAlternate: 2,
+  serviceAlternate: null,
   oversCount: null,
   inningsCount: null,
   halvesCount: null,
@@ -217,9 +227,9 @@ function normalizeMatchFormat(sportName, rawConfig, sportRulesFormat) {
     setsToWin: Math.ceil(totalSets / 2),              // DERIVED
     totalGames,
     gamesToWin: Math.ceil(totalGames / 2),             // DERIVED
-    pointsToWinGame: ov.pointsPerGame || ov.pointsPerSet || rf.pointsPerGame || rf.pointsPerSet || SAFE_DEFAULTS.pointsToWinGame,
-    marginToWin: ov.winByMargin ?? rf.winByMargin ?? SAFE_DEFAULTS.marginToWin,
-    deuceRule: ov.deuceEnabled ?? rf.deuceEnabled ?? SAFE_DEFAULTS.deuceRule,
+    pointsToWinGame: ov.pointsPerGame || ov.pointsPerSet || rf.pointsPerGame || rf.pointsPerSet || null,
+    marginToWin: ov.winByMargin ?? rf.winByMargin ?? null,
+    deuceRule: ov.deuceEnabled ?? rf.deuceEnabled ?? (scoringType === "sets" ? true : false),
     maxPointsCap: ov.maxPointsCap || rf.maxPointsCap || null,
     tiebreakEnabled: ov.tiebreakEnabled ?? rf.tiebreakEnabled ?? false,
     tiebreakPoints: ov.tiebreakPoints || rf.tiebreakPoints || null,
@@ -256,88 +266,166 @@ function normalizeMatchFormat(sportName, rawConfig, sportRulesFormat) {
 function freezeMatchFormat(tournamentMatchFormat) {
   if (!tournamentMatchFormat) return { ...SAFE_DEFAULTS };
 
+  const tmf = tournamentMatchFormat;
+  const scoringType = tmf.scoringType ?? null;
+  const isSetBased = scoringType === "sets";
+
   return {
-    totalSets: tournamentMatchFormat.totalSets ?? SAFE_DEFAULTS.totalSets,
-    setsToWin: tournamentMatchFormat.setsToWin ?? SAFE_DEFAULTS.setsToWin,
-    totalGames: tournamentMatchFormat.totalGames ?? SAFE_DEFAULTS.totalGames,
-    gamesToWin: tournamentMatchFormat.gamesToWin ?? SAFE_DEFAULTS.gamesToWin,
-    pointsToWinGame: tournamentMatchFormat.pointsToWinGame ?? SAFE_DEFAULTS.pointsToWinGame,
-    marginToWin: tournamentMatchFormat.marginToWin ?? SAFE_DEFAULTS.marginToWin,
-    deuceRule: tournamentMatchFormat.deuceRule ?? SAFE_DEFAULTS.deuceRule,
-    maxPointsCap: tournamentMatchFormat.maxPointsCap ?? null,
-    tiebreakEnabled: tournamentMatchFormat.tiebreakEnabled ?? false,
-    tiebreakPoints: tournamentMatchFormat.tiebreakPoints ?? null,
-    decidingSetPoints: tournamentMatchFormat.decidingSetPoints ?? null,
-    serviceAlternate: tournamentMatchFormat.serviceAlternate ?? 2,
-    oversCount: tournamentMatchFormat.oversCount ?? null,
-    inningsCount: tournamentMatchFormat.inningsCount ?? null,
-    halvesCount: tournamentMatchFormat.halvesCount ?? null,
-    halvesDuration: tournamentMatchFormat.halvesDuration ?? null,
-    quartersCount: tournamentMatchFormat.quartersCount ?? null,
-    quartersDuration: tournamentMatchFormat.quartersDuration ?? null,
-    scoringType: tournamentMatchFormat.scoringType ?? null,
-    formatVersion: tournamentMatchFormat.formatVersion ?? 1,
+    totalSets: tmf.totalSets ?? (isSetBased ? 1 : 1),
+    setsToWin: tmf.setsToWin ?? (tmf.totalSets ? Math.ceil(tmf.totalSets / 2) : 1),
+    totalGames: tmf.totalGames ?? 1,
+    gamesToWin: tmf.gamesToWin ?? (tmf.totalGames ? Math.ceil(tmf.totalGames / 2) : 1),
+    pointsToWinGame: tmf.pointsToWinGame ?? null,
+    marginToWin: tmf.marginToWin ?? null,
+    deuceRule: tmf.deuceRule ?? (isSetBased ? true : false),
+    maxPointsCap: tmf.maxPointsCap ?? null,
+    tiebreakEnabled: tmf.tiebreakEnabled ?? false,
+    tiebreakPoints: tmf.tiebreakPoints ?? null,
+    decidingSetPoints: tmf.decidingSetPoints ?? null,
+    serviceAlternate: tmf.serviceAlternate ?? null,
+    oversCount: tmf.oversCount ?? null,
+    inningsCount: tmf.inningsCount ?? null,
+    halvesCount: tmf.halvesCount ?? null,
+    halvesDuration: tmf.halvesDuration ?? null,
+    quartersCount: tmf.quartersCount ?? null,
+    quartersDuration: tmf.quartersDuration ?? null,
+    scoringType,
+    formatVersion: tmf.formatVersion ?? 1,
   };
 }
+
+// ════════════════════════════════════
+// VALIDATE MATCH FORMAT
+// ════════════════════════════════════
+
+/**
+ * Validates a matchFormat object for structural integrity.
+ * Returns { valid: true } or { valid: false, errors: [...] }
+ *
+ * Used at:
+ * - Tournament creation (after normalizeMatchFormat)
+ * - Match generation (after freezeMatchFormat)
+ * - readMatchFormat (on every scoring call)
+ */
+function validateMatchFormat(format) {
+  if (!format || typeof format !== "object") return { valid: false, errors: ["matchFormat is null or not an object"] };
+
+  const errors = [];
+  const scoringType = format.scoringType || null;
+  const isSetBased = scoringType === "sets" || scoringType === null;
+
+  // Universal: totalSets and setsToWin must be >= 1 (even non-set sports use 1 as container)
+  if (format.totalSets == null || format.totalSets < 1) errors.push("totalSets must be >= 1");
+  if (isSetBased && format.totalSets != null && format.totalSets % 2 === 0) errors.push(`totalSets must be odd (got ${format.totalSets})`);
+  if (format.setsToWin == null || format.setsToWin < 1) errors.push("setsToWin must be >= 1");
+  if (format.setsToWin != null && format.totalSets != null && format.setsToWin > format.totalSets) {
+    errors.push(`setsToWin (${format.setsToWin}) cannot exceed totalSets (${format.totalSets})`);
+  }
+  if (format.gamesToWin == null || format.gamesToWin < 1) errors.push("gamesToWin must be >= 1");
+
+  // Set-based sports require pointsToWinGame and marginToWin
+  if (isSetBased) {
+    if (format.pointsToWinGame == null || format.pointsToWinGame < 1) errors.push("pointsToWinGame must be >= 1 for set-based sports");
+    if (format.marginToWin == null || format.marginToWin < 1) errors.push("marginToWin must be >= 1 for set-based sports");
+
+    // Cross-field consistency
+    if (format.deuceRule && format.marginToWin != null && format.marginToWin < 2) {
+      errors.push("marginToWin must be >= 2 when deuce is enabled");
+    }
+  }
+  // Non-set sports: pointsToWinGame and marginToWin can be null — no validation needed
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ════════════════════════════════════
+// STRUCTURED LOGGING
+// ════════════════════════════════════
+
+function logScoring(level, matchId, tournamentId, message, data) {
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    module: "SCORING",
+    matchId: matchId?.toString() || "unknown",
+    tournamentId: tournamentId?.toString() || null,
+    message,
+    ...(data && { data }),
+  };
+  if (level === "error") console.error(JSON.stringify(entry));
+  else if (level === "warn") console.warn(JSON.stringify(entry));
+  else console.log(JSON.stringify(entry));
+}
+
+// ════════════════════════════════════
+// READ MATCH FORMAT (STRICT)
+// ════════════════════════════════════
 
 /**
  * STRICT match format reader for scoring engine.
  *
- * Usage:
- *   const fmt = readMatchFormat(match);
- *   // fmt.gamesToWin, fmt.setsToWin, fmt.pointsToWinGame etc.
- *
  * Behavior:
- * - If match.matchFormat exists and has required fields → returns it
- * - If match.matchFormat exists but incomplete → fills gaps + warns
- * - If match.matchFormat is null → throws (scoring MUST NOT proceed with blind defaults)
+ * - match.matchFormat exists → validate + return
+ * - match.matchFormat null + match.isLegacy === true → apply SAFE_DEFAULTS + warn
+ * - match.matchFormat null + NOT legacy → THROW (match was not properly initialized)
  *
- * @param {object} match - the match document (must have matchFormat)
- * @returns {object} validated format object with all required fields
+ * NEVER silently applies defaults to non-legacy matches.
+ * setsToWin/gamesToWin are ONLY re-derived if missing, never if present.
  */
 function readMatchFormat(match) {
-  const REQUIRED_FIELDS = ["gamesToWin", "setsToWin", "pointsToWinGame", "marginToWin"];
-
   if (!match) throw new Error("[SCORING] readMatchFormat called with null match");
 
+  const matchId = match._id || match.matchId || "unknown";
+  const tournamentId = match.tournamentId || null;
   const fmt = match.matchFormat;
 
+  // Case 1: No matchFormat at all
   if (!fmt) {
-    // STRICT: do not silently default — this match was created without frozen format
-    console.error(`[SCORING] CRITICAL: Match ${match._id || match.matchId || "unknown"} has NO matchFormat. This match was not properly initialized.`);
-    throw new Error(`Match ${match._id || match.matchId} has no matchFormat. Cannot score without format configuration.`);
-  }
-
-  // Check for missing required fields — warn but fill from SAFE_DEFAULTS
-  const result = { ...fmt };
-  const warnings = [];
-
-  for (const field of REQUIRED_FIELDS) {
-    if (result[field] == null) {
-      result[field] = SAFE_DEFAULTS[field];
-      warnings.push(field);
+    // Legacy matches (created before freeze was implemented) get safe defaults
+    if (match.isLegacy === true) {
+      logScoring("warn", matchId, tournamentId, "Legacy match has no matchFormat — applying SAFE_DEFAULTS");
+      return { ...SAFE_DEFAULTS };
     }
+    // Non-legacy: strict failure
+    logScoring("error", matchId, tournamentId, "Match has NO matchFormat and is not marked as legacy");
+    throw new Error(`Match ${matchId} has no matchFormat. Cannot score without format configuration.`);
   }
 
-  // Fill optional fields
-  if (result.totalSets == null) result.totalSets = SAFE_DEFAULTS.totalSets;
-  if (result.totalGames == null) result.totalGames = SAFE_DEFAULTS.totalGames;
-  if (result.deuceRule == null) result.deuceRule = SAFE_DEFAULTS.deuceRule;
+  // Case 2: matchFormat exists — validate and fill gaps
+  const result = { ...fmt._doc || fmt }; // Handle Mongoose subdocuments
+  const filled = [];
+  const scoringType = result.scoringType || null;
+  const isSetBased = scoringType === "sets" || scoringType === null; // null = legacy TT matches
 
-  // Enforce derived fields are consistent
-  result.setsToWin = Math.ceil(result.totalSets / 2);
-  result.gamesToWin = Math.ceil(result.totalGames / 2);
+  // Fill ONLY if missing — NEVER override existing values
+  // For non-set sports, totalSets/totalGames default to 1 (single round container)
+  if (result.totalSets == null) { result.totalSets = isSetBased ? (SAFE_DEFAULTS.totalSets || 1) : 1; filled.push("totalSets"); }
+  if (result.totalGames == null) { result.totalGames = isSetBased ? (SAFE_DEFAULTS.totalGames || 1) : 1; filled.push("totalGames"); }
+  // pointsToWinGame and marginToWin: only fill for set-based sports (legacy compat)
+  if (result.pointsToWinGame == null && isSetBased) { result.pointsToWinGame = 11; filled.push("pointsToWinGame(legacy-sets)"); }
+  if (result.marginToWin == null && isSetBased) { result.marginToWin = 2; filled.push("marginToWin(legacy-sets)"); }
+  if (result.deuceRule == null) { result.deuceRule = isSetBased; filled.push("deuceRule"); }
 
-  if (warnings.length > 0) {
-    console.warn(`[SCORING] Match ${match._id || match.matchId || "unknown"} has incomplete matchFormat. Missing: ${warnings.join(", ")}. Using defaults.`);
+  // Derive ONLY if missing — do NOT override existing setsToWin/gamesToWin
+  if (result.setsToWin == null) { result.setsToWin = Math.ceil(result.totalSets / 2); filled.push("setsToWin(derived)"); }
+  if (result.gamesToWin == null) { result.gamesToWin = Math.ceil(result.totalGames / 2); filled.push("gamesToWin(derived)"); }
+
+  if (filled.length > 0) {
+    logScoring("warn", matchId, tournamentId, `Incomplete matchFormat — filled: ${filled.join(", ")}`, { filledFields: filled });
+  }
+
+  // Validate structural integrity
+  const validation = validateMatchFormat(result);
+  if (!validation.valid) {
+    logScoring("error", matchId, tournamentId, `matchFormat validation FAILED`, { errors: validation.errors, format: result });
+    throw new Error(`Match ${matchId} has invalid matchFormat: ${validation.errors.join("; ")}`);
   }
 
   return result;
 }
 
 /**
- * Legacy single-field reader (backward compat).
- * Prefer readMatchFormat(match) for full validation.
+ * Legacy single-field reader (backward compat for non-scoring uses).
  */
 function readMatchFormatField(matchFormat, field) {
   if (matchFormat && matchFormat[field] != null) return matchFormat[field];

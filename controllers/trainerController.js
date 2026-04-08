@@ -201,8 +201,12 @@ exports.addCertificate = async (req, res) => {
       issueDate,
       expiryDate,
       certificateId,
-      certificateUrl,
     } = req.body;
+
+    // Certificate URL: from file upload (multer) OR from body
+    const certificateUrl = req.file
+      ? `uploads/certificates/${req.file.filename}`
+      : req.body.certificateUrl || null;
 
     const trainer = await Trainer.findOne({ userId: req.params.id });
 
@@ -211,7 +215,7 @@ exports.addCertificate = async (req, res) => {
     }
 
     trainer.certificates.push({
-      name,
+      name: name || req.file?.originalname || "Document",
       issuedBy,
       issueDate,
       expiryDate,

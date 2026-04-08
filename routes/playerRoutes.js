@@ -222,10 +222,9 @@ router.post("/users/validate-players", async (req, res) => {
     const cleanedPlayers = players.map((name) => name.trim());
     console.log("Cleaned player names:", cleanedPlayers);
 
-    // Find all users first to debug
+    // Find all approved users (any role — players, trainers, referees can all participate)
     const allUsers = await User.find({
       isApproved: true,
-      role: { $regex: new RegExp("^player$", "i") },
     }).select("name");
 
     console.log(
@@ -246,7 +245,6 @@ router.post("/users/validate-players", async (req, res) => {
         ),
       },
       isApproved: true,
-      role: { $regex: new RegExp("^player$", "i") },
     }).select("name");
 
     console.log("Found valid users:", validUsers);

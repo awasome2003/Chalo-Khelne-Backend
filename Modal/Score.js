@@ -15,38 +15,21 @@ const ScoreSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    setOne: {
-      type: [Number],
-      required: true,
-    },
-    setTwo: {
-      type: [Number],
-      required: true,
-    },
-    setThree: {
-      type: [Number],
-    },
-    // 🚀 ENHANCED SET SUPPORT - Best of 5 and Best of 7 matches
-    setFour: {
-      type: [Number],
+    // Sport-neutral normalized result (preferred for non-set sports)
+    matchResult: {
+      type: mongoose.Schema.Types.Mixed,
       default: null,
-      comment: "For Best of 7 matches (first to win 4 sets)"
     },
-    setFive: {
-      type: [Number],
+    // Scoring type that produced this score
+    scoringType: {
+      type: String,
       default: null,
-      comment: "For Best of 7 matches (first to win 4 sets)"
     },
-    setSix: {
-      type: [Number],
-      default: null,
-      comment: "For Best of 7 matches (first to win 4 sets)"
-    },
-    setSeven: {
-      type: [Number],
-      default: null,
-      comment: "For Best of 7 matches (first to win 4 sets)"
-    },
+    // ══ REMOVED (Phase 11): Legacy setOne-setSeven fields ══
+    // These fields existed for backward compatibility but are no longer written to.
+    // Historical data may still contain values in these fields.
+    // All new reads MUST use sets[] array or matchResult.
+    // Fields removed from schema — Mongoose will ignore them on read (they persist in DB).
     // Dynamic sets array — works for any number of sets
     sets: [{
       setNumber: { type: Number, required: true },
@@ -77,7 +60,7 @@ const ScoreSchema = new mongoose.Schema(
     },
     winner: {
       type: String,
-      required: true,
+      default: null,
     },
     matchStatus: {
       type: String,

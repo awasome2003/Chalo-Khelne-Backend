@@ -121,6 +121,11 @@ exports.addCertificate = async (req, res) => {
   try {
     const { name, issuedBy, issueDate, expiryDate, certificateId } = req.body;
 
+    // Certificate URL: from file upload (multer) OR from body
+    const certificateUrl = req.file
+      ? `uploads/certificates/${req.file.filename}`
+      : req.body.certificateUrl || null;
+
     const referee = await Referee.findOne({ userId: req.params.id });
 
     if (!referee) {
@@ -128,11 +133,12 @@ exports.addCertificate = async (req, res) => {
     }
 
     referee.certificates.push({
-      name,
+      name: name || req.file?.originalname || "Document",
       issuedBy,
       issueDate,
       expiryDate,
       certificateId,
+      certificateUrl,
     });
 
     await referee.save();

@@ -12,44 +12,36 @@ const { readMatchFormat, SAFE_DEFAULTS } = require("../utils/matchFormatUtils");
 // HELPER FUNCTIONS
 // ================================
 
-// Simple and robust sync function
+// Sync match data to Score model — sport-aware
 const syncScoreModel = async (match, session = null) => {
   try {
+    const { readMatchResult } = require("../utils/matchUtils");
+    const result = readMatchResult(match);
 
-    // Initialize simple counters
+    // Initialize counters from raw match data
     let totalGamesWonA = 0;
     let totalGamesWonB = 0;
     let totalScoreA = 0;
     let totalScoreB = 0;
     const setScores = [];
 
-    // Process sets if they exist
+    // Process sets if they exist (internal storage format)
     if (match.sets && match.sets.length > 0) {
       match.sets.forEach((set) => {
         if (set.games && set.games.length > 0) {
-          let setGamesA = 0;
-          let setGamesB = 0;
-          let setPointsA = 0;
-          let setPointsB = 0;
+          let setGamesA = 0, setGamesB = 0, setPointsA = 0, setPointsB = 0;
 
           set.games.forEach(game => {
             if (game.status === 'COMPLETED') {
-              // Count points
               if (game.finalScore) {
                 setPointsA += game.finalScore.player1 || 0;
                 setPointsB += game.finalScore.player2 || 0;
               }
-
-              // Count games won - simple check
               if (game.winner && game.winner.playerId) {
                 const winnerIdStr = game.winner.playerId.toString();
                 const player1IdStr = match.player1.playerId.toString();
-
-                if (winnerIdStr === player1IdStr) {
-                  setGamesA++;
-                } else {
-                  setGamesB++;
-                }
+                if (winnerIdStr === player1IdStr) setGamesA++;
+                else setGamesB++;
               }
             }
           });
@@ -58,7 +50,6 @@ const syncScoreModel = async (match, session = null) => {
           totalGamesWonB += setGamesB;
           totalScoreA += setPointsA;
           totalScoreB += setPointsB;
-          // Store as array format for database compatibility
           setScores.push([setGamesA, setGamesB, setPointsA, setPointsB, set]);
         }
       });
@@ -66,74 +57,46 @@ const syncScoreModel = async (match, session = null) => {
 
     // Determine winner
     let winner = null;
-    if (match.status === 'COMPLETED') {
-      if (match.result?.winner?.playerId) {
-        winner = match.result.winner.playerId.toString();
-      } else if (totalGamesWonA > totalGamesWonB) {
-        winner = match.player1.playerId.toString();
-      } else if (totalGamesWonB > totalGamesWonA) {
-        winner = match.player2.playerId.toString();
-      }
+    if (match.status === 'COMPLETED' && result.winner?.playerId) {
+      winner = result.winner.playerId.toString();
+    } else if (match.status === 'COMPLETED') {
+      if (totalScoreA > totalScoreB) winner = match.player1.playerId.toString();
+      else if (totalScoreB > totalScoreA) winner = match.player2.playerId.toString();
     }
 
-    // 🎯 DYNAMIC SCORE DATA - Support up to 7 sets (Best of 7)
-    const scoreData = {
-      matchId: match._id,
-      playerA: match.player1.playerId.toString(),
-      playerB: match.player2.playerId.toString(),
-      playerAName: match.player1.userName || 'Player 1',
-      playerBName: match.player2.userName || 'Player 2',
-      // Dynamic set scores - support Best of 3, 5, or 7 (array format for database)
-      setOne: setScores[0] || [0, 0],
-      setTwo: setScores[1] || [0, 0],
-      setThree: setScores[2] || (setScores.length > 2 ? [0, 0] : null),
-      setFour: setScores[3] || (setScores.length > 3 ? [0, 0] : null),
-      setFive: setScores[4] || (setScores.length > 4 ? [0, 0] : null),
-      setSix: setScores[5] || (setScores.length > 5 ? [0, 0] : null),
-      setSeven: setScores[6] || (setScores.length > 6 ? [0, 0] : null),
-      gamesWonA: totalGamesWonA,
-      gamesWonB: totalGamesWonB,
-      totalScoreA: totalScoreA,
-      totalScoreB: totalScoreB,
-      winner: winner,
-      matchStatus: match.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS'
-    };
-
-    // Build dynamic sets array
+    // Build dynamic sets array (legacy format)
     const dynamicSets = setScores.map((s, idx) => {
-      const setData = s[4]; // the original set object
-      const setWinnerId = setData?.winner?.playerId?.toString() || null;
+      const setData = s[4];
       return {
         setNumber: idx + 1,
-        gamesWonA: s[0],
-        gamesWonB: s[1],
-        pointsScoredA: s[2],
-        pointsScoredB: s[3],
-        winner: setWinnerId,
+        gamesWonA: s[0], gamesWonB: s[1],
+        pointsScoredA: s[2], pointsScoredB: s[3],
+        winner: setData?.winner?.playerId?.toString() || null,
       };
     });
 
-    // 🚀 DYNAMIC DATABASE UPDATE - Support all match formats properly
     const updateData = {
       matchId: match._id,
       playerA: match.player1.playerId.toString(),
       playerB: match.player2.playerId.toString(),
-      // Legacy set fields (backward compat)
-      setOne: scoreData.setOne,
-      setTwo: scoreData.setTwo,
-      setThree: scoreData.setThree,
-      setFour: scoreData.setFour,
-      setFive: scoreData.setFive,
-      setSix: scoreData.setSix,
-      setSeven: scoreData.setSeven,
-      // New dynamic sets array
+      // Sport-neutral normalized result
+      scoringType: result.type,
+      matchResult: {
+        type: result.type,
+        player1Score: result.player1Score,
+        player2Score: result.player2Score,
+        completed: result.completed,
+        labels: result.labels,
+      },
+      // Legacy setOne-setSeven fields REMOVED from write path (Phase 11).
+      // Old data still readable via schema; new writes use sets[] + matchResult only.
       sets: dynamicSets,
       gamesWonA: totalGamesWonA,
       gamesWonB: totalGamesWonB,
       totalScoreA: totalScoreA,
       totalScoreB: totalScoreB,
       winner: winner,
-      matchStatus: match.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS'
+      matchStatus: match.status === 'COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS',
     };
 
     const score = await Score.findOneAndUpdate(
@@ -143,7 +106,6 @@ const syncScoreModel = async (match, session = null) => {
     );
 
     return score;
-
   } catch (error) {
     console.error('Error syncing score model:', error);
     return null;
@@ -151,11 +113,19 @@ const syncScoreModel = async (match, session = null) => {
 };
 
 
-// Recalculate group standings from completed matches
+// Recalculate group standings from completed matches — SPORT-AWARE
 const recalculateGroupStandings = async (tournamentId, groupId) => {
   try {
     const group = await BookingGroup.findById(groupId);
     if (!group) return null;
+
+    // Detect scoringType from tournament
+    const Tournament = require("../Modal/Tournament");
+    const tournament = await Tournament.findById(tournamentId);
+    const { getScoringType } = require("../utils/matchFormatUtils");
+    const scoringType = tournament?.matchFormat?.scoringType
+      || getScoringType(tournament?.sportsType)
+      || "sets";
 
     // Get all completed matches for this group
     const matches = await Match.find({
@@ -173,6 +143,12 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
         played: 0,
         won: 0,
         lost: 0,
+        drawn: 0,
+        roundsWon: 0,
+        roundsLost: 0,
+        scoreFor: 0,
+        scoreAgainst: 0,
+        // Legacy aliases (kept for backward compat with frontend)
         setsWon: 0,
         setsLost: 0,
         pointsScored: 0,
@@ -181,61 +157,86 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
       };
     }
 
-    // Process each completed match
+    // Process each completed match using readMatchResult
+    const { readMatchResult } = require("../utils/matchUtils");
+
     for (const match of matches) {
       const p1Id = match.player1.playerId.toString();
       const p2Id = match.player2.playerId.toString();
-      const winnerId = match.result?.winner?.playerId?.toString();
 
       if (!statsMap[p1Id] || !statsMap[p2Id]) continue;
+
+      // Read normalized result
+      const result = readMatchResult(match, { tournament });
 
       // Played
       statsMap[p1Id].played++;
       statsMap[p2Id].played++;
 
-      // Win/Loss + Points (3 for win)
-      if (winnerId === p1Id) {
-        statsMap[p1Id].won++;
-        statsMap[p1Id].totalPoints += 3;
-        statsMap[p2Id].lost++;
-      } else if (winnerId === p2Id) {
-        statsMap[p2Id].won++;
-        statsMap[p2Id].totalPoints += 3;
-        statsMap[p1Id].lost++;
+      // Win/Loss/Draw + Tournament Points
+      if (result.winner) {
+        const winnerId = result.winner.playerId?.toString();
+        if (winnerId === p1Id) {
+          statsMap[p1Id].won++;
+          statsMap[p1Id].totalPoints += 3;
+          statsMap[p2Id].lost++;
+        } else if (winnerId === p2Id) {
+          statsMap[p2Id].won++;
+          statsMap[p2Id].totalPoints += 3;
+          statsMap[p1Id].lost++;
+        }
+      } else {
+        // Draw (possible in time-based sports)
+        statsMap[p1Id].drawn++;
+        statsMap[p2Id].drawn++;
+        statsMap[p1Id].totalPoints += 1;
+        statsMap[p2Id].totalPoints += 1;
       }
 
-      // Sets and points from match sets data
-      const p1Sets = match.result?.finalScore?.player1Sets || 0;
-      const p2Sets = match.result?.finalScore?.player2Sets || 0;
-      statsMap[p1Id].setsWon += p1Sets;
-      statsMap[p1Id].setsLost += p2Sets;
-      statsMap[p2Id].setsWon += p2Sets;
-      statsMap[p2Id].setsLost += p1Sets;
+      // Rounds won (sets/innings/periods — the top-level score)
+      statsMap[p1Id].roundsWon += result.player1Score;
+      statsMap[p1Id].roundsLost += result.player2Score;
+      statsMap[p2Id].roundsWon += result.player2Score;
+      statsMap[p2Id].roundsLost += result.player1Score;
 
-      // Points scored from individual games
+      // Legacy aliases
+      statsMap[p1Id].setsWon = statsMap[p1Id].roundsWon;
+      statsMap[p1Id].setsLost = statsMap[p1Id].roundsLost;
+      statsMap[p2Id].setsWon = statsMap[p2Id].roundsWon;
+      statsMap[p2Id].setsLost = statsMap[p2Id].roundsLost;
+
+      // Score accumulation (points/goals/runs from game-level data)
       if (match.sets) {
         for (const set of match.sets) {
           if (!set.games) continue;
           for (const game of set.games) {
             if (game.status !== "COMPLETED" || !game.finalScore) continue;
-            statsMap[p1Id].pointsScored += game.finalScore.player1 || 0;
-            statsMap[p1Id].pointsConceded += game.finalScore.player2 || 0;
-            statsMap[p2Id].pointsScored += game.finalScore.player2 || 0;
-            statsMap[p2Id].pointsConceded += game.finalScore.player1 || 0;
+            const s1 = game.finalScore.player1 || 0;
+            const s2 = game.finalScore.player2 || 0;
+            statsMap[p1Id].scoreFor += s1;
+            statsMap[p1Id].scoreAgainst += s2;
+            statsMap[p2Id].scoreFor += s2;
+            statsMap[p2Id].scoreAgainst += s1;
           }
         }
       }
+
+      // Legacy aliases
+      statsMap[p1Id].pointsScored = statsMap[p1Id].scoreFor;
+      statsMap[p1Id].pointsConceded = statsMap[p1Id].scoreAgainst;
+      statsMap[p2Id].pointsScored = statsMap[p2Id].scoreFor;
+      statsMap[p2Id].pointsConceded = statsMap[p2Id].scoreAgainst;
     }
 
-    // Sort: totalPoints DESC → set difference DESC → point difference DESC
+    // Sort: totalPoints DESC → rounds diff DESC → score diff DESC
     const sorted = Object.values(statsMap).sort((a, b) => {
       if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
-      const aSetDiff = a.setsWon - a.setsLost;
-      const bSetDiff = b.setsWon - b.setsLost;
-      if (bSetDiff !== aSetDiff) return bSetDiff - aSetDiff;
-      const aPtDiff = a.pointsScored - a.pointsConceded;
-      const bPtDiff = b.pointsScored - b.pointsConceded;
-      return bPtDiff - aPtDiff;
+      const aRoundDiff = a.roundsWon - a.roundsLost;
+      const bRoundDiff = b.roundsWon - b.roundsLost;
+      if (bRoundDiff !== aRoundDiff) return bRoundDiff - aRoundDiff;
+      const aScoreDiff = a.scoreFor - a.scoreAgainst;
+      const bScoreDiff = b.scoreFor - b.scoreAgainst;
+      return bScoreDiff - aScoreDiff;
     });
 
     // Assign ranks
@@ -250,6 +251,7 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
         tournamentId,
         groupId,
         groupName: group.groupName,
+        scoringType,
         standings: sorted,
       },
       { upsert: true, new: true }
@@ -284,15 +286,12 @@ const initializeMatchScoreboard = async (match, isKnockoutMatch = false, session
         gamesToWin: tournamentFormat.gamesToWin || Math.ceil((tournamentFormat.totalGames || tournamentFormat.maxGames || 5) / 2),
         maxGames: tournamentFormat.totalGames || tournamentFormat.maxGames || 5, // Backward compatibility
 
-        // Points and rules configuration
-        pointsToWinGame: tournamentFormat.pointsToWinGame || 11,
-        marginToWin: tournamentFormat.marginToWin || 2,
-        deuceRule: tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : true,
-        maxPointsPerGame: tournamentFormat.maxPointsPerGame || null,
-        serviceRule: {
-          pointsPerService: tournamentFormat.serviceRule?.pointsPerService || 2,
-          deuceServicePoints: tournamentFormat.serviceRule?.deuceServicePoints || 1
-        }
+        // Points and rules — from tournament config, no TT defaults
+        pointsToWinGame: tournamentFormat.pointsToWinGame || tournamentFormat.pointsPerSet || null,
+        marginToWin: tournamentFormat.marginToWin ?? null,
+        deuceRule: tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : false,
+        maxPointsPerGame: tournamentFormat.maxPointsPerGame || tournamentFormat.maxPointsCap || null,
+        serviceRule: tournamentFormat.serviceRule || null
       };
     }
 
@@ -349,8 +348,29 @@ const initializeMatchScoreboard = async (match, isKnockoutMatch = false, session
   }
 };
 
-// Check if game is won based on configurable table tennis rules
-const isGameWon = (player1Points, player2Points, pointsToWinGame = 11, marginToWin = 2, deuceRule = true, maxPointsPerGame = null) => {
+// Check if game is won — sport-aware (supports sets, time, innings, single)
+const isGameWon = (player1Points, player2Points, pointsToWinGame = null, marginToWin = null, deuceRule = false, maxPointsPerGame = null, scoringType = null) => {
+  // ═══ NON-SET SPORTS: time / innings / single ═══
+  // For these, the submitted scores ARE the final match totals (goals, runs, result).
+  // No threshold validation needed — just check who scored more.
+  if (scoringType === "time" || scoringType === "innings" || scoringType === "single") {
+    if (player1Points === player2Points) {
+      // Draws are valid in time-based sports — treat higher scorer as winner,
+      // or mark as draw if truly tied. For now, require a winner.
+      return {
+        isWon: player1Points !== player2Points,
+        winner: player1Points > player2Points ? "player1" : player2Points > player1Points ? "player2" : null,
+        winType: `${scoringType}_final_score`
+      };
+    }
+    return {
+      isWon: true,
+      winner: player1Points > player2Points ? "player1" : "player2",
+      winType: `${scoringType}_final_score`
+    };
+  }
+
+  // ═══ SET-BASED SPORTS: standard points-to-win validation ═══
   const minPoints = Math.max(player1Points, player2Points);
   const pointDiff = Math.abs(player1Points - player2Points);
 
@@ -481,14 +501,14 @@ const startMatch = async (req, res) => {
       maxGames: requestFormat.totalGames || currentMatchFormat.totalGames || tournamentFormat.totalGames ||
         requestFormat.maxGames || currentMatchFormat.maxGames || tournamentFormat.maxGames || 5, // Backward compatibility
 
-      // Points configuration
-      pointsToWinGame: requestFormat.pointsToWinGame || currentMatchFormat.pointsToWinGame || tournamentFormat.pointsToWinGame || 11,
-      marginToWin: requestFormat.marginToWin || currentMatchFormat.marginToWin || tournamentFormat.marginToWin || 2,
+      // Points configuration — no TT defaults; use tournament config
+      pointsToWinGame: requestFormat.pointsToWinGame || currentMatchFormat.pointsToWinGame || tournamentFormat.pointsToWinGame || null,
+      marginToWin: requestFormat.marginToWin ?? currentMatchFormat.marginToWin ?? tournamentFormat.marginToWin ?? null,
 
       // Rules configuration
       deuceRule: requestFormat.deuceRule !== undefined ? requestFormat.deuceRule :
         currentMatchFormat.deuceRule !== undefined ? currentMatchFormat.deuceRule :
-          tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : true,
+          tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : false,
       maxPointsPerGame: requestFormat.maxPointsPerGame || currentMatchFormat.maxPointsPerGame || tournamentFormat.maxPointsPerGame || null,
 
       // Service rules
@@ -597,22 +617,32 @@ const getLiveMatchState = async (req, res) => {
       const tournament = await Tournament.findById(match.tournamentId);
       const tournamentFormat = tournament?.matchFormat || {};
 
-      // Apply tournament configuration with intelligent defaults
+      // Detect scoringType from tournament sport
+      const { getScoringType } = require("../utils/matchFormatUtils");
+      const sportName = match.sportsType || tournament?.sportsType;
+      const VALID_SCORING_TYPES = ["sets", "time", "innings", "single"];
+      const rawScoringType = tournamentFormat.scoringType || getScoringType(sportName);
+      const scoringType = VALID_SCORING_TYPES.includes(rawScoringType) ? rawScoringType : (getScoringType(sportName) || "sets");
+      const isNonSet = scoringType === "time" || scoringType === "innings" || scoringType === "single";
+      const defaultSets = isNonSet ? 1 : (tournamentFormat.totalSets || 1);
+      const defaultGames = isNonSet ? 1 : (tournamentFormat.totalGames || 1);
+      const defaultPTW = isNonSet ? null : (tournamentFormat.pointsToWinGame || null);
+
+      // Apply tournament configuration with sport-aware defaults
       match.matchFormat = {
-        // 🎯 FLEXIBLE SETS CONFIGURATION
-        totalSets: tournamentFormat.totalSets || tournamentFormat.maxSets || 5,
-        setsToWin: tournamentFormat.setsToWin || Math.ceil((tournamentFormat.totalSets || tournamentFormat.maxSets || 5) / 2),
-        maxSets: tournamentFormat.totalSets || tournamentFormat.maxSets || 5, // Backward compatibility
+        scoringType,
 
-        // 🎯 FLEXIBLE GAMES CONFIGURATION
-        totalGames: tournamentFormat.totalGames || tournamentFormat.maxGames || 5,
-        gamesToWin: tournamentFormat.gamesToWin || Math.ceil((tournamentFormat.totalGames || tournamentFormat.maxGames || 5) / 2),
-        maxGames: tournamentFormat.totalGames || tournamentFormat.maxGames || 5, // Backward compatibility
+        totalSets: tournamentFormat.totalSets || tournamentFormat.maxSets || defaultSets,
+        setsToWin: tournamentFormat.setsToWin || Math.ceil((tournamentFormat.totalSets || tournamentFormat.maxSets || defaultSets) / 2),
+        maxSets: tournamentFormat.totalSets || tournamentFormat.maxSets || defaultSets,
 
-        // Points and rules configuration
-        pointsToWinGame: tournamentFormat.pointsToWinGame || 11,
-        marginToWin: tournamentFormat.marginToWin || 2,
-        deuceRule: tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : true,
+        totalGames: tournamentFormat.totalGames || tournamentFormat.maxGames || defaultGames,
+        gamesToWin: tournamentFormat.gamesToWin || Math.ceil((tournamentFormat.totalGames || tournamentFormat.maxGames || defaultGames) / 2),
+        maxGames: tournamentFormat.totalGames || tournamentFormat.maxGames || defaultGames,
+
+        pointsToWinGame: tournamentFormat.pointsToWinGame || defaultPTW,
+        marginToWin: tournamentFormat.marginToWin ?? null,
+        deuceRule: tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : !isNonSet,
         maxPointsPerGame: tournamentFormat.maxPointsPerGame || null,
         serviceRule: {
           pointsPerService: tournamentFormat.serviceRule?.pointsPerService || 2,
@@ -802,36 +832,48 @@ const completeGame = async (req, res) => {
     if (!match.matchFormat) {
       // Try to get format from tournament
       let tournamentFormat = {};
+      let tournamentSportsType = null;
 
       if (match.tournamentId) {
         try {
           const Tournament = require("../Modal/Tournament");
           const tournament = await Tournament.findById(match.tournamentId);
           tournamentFormat = tournament?.matchFormat || {};
+          tournamentSportsType = tournament?.sportsType || null;
         } catch (error) {
           console.log("Could not fetch tournament format, using defaults");
         }
       }
 
+      // Detect scoringType from tournament sport
+      const { getScoringType } = require("../utils/matchFormatUtils");
+      const sportName = match.sportsType || tournamentSportsType;
+      const scoringType = tournamentFormat.scoringType || getScoringType(sportName);
+
+      // Sport-aware defaults: non-set sports use 1 set / 1 game / 1 point-to-win
+      const isNonSet = scoringType === "time" || scoringType === "innings" || scoringType === "single";
+      const defaultSets = isNonSet ? 1 : (tournamentFormat.totalSets || 1);
+      const defaultGames = isNonSet ? 1 : (tournamentFormat.totalGames || 1);
+      const defaultPTW = isNonSet ? null : (tournamentFormat.pointsToWinGame || null);
+      const defaultDeuce = isNonSet ? false : true;
+
       // Create comprehensive match format with tournament inheritance
       match.matchFormat = {
-        // 🎯 FLEXIBLE SETS CONFIGURATION - Use new totalSets field with fallback
-        totalSets: tournamentFormat.totalSets || tournamentFormat.maxSets || 5,
-        setsToWin: tournamentFormat.setsToWin || Math.ceil((tournamentFormat.totalSets || tournamentFormat.maxSets || 5) / 2),
-        maxSets: tournamentFormat.totalSets || tournamentFormat.maxSets || 5, // Backward compatibility
+        scoringType,
 
-        // 🎯 FLEXIBLE GAMES CONFIGURATION - Use new totalGames field with fallback
-        totalGames: tournamentFormat.totalGames || tournamentFormat.maxGames || 5,
-        gamesToWin: tournamentFormat.gamesToWin || Math.ceil((tournamentFormat.totalGames || tournamentFormat.maxGames || 5) / 2),
-        maxGames: tournamentFormat.totalGames || tournamentFormat.maxGames || 5, // Backward compatibility
+        totalSets: tournamentFormat.totalSets || tournamentFormat.maxSets || defaultSets,
+        setsToWin: tournamentFormat.setsToWin || Math.ceil((tournamentFormat.totalSets || tournamentFormat.maxSets || defaultSets) / 2),
+        maxSets: tournamentFormat.totalSets || tournamentFormat.maxSets || defaultSets,
 
-        // Points Configuration
-        pointsToWinGame: tournamentFormat.pointsToWinGame || 11,
-        marginToWin: tournamentFormat.marginToWin || 2,
-        deuceRule: tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : true,
+        totalGames: tournamentFormat.totalGames || tournamentFormat.maxGames || defaultGames,
+        gamesToWin: tournamentFormat.gamesToWin || Math.ceil((tournamentFormat.totalGames || tournamentFormat.maxGames || defaultGames) / 2),
+        maxGames: tournamentFormat.totalGames || tournamentFormat.maxGames || defaultGames,
+
+        pointsToWinGame: tournamentFormat.pointsToWinGame || defaultPTW,
+        marginToWin: tournamentFormat.marginToWin ?? null,
+        deuceRule: tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : defaultDeuce,
         maxPointsPerGame: tournamentFormat.maxPointsPerGame || null,
 
-        // Service Rules
         serviceRule: {
           pointsPerService: tournamentFormat.serviceRule?.pointsPerService || 2,
           deuceServicePoints: tournamentFormat.serviceRule?.deuceServicePoints || 1
@@ -860,20 +902,30 @@ const completeGame = async (req, res) => {
       throw new Error("Current game not found");
     }
 
-    // Validate game win with complete configuration
+    // Pre-validate game scores
+    const { validateGameScore } = require("../utils/validateMatchResult");
+    const preValidation = validateGameScore(finalPlayer1Points, finalPlayer2Points, match.matchFormat);
+    if (!preValidation.valid) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({ success: false, message: preValidation.errors.join("; ") });
+    }
+
+    // Validate game win with complete configuration (sport-aware)
     const gameResult = isGameWon(
       finalPlayer1Points,
       finalPlayer2Points,
       match.matchFormat.pointsToWinGame,
       match.matchFormat.marginToWin,
       match.matchFormat.deuceRule,
-      match.matchFormat.maxPointsPerGame
+      match.matchFormat.maxPointsPerGame,
+      match.matchFormat.scoringType || null
     );
 
     if (!gameResult.isWon) {
       return res.status(400).json({
         success: false,
-        message: "Invalid game result - game not won according to table tennis rules"
+        message: `Invalid game result — scores do not satisfy win condition (scoringType: ${match.matchFormat.scoringType || "sets"})`
       });
     }
 
@@ -1038,6 +1090,22 @@ const completeGame = async (req, res) => {
         }
         matchCompleted = true;
 
+        // Write normalized matchResult on match completion
+        try {
+          const { readMatchResult } = require("../utils/matchUtils");
+          const completedResult = readMatchResult(match);
+          match.matchResult = {
+            type: completedResult.type,
+            completed: true,
+            player1Score: completedResult.player1Score,
+            player2Score: completedResult.player2Score,
+            winner: completedResult.winner,
+            details: completedResult.details,
+          };
+        } catch (mrErr) {
+          console.warn("[COMPLETE_GAME] Could not build matchResult:", mrErr.message);
+        }
+
         // ================================
         // KNOCKOUT TOURNAMENT BRACKET PROGRESSION
         // ================================
@@ -1163,33 +1231,63 @@ const completeGame = async (req, res) => {
       const tournamentRoom = tournamentId ? `tournament_${tournamentId}` : null;
       const matchRoom = `match_${matchId}`;
 
-      // Score update event (always)
+      // Sport metadata for frontend branching
+      const sportMeta = {
+        scoringType: match.matchFormat?.scoringType || null,
+        sportName: match.sportsType || null,
+      };
+
+      // Sport-neutral labels for frontend rendering
+      const _scoringType = sportMeta.scoringType;
+      const labels = _scoringType === "time" ? { round: "Period", score: "Goals" }
+        : _scoringType === "innings" ? { round: "Innings", score: "Runs" }
+        : _scoringType === "single" ? { round: "Game", score: "Result" }
+        : { round: "Set", score: "Points" };
+
+      // Score update event (always) — enriched with scoringType + sport-neutral fields
       const scorePayload = {
         matchId,
         tournamentId: match.tournamentId?.toString(),
+        ...sportMeta,
+        labels,
         player1: match.player1?.userName || match.player1?.playerName,
         player2: match.player2?.userName || match.player2?.playerName,
-        currentSet: match.currentSet,
-        currentGame: match.currentGame,
+        // Sport-neutral field names (preferred)
+        roundNumber: match.currentSet,
+        subRoundNumber: match.currentGame,
+        /** @deprecated use roundNumber */ currentSet: match.currentSet,
+        /** @deprecated use subRoundNumber */ currentGame: match.currentGame,
         liveScore: match.liveScore,
         sets: match.sets,
       };
       io.to(matchRoom).emit("score:update", scorePayload);
       if (tournamentRoom) io.to(tournamentRoom).emit("score:update", scorePayload);
 
-      // Set completed
+      // Round completed (sport-neutral event name alongside legacy)
       if (setCompleted) {
-        io.to(matchRoom).emit("set:complete", { matchId, setNumber: match.currentSet - 1, ...scorePayload });
-        if (tournamentRoom) io.to(tournamentRoom).emit("set:complete", { matchId, setNumber: match.currentSet - 1, ...scorePayload });
+        const roundPayload = { matchId, setNumber: match.currentSet - 1, ...scorePayload };
+        io.to(matchRoom).emit("set:complete", roundPayload);
+        io.to(matchRoom).emit("round:complete", roundPayload);
+        if (tournamentRoom) {
+          io.to(tournamentRoom).emit("set:complete", roundPayload);
+          io.to(tournamentRoom).emit("round:complete", roundPayload);
+        }
       }
 
-      // Match completed
+      // Match completed — enriched with normalized result
       if (matchCompleted) {
+        const { readMatchResult } = require("../utils/matchUtils");
+        let normalizedResult = null;
+        try { normalizedResult = readMatchResult(match); } catch {}
+
         const completePayload = {
           matchId,
           tournamentId: match.tournamentId?.toString(),
+          ...sportMeta,
+          labels,
           winner: match.winner,
           result: match.result,
+          matchResult: normalizedResult,
           player1: match.player1?.userName || match.player1?.playerName,
           player2: match.player2?.userName || match.player2?.playerName,
         };
@@ -1349,8 +1447,8 @@ const bulkSyncTournamentScores = async (req, res) => {
                 matchId: match._id,
                 playerA: match.player1?.playerId?.toString() || '000000000000000000000000',
                 playerB: match.player2?.playerId?.toString() || '000000000000000000000000',
-                setOne: "0-0",
-                setTwo: "0-0",
+                // Legacy setOne/setTwo removed (Phase 11)
+                sets: [],
                 gamesWonA: 0,
                 gamesWonB: 0,
                 totalScoreA: 0,
@@ -1827,13 +1925,13 @@ const validateGameCompletionLogic = async (req, res) => {
   try {
     const { totalGames, gamesToWin, totalSets, setsToWin } = req.query;
 
-    // Default to 5 games per set, 3 sets total configuration
+    // Test format from request params — no hardcoded defaults
     const testFormat = {
-      totalGames: parseInt(totalGames) || 5,
-      gamesToWin: parseInt(gamesToWin) || 3,
-      totalSets: parseInt(totalSets) || 3,
-      setsToWin: parseInt(setsToWin) || 2,
-      pointsToWinGame: 11
+      totalGames: parseInt(totalGames) || 1,
+      gamesToWin: parseInt(gamesToWin) || 1,
+      totalSets: parseInt(totalSets) || 1,
+      setsToWin: parseInt(setsToWin) || 1,
+      pointsToWinGame: null
     };
 
     // Simulate game progression scenarios
@@ -2007,24 +2105,21 @@ const bulkUploadScores = async (req, res) => {
           const tf = tournament?.matchFormat || {};
 
           match.matchFormat = {
-            totalSets: tf.totalSets || tf.maxSets || 5,
-            setsToWin: tf.setsToWin || Math.ceil((tf.totalSets || tf.maxSets || 5) / 2),
-            maxSets: tf.totalSets || tf.maxSets || 5,
-            totalGames: tf.totalGames || tf.maxGames || 5,
-            gamesToWin: tf.gamesToWin || Math.ceil((tf.totalGames || tf.maxGames || 5) / 2),
-            maxGames: tf.totalGames || tf.maxGames || 5,
-            pointsToWinGame: tf.pointsToWinGame || 11,
-            marginToWin: tf.marginToWin || 2,
-            deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : true,
+            totalSets: tf.totalSets || tf.maxSets || 1,
+            setsToWin: tf.setsToWin || Math.ceil((tf.totalSets || tf.maxSets || 1) / 2),
+            maxSets: tf.totalSets || tf.maxSets || 1,
+            totalGames: tf.totalGames || tf.maxGames || 1,
+            gamesToWin: tf.gamesToWin || Math.ceil((tf.totalGames || tf.maxGames || 1) / 2),
+            maxGames: tf.totalGames || tf.maxGames || 1,
+            pointsToWinGame: tf.pointsToWinGame || null,
+            marginToWin: tf.marginToWin ?? null,
+            deuceRule: tf.deuceRule !== undefined ? tf.deuceRule : false,
             maxPointsPerGame: tf.maxPointsPerGame || null,
-            serviceRule: {
-              pointsPerService: tf.serviceRule?.pointsPerService || 2,
-              deuceServicePoints: tf.serviceRule?.deuceServicePoints || 1
-            }
+            serviceRule: tf.serviceRule || null
           };
         }
 
-        const setsToWin = match.matchFormat.setsToWin || 3;
+        const setsToWin = match.matchFormat.setsToWin || 1;
 
         // Validate: need enough sets submitted to determine a winner
         let p1SetsWon = 0;

@@ -37,36 +37,50 @@ const bookingGroupSchema = new mongoose.Schema({
       },
     },
   ],
-  // 🎯 Group-specific match format configuration
+  // 🎯 Group-specific match format configuration (sport-aware)
   matchFormat: {
+    scoringType: {
+      type: String,
+      default: null,
+    },
     totalSets: {
       type: Number,
-      default: 5
+      default: null, // No default — derived from sport at creation time
     },
     setsToWin: {
       type: Number,
-      default: 3
+      default: null,
     },
     totalGames: {
       type: Number,
-      default: 5
+      default: null,
     },
     gamesToWin: {
       type: Number,
-      default: 3
+      default: null,
     },
     pointsToWinGame: {
       type: Number,
-      default: 11
+      default: null,
     },
     marginToWin: {
       type: Number,
-      default: 2
+      default: null,
     },
     deuceRule: {
       type: Boolean,
-      default: true
-    }
+      default: null,
+    },
+  },
+  // Round tracking — 1 = initial group stage, 2 = top players round
+  round: {
+    type: Number,
+    default: 1,
+  },
+  roundType: {
+    type: String,
+    enum: ["group_stage", "qualifier", null],
+    default: "group_stage",
   },
   createdAt: {
     type: Date,

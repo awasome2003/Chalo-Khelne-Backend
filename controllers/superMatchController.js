@@ -1,4 +1,6 @@
 const SuperMatch = require('../Modal/SuperMatch');
+const Tournament = require('../Modal/Tournament');
+const { createSuperGroupMatch: factoryCreateSuperGroupMatch } = require('../factories/MatchFactory');
 
 // In SuperMatch controller
 const createSuperMatch = async (req, res) => {
@@ -12,47 +14,19 @@ const createSuperMatch = async (req, res) => {
       });
     }
 
+    // Load tournament for sport config
+    const tournament = await Tournament.findById(tournamentId);
+
     const matchDocuments = matches.map((match, index) => {
       const matchDate = new Date(match.startTime);
-      
-      return {
+      return factoryCreateSuperGroupMatch({
+        tournament,
         tournamentId,
         groupId,
-        title: match.title || `Super Group Match ${index + 1}`,
-        type: match.type || 'super_group',
-        matchStage: match.matchStage || 'super_group',
-        date: matchDate.toISOString().split('T')[0],
-        time: matchDate.toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        }),
-        selectedCourt: `Court ${match.courtNumber}`,
-        teams: [
-          {
-            name: match.player1.userName,
-            playerId: match.player1.playerId,
-            rank: match.player1.rank,
-            groupName: match.player1.groupName,
-            score: 0,
-            image: null
-          },
-          {
-            name: match.player2.userName,
-            playerId: match.player2.playerId,
-            rank: match.player2.rank,
-            groupName: match.player2.groupName,
-            score: 0,
-            image: null
-          }
-        ],
-        status: 'scheduled',
-        winner: null,
-        reminder: {
-          isEnabled: true,
-          reminderTime: matchDate
-        }
-      };
+        match,
+        index,
+        matchDate,
+      });
     });
 
     const createdMatches = await SuperMatch.create(matchDocuments);

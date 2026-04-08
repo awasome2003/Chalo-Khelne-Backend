@@ -75,7 +75,7 @@ router.post("/register", async (req, res) => {
       jwt.sign(
         payload,
         process.env.JWT_SECRET,
-        { expiresIn: "1h" },
+        { expiresIn: "30d" },
         (err, token) => {
           if (err) throw err;
           res.json({ token, message: "Registration successful" });
@@ -100,9 +100,12 @@ router.post("/login", async (req, res) => {
   }
 
   try {
-    const user = await User.findOne({ email });
-    const superadmin = await Superadminmodel.findOne({ email });
-    const manager = await Manager.findOne({ email });
+    // Case-insensitive email lookup using MongoDB collation (safe, no regex needed)
+    const emailQuery = { email };
+    const collation = { locale: "en", strength: 2 }; // strength 2 = case-insensitive
+    const user = await User.findOne(emailQuery).collation(collation);
+    const superadmin = await Superadminmodel.findOne(emailQuery).collation(collation);
+    const manager = await Manager.findOne(emailQuery).collation(collation);
 
     // 🛑 Conflict Check
     const foundRoles = [user, superadmin, manager].filter(Boolean);
@@ -121,7 +124,7 @@ router.post("/login", async (req, res) => {
       const token = jwt.sign(
         { email, role: "superadmin", userId: superadmin._id },
         process.env.JWT_SECRET,
-        { expiresIn: "1h" }
+        { expiresIn: "30d" }
       );
       return res.json({
         token,
@@ -149,7 +152,7 @@ router.post("/login", async (req, res) => {
       const token = jwt.sign(
         { id: manager._id, role: "Manager" },
         process.env.JWT_SECRET,
-        { expiresIn: "1h" }
+        { expiresIn: "30d" }
       );
 
       // Check if the parent club is a corporate admin
@@ -181,7 +184,7 @@ router.post("/login", async (req, res) => {
       const token = jwt.sign(
         { id: user._id, role: user.role },
         process.env.JWT_SECRET,
-        { expiresIn: "1h" }
+        { expiresIn: "30d" }
       );
       return res.json({
         token,
@@ -1001,7 +1004,7 @@ router.get("/user/me", async (req, res) => {
   }
 });
 
-// Check if user can switch role (Player <-> Trainer)
+// Check available roles for a user (based on which service profiles exist)
 router.get("/user/can-switch-role/:userId", async (req, res) => {
   try {
     const user = await User.findById(req.params.userId);
@@ -1009,16 +1012,32 @@ router.get("/user/can-switch-role/:userId", async (req, res) => {
       return res.status(404).json({ canSwitch: false, message: "User not found" });
     }
 
-    // Allow switch if user role is Player or Trainer
-    const canSwitch = user.role === "Player" || user.role === "Trainer";
-    res.json({ canSwitch });
+    // Always available
+    const availableRoles = ["Player"];
+
+    // Check if trainer profile exists
+    const Trainer = require("../Modal/Trainer");
+    const trainerProfile = await Trainer.findOne({ userId: user._id });
+    if (trainerProfile) availableRoles.push("Trainer");
+
+    // Check if referee profile exists
+    const Referee = require("../Modal/Referee");
+    const refereeProfile = await Referee.findOne({ userId: user._id });
+    if (refereeProfile) availableRoles.push("Referee");
+
+    const canSwitch = availableRoles.length > 1;
+    res.json({
+      canSwitch,
+      currentRole: user.role,
+      availableRoles,
+    });
   } catch (error) {
     console.error("Error checking role switch:", error);
     res.status(500).json({ canSwitch: false, message: error.message });
   }
 });
 
-// Switch user role (Player <-> Trainer)
+// Switch user role (Player / Trainer / Referee)
 router.post("/user/switch-role/:userId", async (req, res) => {
   try {
     const authHeader = req.header("Authorization");
@@ -1038,7 +1057,16 @@ router.post("/user/switch-role/:userId", async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const newRole = user.role === "Player" ? "Trainer" : "Player";
+    // Accept target role from request body, or cycle to next
+    const allowedRoles = ["Player", "Trainer", "Referee"];
+    let newRole = req.body.targetRole;
+
+    if (!newRole || !allowedRoles.includes(newRole)) {
+      // Cycle: Player → Trainer → Referee → Player
+      const currentIndex = allowedRoles.indexOf(user.role);
+      newRole = allowedRoles[(currentIndex + 1) % allowedRoles.length];
+    }
+
     user.role = newRole;
     await user.save();
 

@@ -13,12 +13,12 @@ const SPORT_CATEGORIES = {
 };
 
 const SCORING_TYPES = {
-  SETS_GAMES_POINTS: "sets-games-points",
-  INNINGS_OVERS: "innings-overs",
-  HALVES_GOALS: "halves-goals",
-  QUARTERS_POINTS: "quarters-points",
-  SINGLE_SCORE: "single-score",
-  CUSTOM: "custom",
+  SETS_GAMES_POINTS: "sets",
+  INNINGS_OVERS: "innings",
+  HALVES_GOALS: "time",
+  QUARTERS_POINTS: "time",
+  SINGLE_SCORE: "single",
+  CUSTOM: "single",
 };
 
 const sportPresets = [

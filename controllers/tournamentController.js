@@ -18,6 +18,7 @@ const notificationController = require("./notificationController");
 const TopPlayers = require("../Modal/TopPlayers");
 const SuperPlayers = require("../Modal/SuperPlayers");
 const Sport = require("../Modal/Sport");
+const { createSuperMatch, createLegacyKnockoutMatch } = require("../factories/MatchFactory");
 const { sanitizeMatchFormat, validateMatchFormat: validateSportMatchFormat } = require("../utils/sportFieldConfig");
 
 // ===================== ROUND 2 PROGRESSION SYSTEM =====================
@@ -359,21 +360,39 @@ exports.resetRound2Progress = async (req, res) => {
       'stageConfig.qualifierKnockout.completed': false
     });
 
-    // Delete any Round 2 groups
-    await BookingGroup.deleteMany({
-      tournamentId,
-      round: 2
-    });
+    // Find Round 2 group IDs before deleting them
+    const round2Groups = await BookingGroup.find({ tournamentId, round: 2 }).select("_id");
+    const round2GroupIds = round2Groups.map(g => g._id);
+
+    // Delete matches belonging to Round 2 groups
+    let deletedMatches = 0;
+    if (round2GroupIds.length > 0) {
+      const Match = require("../Modal/Tournnamentmatch");
+      const result = await Match.deleteMany({
+        tournamentId,
+        groupId: { $in: round2GroupIds }
+      });
+      deletedMatches = result.deletedCount || 0;
+    }
+
+    // Delete Round 2 groups
+    const groupResult = await BookingGroup.deleteMany({ tournamentId, round: 2 });
 
     // Delete any Round 2 TopPlayers records
-    await TopPlayers.deleteMany({
-      tournamentId,
-      round: 2
-    });
+    await TopPlayers.deleteMany({ tournamentId, round: 2 });
+
+    // Also delete DirectKnockoutMatch if Round 2 was knockout mode
+    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+    const dkResult = await DirectKnockoutMatch.deleteMany({ tournamentId });
 
     return res.json({
       success: true,
-      message: "Round 2 progress has been reset successfully"
+      message: "Round 2 progress has been reset successfully",
+      deleted: {
+        groups: groupResult.deletedCount || 0,
+        matches: deletedMatches,
+        knockoutMatches: dkResult.deletedCount || 0,
+      }
     });
 
   } catch (error) {
@@ -403,11 +422,9 @@ exports.createTournament = async (req, res) => {
       category,
       termsAndConditions,
       eventLocation, // ✅ simple string from frontend
-      numTeams,
-      playerNoValue,
       setNo,
-      tournamentFee,
       setsFormat,
+      registrationDeadline,
       groupStageFormat,
       knockoutFormat,
       qualifyPerGroup,
@@ -602,9 +619,7 @@ exports.createTournament = async (req, res) => {
       managerId: parsedManagerId,
       category: parsedCategory,
       termsAndConditions: termsAndConditions || "",
-      numTeams: numTeams || 0,
-      playerNoValue: playerNoValue || "2",
-      tournamentFee: tournamentFee || "0",
+      registrationDeadline: registrationDeadline ? new Date(registrationDeadline) : null,
       matchFormat: computedMatchFormat,
       setFormat: computedSetFormat,
       groupStageFormat: type.includes("group stage") ? groupStageFormat : undefined,
@@ -975,9 +990,7 @@ exports.editTournament = async (req, res) => {
     tournament.managerId = managerIds;
     tournament.category = categories;
     tournament.termsAndConditions = termsAndConditions;
-    tournament.numTeams = req.body.numTeams || tournament.numTeams;
-    tournament.playerNoValue = req.body.playerNoValue || tournament.playerNoValue;
-    tournament.tournamentFee = req.body.tournamentFee || tournament.tournamentFee;
+    if (req.body.registrationDeadline) tournament.registrationDeadline = new Date(req.body.registrationDeadline);
 
     // Update LOCKED fields ONLY if tournament hasn't started
     if (!hasStarted) {
@@ -2067,7 +2080,10 @@ const generateKnockoutBracket = async (players, tournamentId, matchType, round, 
         };
       }
 
-      const match = new KnockoutMatch({
+      // Use MatchFactory for consistent multi-sport match creation
+      const tournament = await Tournament.findById(tournamentId);
+      const matchDoc = createLegacyKnockoutMatch({
+        tournament,
         tournamentId,
         matchType,
         round,
@@ -2078,30 +2094,21 @@ const generateKnockoutBracket = async (players, tournamentId, matchType, round, 
           playerName: player1.playerName,
           playerType: player1.playerType,
           seedRank: player1.seedRank || null,
-          fromGroup: player1.fromGroup || null
+          fromGroup: player1.fromGroup || null,
         },
         player2: player2 ? {
           playerId: player2.playerId,
           playerName: player2.playerName,
           playerType: player2.playerType,
           seedRank: player2.seedRank || null,
-          fromGroup: player2.fromGroup || null
-        } : {
-          playerId: new mongoose.Types.ObjectId(),
-          playerName: "BYE",
-          playerType: "general"
-        },
+          fromGroup: player2.fromGroup || null,
+        } : undefined,
         category,
         status,
         isBye,
         winner,
-        scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Default to tomorrow
-        scheduledTime: {
-          startTime: "10:00",
-          endTime: "11:00"
-        }
       });
-
+      const match = new KnockoutMatch(matchDoc);
       await match.save();
       matches.push(match);
       bracketPosition++;
@@ -2243,21 +2250,16 @@ exports.getTournamentMatchFormat = async (req, res) => {
       tournamentId: tournament._id,
       tournamentTitle: tournament.title,
       matchFormat: tournament.matchFormat || {
-        // 🎯 FLEXIBLE CONFIGURATION - Use new field names with auto-calculation
-        totalSets: 5,
-        setsToWin: 3,
-        maxSets: 5, // Backward compatibility
-        totalGames: 5,
-        gamesToWin: 3,
-        maxGames: 5, // Backward compatibility
-        pointsToWinGame: 11,
-        marginToWin: 2,
-        deuceRule: true,
+        // Sport-neutral defaults — actual values must come from tournament config
+        totalSets: 1,
+        setsToWin: 1,
+        totalGames: 1,
+        gamesToWin: 1,
+        pointsToWinGame: null,
+        marginToWin: null,
+        deuceRule: false,
         maxPointsPerGame: null,
-        serviceRule: {
-          pointsPerService: 2,
-          deuceServicePoints: 1
-        }
+        serviceRule: null
       }
     });
   } catch (error) {
@@ -2930,23 +2932,14 @@ exports.generateKnockoutMatches = async (req, res) => {
       });
     }
 
-    // Get tournament's match format (inherit from tournament settings!)
-    const tournamentMatchFormat = tournament.matchFormat || {
-      totalSets: 5,
-      setsToWin: 3,
-      maxSets: 5,
-      totalGames: 5,
-      gamesToWin: 3,
-      maxGames: 5,
-      pointsToWinGame: 11,
-      marginToWin: 2,
-      deuceRule: true,
-      maxPointsPerGame: null,
-      serviceRule: {
-        pointsPerService: 2,
-        deuceServicePoints: 1
-      }
-    };
+    // Get tournament's match format — NO hardcoded TT defaults
+    if (!tournament.matchFormat) {
+      return res.status(400).json({
+        success: false,
+        message: "Tournament matchFormat is not configured. Please set match format before generating knockout matches."
+      });
+    }
+    const tournamentMatchFormat = tournament.matchFormat;
     console.log("🎯 SuperMatch inheriting tournament match format:", tournamentMatchFormat);
 
     // Delete existing knockout matches for this tournament
@@ -3020,7 +3013,8 @@ exports.generateKnockoutMatches = async (req, res) => {
           nextMatchId = `${tournamentId}_${nextRound.abbreviation}_${nextMatchNumber}`;
         }
 
-        const match = new SuperMatch({
+        const matchDoc = createSuperMatch({
+          tournament,
           tournamentId,
           matchId,
           round: round.name,
@@ -3030,13 +3024,10 @@ exports.generateKnockoutMatches = async (req, res) => {
           player2,
           courtNumber,
           matchStartTime: new Date(currentTime),
-          status: "SCHEDULED",
-          nextMatchId: nextMatchId,
-          // 🎯 INHERIT TOURNAMENT MATCH FORMAT - NO MORE HARDCODED VALUES!
-          matchFormat: tournamentMatchFormat
+          nextMatchId,
         });
 
-        matches.push(match);
+        matches.push(matchDoc);
 
         // Increment time for next match
         currentTime = new Date(currentTime.getTime() + intervalMinutes * 60000);
@@ -3166,6 +3157,19 @@ function generateBracketStructure(playerCount) {
     rounds: rounds
   };
 }
+
+// Delete all knockout matches for a tournament
+exports.deleteAllKnockoutMatches = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const SuperMatch = require("../Modal/SuperMatch");
+    const result = await SuperMatch.deleteMany({ tournamentId });
+    res.json({ success: true, message: `Deleted ${result.deletedCount} knockout matches`, deletedCount: result.deletedCount });
+  } catch (error) {
+    console.error("Error deleting knockout matches:", error);
+    res.status(500).json({ success: false, message: "Failed to delete knockout matches" });
+  }
+};
 
 // Get Knockout Matches for a tournament
 exports.getKnockoutMatches = async (req, res) => {

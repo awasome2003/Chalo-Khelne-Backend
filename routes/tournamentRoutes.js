@@ -49,6 +49,7 @@ router.post("/cleanup/aggressive-superplayers/:tournamentId", tournamentControll
 
 //*SUPER PLAYERS KNOCKOUT ROUTES*//
 router.post("/knockout/generate", tournamentController.generateKnockoutMatches);
+router.delete("/knockout/:tournamentId/all", tournamentController.deleteAllKnockoutMatches);
 router.get("/knockout/matches/:tournamentId", tournamentController.getKnockoutMatches);
 router.put("/knockout/match/:matchId/result", tournamentController.updateKnockoutMatchResult);
 router.get("/knockout/leaderboard/:tournamentId", tournamentController.getTournamentLeaderboard);
@@ -245,6 +246,7 @@ router.get(
 );
 router.put("/matches/:matchId", matchController.updateMatch);
 router.delete("/matches/:matchId", matchController.deleteMatch);
+router.delete("/matches/:tournamentId/:groupId/all", matchController.deleteGroupMatches);
 
 //* Match Configuration *//
 

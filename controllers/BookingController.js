@@ -3,6 +3,8 @@ const Payment = require("../Modal/Payments");
 const mongoose = require("mongoose");
 const User = require("../Modal/User");
 const Notification = require("../Modal/Notification");
+const Tournament = require("../Modal/Tournament");
+const { validateTeamSize } = require("../utils/teamValidation");
 
 const bookingController = {
 
@@ -137,6 +139,12 @@ const bookingController = {
         bookingData.paymentMethod = "online";
         bookingData.paymentStatus = "pending";
         bookingData.status = "pending"
+      } else if (normalizedPaymentMethod === "online" && !paymentId) {
+        // Online payment with manual transaction ID (UPI/bank transfer) — pending verification
+        bookingData.paymentMethod = "online";
+        bookingData.paymentStatus = "pending";
+        bookingData.status = "pending";
+        bookingData.transactionId = req.body.transactionId || null;
       } else if (normalizedPaymentMethod === "cash") {
         // Offline cash
         bookingData.paymentMethod = "cash";
@@ -151,6 +159,24 @@ const bookingController = {
             success: false,
             message: "Team name is required and cannot be empty",
           });
+        }
+
+        // Sport-aware team size validation
+        try {
+          const tournament = await Tournament.findById(tournamentId).lean();
+          const sportName = tournament?.sportsType;
+          const playerCount = (team.players || []).length + (team.captain ? 1 : 0);
+          if (sportName && playerCount > 0) {
+            const teamCheck = validateTeamSize(playerCount, sportName);
+            if (!teamCheck.valid) {
+              return res.status(400).json({
+                success: false,
+                message: teamCheck.error,
+              });
+            }
+          }
+        } catch (validationErr) {
+          console.warn("[BOOKING] Team size validation skipped:", validationErr.message);
         }
 
         // Format players & substitutes

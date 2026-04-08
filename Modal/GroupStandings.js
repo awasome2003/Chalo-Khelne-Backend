@@ -7,11 +7,18 @@ const playerStandingSchema = new mongoose.Schema(
     played: { type: Number, default: 0 },
     won: { type: Number, default: 0 },
     lost: { type: Number, default: 0 },
+    drawn: { type: Number, default: 0 },
+    // Sport-neutral scoring fields
+    roundsWon: { type: Number, default: 0 },    // sets/innings/periods/frames won
+    roundsLost: { type: Number, default: 0 },
+    scoreFor: { type: Number, default: 0 },      // points/goals/runs scored
+    scoreAgainst: { type: Number, default: 0 },   // points/goals/runs conceded
+    // Legacy aliases (backward compat — reads still work)
     setsWon: { type: Number, default: 0 },
     setsLost: { type: Number, default: 0 },
     pointsScored: { type: Number, default: 0 },
     pointsConceded: { type: Number, default: 0 },
-    totalPoints: { type: Number, default: 0 }, // 3 per win, 0 per loss
+    totalPoints: { type: Number, default: 0 },   // 3 per win, 1 per draw, 0 per loss
     rank: { type: Number, default: 0 },
     qualified: { type: Boolean, default: false },
   },
@@ -31,6 +38,7 @@ const groupStandingsSchema = new mongoose.Schema(
       required: true,
     },
     groupName: { type: String, required: true },
+    scoringType: { type: String, default: null },
     standings: [playerStandingSchema],
     isFinalized: { type: Boolean, default: false },
   },

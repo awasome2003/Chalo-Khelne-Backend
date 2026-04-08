@@ -226,22 +226,24 @@ exports.updatePaymentOption = async (req, res) => {
 /* =========================================================
    5️⃣ FETCH QR / UPI / OFFLINE
    ========================================================= */
+// Helper: pick one random item from array
+const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
 exports.getQrCodes = async (req, res) => {
     try {
         const { managerId, tournamentId } = req.params;
 
-        // Try with tournamentId first, then fallback to manager-only
         let setup = null;
-        if (tournamentId) {
-            setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
-        }
-        if (!setup) {
-            setup = await ManagerPayment.findOne({ managerId }).lean();
-        }
+        if (tournamentId) setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
+        if (!setup) setup = await ManagerPayment.findOne({ managerId }).lean();
         if (!setup || !setup.qrCodes?.length) return res.status(404).json({ message: "No QR codes found" });
 
         const activeQrCodes = setup.qrCodes.filter(qr => qr.isActive);
-        return res.status(200).json({ qrCodes: activeQrCodes });
+        if (!activeQrCodes.length) return res.status(404).json({ message: "No active QR codes" });
+
+        // Shuffle and return only ONE random QR code to the user
+        const selected = pickRandom(activeQrCodes);
+        return res.status(200).json({ qrCodes: [selected] });
     } catch (error) {
         console.error("Error fetching QR codes:", error);
         return res.status(500).json({ message: "Server error", error: error.message });
@@ -253,16 +255,16 @@ exports.getUpiIds = async (req, res) => {
         const { managerId, tournamentId } = req.params;
 
         let setup = null;
-        if (tournamentId) {
-            setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
-        }
-        if (!setup) {
-            setup = await ManagerPayment.findOne({ managerId }).lean();
-        }
+        if (tournamentId) setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
+        if (!setup) setup = await ManagerPayment.findOne({ managerId }).lean();
         if (!setup || !setup.upiIds?.length) return res.status(404).json({ message: "No UPI IDs found" });
 
         const activeUpiIds = setup.upiIds.filter(upi => upi.isActive);
-        return res.status(200).json({ upiIds: activeUpiIds });
+        if (!activeUpiIds.length) return res.status(404).json({ message: "No active UPI IDs" });
+
+        // Shuffle and return only ONE random UPI ID
+        const selected = pickRandom(activeUpiIds);
+        return res.status(200).json({ upiIds: [selected] });
     } catch (error) {
         console.error("Error fetching UPI IDs:", error);
         return res.status(500).json({ message: "Server error", error: error.message });
@@ -274,16 +276,16 @@ exports.getOfflinePayments = async (req, res) => {
         const { managerId, tournamentId } = req.params;
 
         let setup = null;
-        if (tournamentId) {
-            setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
-        }
-        if (!setup) {
-            setup = await ManagerPayment.findOne({ managerId }).lean();
-        }
+        if (tournamentId) setup = await ManagerPayment.findOne({ managerId, tournamentId }).lean();
+        if (!setup) setup = await ManagerPayment.findOne({ managerId }).lean();
         if (!setup || !setup.offlinePayments?.length) return res.status(404).json({ message: "No offline payments found" });
 
         const activeOffline = setup.offlinePayments.filter(off => off.isActive);
-        return res.status(200).json({ offlinePayments: activeOffline });
+        if (!activeOffline.length) return res.status(404).json({ message: "No active offline payments" });
+
+        // Shuffle and return only ONE random cash receiver
+        const selected = pickRandom(activeOffline);
+        return res.status(200).json({ offlinePayments: [selected] });
     } catch (error) {
         console.error("Error fetching offline payments:", error);
         return res.status(500).json({ message: "Server error", error: error.message });
