@@ -237,6 +237,19 @@ const tournamentSchema = new mongoose.Schema(
       },
     ],
 
+    // Private/Public visibility toggle
+    isPrivate: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Auto-generated or custom client ID for private tournaments
+    clientId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
     // 🔹 New field for Corporate Employee Whitelist
     whitelist: [
       {

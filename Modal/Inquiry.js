@@ -17,9 +17,18 @@ const InquirySchema = new mongoose.Schema(
         inquiryType: {
             type: String,
             required: true,
-            enum: ["Product", "Service", "Partnership", "Other"], // Adjust enums as needed or remove enum for flexibility
+            enum: ["Product", "Service", "Partnership", "Register Club", "Other"],
         },
         message: {
+            type: String,
+        },
+        clubName: {
+            type: String,
+        },
+        city: {
+            type: String,
+        },
+        sports: {
             type: String,
         },
         status: {

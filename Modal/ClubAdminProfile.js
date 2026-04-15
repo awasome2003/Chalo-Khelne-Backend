@@ -19,14 +19,15 @@ const ContactSchema = new mongoose.Schema({
 // Main Club Admin schema
 const ClubAdminProfileSchema = new mongoose.Schema(
   {
-    // clubID: {
-    //   type: String,
-    //   required: true,
-    // },
-    // clubName: {
-    //   type: String,
-    //   required: true,
-    // },
+    clubID: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    clubName: {
+      type: String,
+      required: true,
+    },
     address: {
       type: String,
       required: true,

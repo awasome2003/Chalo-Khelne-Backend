@@ -433,6 +433,8 @@ exports.createTournament = async (req, res) => {
       tournamentLevel, // district, state, national, international, unranked
       davisCupFormatId, // Team knockout format ID (e.g. "singles_bo5")
       drawSize, // Knockout bracket size (16, 32, 64)
+      isPrivate, // Private/public visibility toggle
+      clientId, // Custom client ID for private tournaments
     } = req.body;
 
     // --- Basic validation ---
@@ -627,7 +629,20 @@ exports.createTournament = async (req, res) => {
       davisCupFormatId: davisCupFormatId || null,
       drawSize: drawSize ? parseInt(drawSize) : null,
       qualifyPerGroup: qualifyPerGroup ? parseInt(qualifyPerGroup) : 2,
+      isPrivate: isPrivate === "true" || isPrivate === true,
     };
+
+    // Generate or assign clientId for private tournaments
+    if (tournamentData.isPrivate) {
+      if (clientId && clientId.trim()) {
+        tournamentData.clientId = clientId.trim().toUpperCase();
+      } else {
+        // Auto-generate: CK-{sport initials}-{random 6 chars}
+        const sportPrefix = (sportsType || "SP").substring(0, 3).toUpperCase();
+        const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+        tournamentData.clientId = `CK-${sportPrefix}-${rand}`;
+      }
+    }
 
     // --- Handle tournament logo upload ---
     if (req.file) {
@@ -850,18 +865,16 @@ exports.getTournamentsByCorporate = async (req, res) => {
 
 exports.getAllTournaments = async (req, res) => {
   try {
-    const tournaments = await Tournament.find();
+    // Exclude private tournaments from public listing (mobile app)
+    // Manager/corporate dashboards use their own endpoints which return all
+    const includePrivate = req.query.includePrivate === "true";
+    const filter = includePrivate ? {} : { isPrivate: { $ne: true } };
+
+    const tournaments = await Tournament.find(filter);
 
     res.status(200).json(tournaments);
   } catch (error) {
-    console.error("Error fetching tournaments:", error);
-
-    // Log the error details
-    console.error("Error details:", {
-      message: error.message,
-      stack: error.stack,
-    });
-
+    console.error("Error fetching tournaments:", error.message);
     res.status(500).json({
       message: "Failed to retrieve tournaments",
       error: error.message,
@@ -911,15 +924,21 @@ exports.editTournament = async (req, res) => {
     }
 
     // ═══ BLOCK RULE EDITS AFTER TOURNAMENT STARTS ═══
+    // Only block if the value actually CHANGES (not just if the field is present in request)
     const LOCKED_FIELDS = ["matchFormatOverrides", "groupStageFormat", "knockoutFormat", "sportsType", "type", "davisCupFormatId", "drawSize"];
     const hasStarted = tournament.currentStage !== "registration";
 
     if (hasStarted) {
-      const attemptedRuleChange = LOCKED_FIELDS.some((f) => req.body[f] !== undefined);
-      if (attemptedRuleChange) {
+      const changedLockedFields = LOCKED_FIELDS.filter((f) => {
+        if (req.body[f] === undefined) return false;
+        const incoming = String(req.body[f] ?? "").trim();
+        const current = String(tournament[f] ?? "").trim();
+        return incoming !== current;
+      });
+      if (changedLockedFields.length > 0) {
         return res.status(400).json({
-          message: "Cannot modify rules after tournament has started. Only title, description, dates, location, and categories can be edited.",
-          lockedFields: LOCKED_FIELDS,
+          message: `Cannot modify ${changedLockedFields.join(", ")} after tournament has started. Only title, description, dates, location, and categories can be edited.`,
+          lockedFields: changedLockedFields,
           currentStage: tournament.currentStage,
         });
       }

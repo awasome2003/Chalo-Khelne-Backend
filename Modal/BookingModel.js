@@ -5,7 +5,7 @@ const BookingSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      default: null,
     },
     userName: {
       type: String,
@@ -16,6 +16,11 @@ const BookingSchema = new mongoose.Schema(
     },
     userPhone: {
       type: String,
+    },
+    // true when booking was created via manager's bulk upload (no user account)
+    isGuestBooking: {
+      type: Boolean,
+      default: false,
     },
     tournamentId: {
       type: mongoose.Schema.Types.ObjectId,

@@ -102,6 +102,7 @@ const UserSchema = new mongoose.Schema({
   googleId: { type: String, sparse: true },
   authProvider: { type: String, enum: ["local", "google"], default: "local" },
   emailVerified: { type: Boolean, default: false },
+  isActive: { type: Boolean, default: true },
   profilePicture: { type: String }, // For Google profile pictures
   needsMobileUpdate: { type: Boolean, default: false },
 

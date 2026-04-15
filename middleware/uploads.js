@@ -139,4 +139,9 @@ module.exports = {
       console.error("Error cleaning up file:", error);
     }
   },
+  // Convert absolute file path to a relative path from the uploads directory
+  // e.g. "D:\project\server\uploads\profiles\img.jpg" → "profiles/img.jpg"
+  getRelativePath: (absolutePath) => {
+    return path.relative(uploadsDir, absolutePath).replace(/\\/g, "/");
+  },
 };

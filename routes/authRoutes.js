@@ -310,29 +310,44 @@ router.post("/superadminlogin", async (req, res) => {
 router.post("/google-login", async (req, res) => {
   const { token, email, name, platform } = req.body;
 
-  console.log("Processing Google login request for:", email);
-
   try {
-    // Verify the access token by making a request to Google's userinfo endpoint
-    const userInfoResponse = await fetch(
-      "https://www.googleapis.com/oauth2/v3/userinfo",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    if (!userInfoResponse.ok) {
-      console.error("Failed to verify access token with Google");
-      throw new Error("Invalid access token");
+    if (!token || !email) {
+      return res.status(400).json({ message: "Token and email are required" });
     }
 
-    const googleUserInfo = await userInfoResponse.json();
+    let googleUserInfo;
+
+    // The mobile app sends an idToken from @react-native-google-signin
+    // Verify it using Google's tokeninfo endpoint
+    const { OAuth2Client } = require("google-auth-library");
+    const client = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID);
+
+    try {
+      const ticket = await client.verifyIdToken({
+        idToken: token,
+        audience: process.env.GOOGLE_WEB_CLIENT_ID,
+      });
+      googleUserInfo = ticket.getPayload();
+    } catch (idTokenError) {
+      // Fallback: try as access token (for web/legacy clients)
+      try {
+        const userInfoResponse = await fetch(
+          "https://www.googleapis.com/oauth2/v3/userinfo",
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+
+        if (!userInfoResponse.ok) {
+          return res.status(401).json({ message: "Token verification failed. Please try again." });
+        }
+
+        googleUserInfo = await userInfoResponse.json();
+      } catch (fallbackError) {
+        return res.status(401).json({ message: "Token verification failed. Please try again." });
+      }
+    }
 
     // Verify email is verified with Google
     if (!googleUserInfo.email_verified) {
-      console.error("Email not verified with Google");
       return res.status(400).json({
         message: "Please verify your email with Google first",
       });
@@ -340,10 +355,7 @@ router.post("/google-login", async (req, res) => {
 
     // Verify email matches
     if (googleUserInfo.email !== email) {
-      console.error("Email mismatch detected");
-      return res.status(400).json({
-        message: "Authentication failed",
-      });
+      return res.status(400).json({ message: "Authentication failed" });
     }
 
     // Find or create user
@@ -352,7 +364,6 @@ router.post("/google-login", async (req, res) => {
     });
 
     if (!user) {
-      // Create new user with a simple random password
       const randomPassword =
         Math.random().toString(36) + Date.now().toString(36);
 
@@ -372,12 +383,10 @@ router.post("/google-login", async (req, res) => {
 
       try {
         await user.save();
-        console.log("New user created successfully");
       } catch (saveError) {
-        console.error("User creation failed:", saveError);
         return res.status(500).json({
           message: "Failed to create account",
-          requiresMobile: true, // Indicate that mobile number is required
+          requiresMobile: true,
         });
       }
     } else {
@@ -392,7 +401,7 @@ router.post("/google-login", async (req, res) => {
       }
     }
 
-    // Generate JWT
+    // Generate JWT — same 30d expiry as normal login
     const jwtToken = jwt.sign(
       {
         id: user._id,
@@ -402,16 +411,16 @@ router.post("/google-login", async (req, res) => {
       },
       process.env.JWT_SECRET,
       {
-        expiresIn: "1h",
+        expiresIn: "30d",
         algorithm: "HS256",
       }
     );
 
-    // Send response
     res.json({
       token: jwtToken,
       user: {
         id: user._id,
+        _id: user._id,
         email: user.email,
         name: user.name,
         role: user.role,
@@ -422,13 +431,9 @@ router.post("/google-login", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Authentication failed:", {
-      message: error.message,
-      stack: error.stack,
-    });
+    console.error("Google login error:", error.message);
     res.status(401).json({
-      message: "Authentication failed",
-      error: process.env.NODE_ENV === "production" ? undefined : error.message,
+      message: "Authentication failed. Please try again.",
     });
   }
 });

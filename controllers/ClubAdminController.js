@@ -287,7 +287,11 @@ exports.onboardClubAdmin = async (req, res) => {
     });
     await newUser.save();
 
+    const generatedClubID = `CLUB-${Math.floor(100000 + Math.random() * 900000)}`;
+
     const newProfile = new ClubAdmin({
+      clubID: generatedClubID,
+      clubName: clubName,
       address: address || "TBD",
       area: area || "TBD",
       city: city || "TBD",
@@ -339,3 +343,93 @@ exports.onboardClubAdmin = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+exports.getAllClubAdmins = async (req, res) => {
+  try {
+    const users = await User.find({ role: "ClubAdmin" }).select("-password");
+    
+    // Get profiles for all club admins
+    const clubProfiles = await ClubAdmin.find({
+      userId: { $in: users.map((u) => u._id) },
+    });
+
+    // Merge User and Profile data
+    const mergedData = users.map((user) => {
+      const profile = clubProfiles.find(
+        (p) => p.userId.toString() === user._id.toString()
+      );
+      
+      return {
+        ...user.toObject(),
+        profile: profile ? profile.toObject() : null,
+      };
+    });
+
+    res.json(mergedData);
+  } catch (error) {
+    console.error("Error fetching all club admins:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.deleteClubAdmin = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Remove user
+    const deletedUser = await User.findByIdAndDelete(userId);
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Remove profile
+    await ClubAdmin.findOneAndDelete({ userId });
+
+    res.json({ message: "Club Admin and profile deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting club admin:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.bulkDeleteClubAdmins = async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ message: "No users provided for deletion" });
+    }
+
+    // Remove users
+    await User.deleteMany({ _id: { $in: userIds } });
+
+    // Remove profiles
+    await ClubAdmin.deleteMany({ userId: { $in: userIds } });
+
+    res.json({ message: "Selected Club Admins deleted successfully" });
+  } catch (error) {
+    console.error("Error bulk deleting club admins:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.toggleClubAdminStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Toggle isActive flag, defaulting it to true if undefined
+    user.isActive = user.isActive === undefined ? false : !user.isActive;
+    await user.save();
+
+    res.json({ message: `Club Admin is now ${user.isActive ? 'Active' : 'Inactive'}`, isActive: user.isActive });
+  } catch (error) {
+    console.error("Error toggling club admin status:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+

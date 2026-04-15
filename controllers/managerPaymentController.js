@@ -19,8 +19,9 @@ exports.upsertPaymentSetup = async (req, res) => {
         }
 
         // Map uploaded QR codes (if any)
+        const { uploadsDir } = require("../middleware/uploads");
         const qrCodes = (req.files || []).map(file => ({
-            imageUrl: path.relative(process.cwd(), file.path).replace(/\\/g, "/"),
+            imageUrl: path.relative(uploadsDir, file.path).replace(/\\/g, "/"),
             public_id: file.filename,
             label: req.body.label || "",
             isActive: true,

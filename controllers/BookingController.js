@@ -48,30 +48,36 @@ const bookingController = {
         }
       }
       // Check for corporate whitelist
-      const Tournament = require("../Modal/Tournament");
       const tournament = await Tournament.findById(tournamentId);
 
       if (tournament && tournament.whitelist && tournament.whitelist.length > 0) {
-        // We match by mobile or employeeId
-        // Fetch user's mobile if not provided
+        // Fetch user's mobile if not provided in request
         let userMobile = req.body.userPhone || req.body.mobile;
         if (!userMobile) {
-          const user = await User.findById(userId);
-          userMobile = user?.mobile || user?.phone;
+          const userDoc = await User.findById(userId);
+          userMobile = userDoc?.mobile || userDoc?.phone;
         }
 
         const employeeId = req.body.employeeId;
 
+        // Normalize mobile — strip +, spaces, dashes, country code — keep last 10 digits
+        const normalizeMobile = (m) => {
+          if (!m) return "";
+          return m.toString().replace(/[\s\-\+]/g, "").slice(-10);
+        };
+
         const isWhitelisted = tournament.whitelist.some(emp => {
-          const mobileMatch = userMobile && emp.mobile && (emp.mobile.toString() === userMobile.toString());
-          const idMatch = employeeId && emp.employeeId && (emp.employeeId.toString() === employeeId.toString());
-          return mobileMatch || idMatch;
+          const idMatch = employeeId && emp.employeeId &&
+            emp.employeeId.toString().trim().toLowerCase() === employeeId.toString().trim().toLowerCase();
+          const mobileMatch = userMobile && emp.mobile &&
+            normalizeMobile(emp.mobile) === normalizeMobile(userMobile);
+          return idMatch || mobileMatch;
         });
 
         if (!isWhitelisted) {
           return res.status(403).json({
             success: false,
-            message: "This is a restricted corporate tournament. Only authorized employees can register. If you are an employee, please ensure your details match the company list."
+            message: "This is a restricted corporate tournament. Only authorized employees can register. If you are an employee, please ensure your Employee ID or mobile number matches the company list."
           });
         }
       }
@@ -488,6 +494,136 @@ const bookingController = {
     } catch (err) {
       console.error("Bulk booking update error:", err);
       res.status(500).json({ success: false, message: "Failed to bulk update bookings", error: err.message });
+    }
+  },
+
+  // Bulk create bookings from manager's Excel upload (guest bookings — no user accounts)
+  bulkCreateBookings: async (req, res) => {
+    try {
+      const { tournamentId, players } = req.body;
+
+      if (!tournamentId || !Array.isArray(players) || players.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "tournamentId and a non-empty players array are required",
+        });
+      }
+
+      const tournament = await Tournament.findById(tournamentId);
+      if (!tournament) {
+        return res.status(404).json({ success: false, message: "Tournament not found" });
+      }
+
+      const tournamentType = tournament.type || "knockout";
+
+      // Check for existing bookings in this tournament to avoid duplicates
+      const existingBookings = await Booking.find({ tournamentId });
+      const existingNames = new Set(existingBookings.map(b => b.userName?.toLowerCase().trim()));
+
+      const created = [];
+      const skipped = [];
+
+      for (const player of players) {
+        const name = (player.name || "").trim();
+        if (!name) {
+          skipped.push({ ...player, reason: "Name is required" });
+          continue;
+        }
+
+        // Skip duplicates
+        if (existingNames.has(name.toLowerCase())) {
+          skipped.push({ ...player, reason: "Already registered" });
+          continue;
+        }
+
+        // Auto-generate email if not provided
+        let email = (player.email || "").trim();
+        if (!email) {
+          const slug = name.toLowerCase().replace(/[^a-z0-9]/g, ".").replace(/\.+/g, ".").replace(/^\.+|\.+$/g, "");
+          const rand = Math.floor(1000 + Math.random() * 9000);
+          email = `${slug}.${rand}@chalokhelne.local`;
+        }
+
+        const phone = (player.phone || player.mobile || "").trim() || null;
+        const employeeId = (player.employeeId || "").trim() || null;
+
+        // Build selected categories from player data or default to first tournament category
+        let selectedCategories = [];
+        if (player.category && tournament.category?.length) {
+          const match = tournament.category.find(
+            c => c.name.toLowerCase() === player.category.toLowerCase()
+          );
+          if (match) {
+            selectedCategories = [{ name: match.name, price: match.fee }];
+          }
+        }
+        if (selectedCategories.length === 0 && tournament.category?.length) {
+          selectedCategories = [{ name: tournament.category[0].name, price: tournament.category[0].fee }];
+        }
+
+        // Build team data only for team-format tournaments
+        let teamData = undefined;
+        const isTeamTournament = ["Teams", "Teams Knockout", "Davis Cup"].includes(tournament.knockoutFormat) ||
+          tournament.groupStageFormat === "Teams";
+
+        if (isTeamTournament && player.teamName) {
+          const teamPlayers = Array.isArray(player.teamPlayers)
+            ? player.teamPlayers.map(p => ({ name: typeof p === "string" ? p : p.name }))
+            : [];
+          const teamSubs = Array.isArray(player.teamSubstitutes)
+            ? player.teamSubstitutes.map(s => ({ name: typeof s === "string" ? s : s.name }))
+            : [];
+
+          teamData = {
+            name: player.teamName,
+            captain: { name },
+            players: teamPlayers,
+            substitutes: teamSubs,
+          };
+        }
+
+        const booking = new Booking({
+          userId: null,
+          userName: name,
+          userEmail: email,
+          userPhone: phone,
+          tournamentId,
+          tournamentName: tournament.title || "Tournament",
+          tournamentType,
+          status: "confirmed",
+          paymentStatus: "waived",
+          paymentAmount: 0,
+          paymentMethod: "cash",
+          employeeId,
+          isGuestBooking: true,
+          selectedCategories,
+          team: teamData,
+        });
+
+        await booking.save();
+        existingNames.add(name.toLowerCase());
+        created.push({
+          _id: booking._id,
+          userName: booking.userName,
+          userEmail: booking.userEmail,
+          employeeId: booking.employeeId,
+        });
+      }
+
+      res.status(201).json({
+        success: true,
+        message: `${created.length} bookings created, ${skipped.length} skipped`,
+        created,
+        skipped,
+        total: created.length,
+      });
+    } catch (error) {
+      console.error("Bulk create bookings error:", error.message);
+      res.status(500).json({
+        success: false,
+        message: "Failed to create bulk bookings",
+        error: error.message,
+      });
     }
   },
 };

@@ -47,9 +47,14 @@ exports.createBookingGroup = async (req, res) => {
             message: `Booking with ID ${playerId} not found`,
           });
         }
+
+        // Support guest bookings (userId is null) — use booking._id and userName
+        const resolvedPlayerId = booking.userId?._id || booking._id;
+        const resolvedUserName = booking.userId?.name || booking.userName || "Player";
+
         playerDocs.push({
-          playerId: booking.userId._id,
-          userName: booking.userId.name,
+          playerId: resolvedPlayerId,
+          userName: resolvedUserName,
           bookingDate: booking.bookingDate || null,
         });
       }
@@ -134,26 +139,35 @@ exports.updateBookingGroup = async (req, res) => {
       });
     }
 
-    /* 3. Players update (IMPORTANT FIX) */
+    /* 3. Players update — supports both user bookings and guest bookings */
     if (Array.isArray(players)) {
       const embeddedPlayers = [];
 
-      for (const userId of players) {
-        const booking = await Booking.findOne({
-          userId,
+      for (const playerId of players) {
+        // Try finding by userId first, then by booking _id (for guest bookings)
+        let booking = await Booking.findOne({
+          userId: playerId,
           tournamentId
         }).populate("userId", "name");
 
         if (!booking) {
+          // Fallback: playerId might be a booking _id (guest booking)
+          booking = await Booking.findById(playerId);
+        }
+
+        if (!booking) {
           return res.status(404).json({
             success: false,
-            message: `Player with ID ${userId} not found in bookings for this tournament`
+            message: `Player with ID ${playerId} not found in bookings for this tournament`
           });
         }
 
+        const resolvedPlayerId = booking.userId?._id || booking._id;
+        const resolvedUserName = booking.userId?.name || booking.userName || "Player";
+
         embeddedPlayers.push({
-          playerId: booking.userId._id,
-          userName: booking.userId.name,
+          playerId: resolvedPlayerId,
+          userName: resolvedUserName,
           bookingDate: booking.createdAt,
           joinedAt: new Date()
         });

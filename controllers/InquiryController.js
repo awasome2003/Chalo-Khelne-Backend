@@ -14,7 +14,7 @@ const transporter = nodemailer.createTransport({
 
 exports.createInquiry = async (req, res) => {
     try {
-        const { name, email, phone, inquiryType, message } = req.body;
+        const { name, email, phone, inquiryType, message, clubName, city, sports } = req.body;
 
         if (!name || !email || !phone || !inquiryType) {
             return res.status(400).json({ message: "All required fields must be provided." });
@@ -26,18 +26,23 @@ exports.createInquiry = async (req, res) => {
             phone,
             inquiryType,
             message,
+            clubName,
+            city,
+            sports,
         });
 
         await newInquiry.save();
 
-        // Optional: Send email notification to Admin (Superadmin)
-        // const mailOptions = {
-        //   from: process.env.EMAIL_USER,
-        //   to: "admin_email@example.com", 
-        //   subject: "New Inquiry Received",
-        //   text: `You have a new inquiry from ${name}.\nType: ${inquiryType}\nMessage: ${message}`,
-        // };
-        // transporter.sendMail(mailOptions);
+        // Send email notification to User
+        const mailOptions = {
+          from: "notmumbai@gmail.com",
+          to: email, 
+          subject: "Inquiry Received - ChaloKhelne",
+          text: `Hi ${name},\n\We have received your inquiry regarding "${inquiryType}". Our team will review your request and get back to you shortly.\n\nBest Regards,\nChaloKhelne Team`,
+        };
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) console.error("Error sending user confirmation email:", error);
+        });
 
         res.status(201).json({ message: "Inquiry submitted successfully", inquiry: newInquiry });
     } catch (error) {
@@ -52,6 +57,28 @@ exports.getAllInquiries = async (req, res) => {
         res.json(inquiries);
     } catch (error) {
         console.error("Error fetching inquiries:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+exports.updateInquiryStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        const updatedInquiry = await Inquiry.findByIdAndUpdate(
+            id,
+            { status },
+            { new: true }
+        );
+
+        if (!updatedInquiry) {
+            return res.status(404).json({ message: "Inquiry not found" });
+        }
+
+        res.json({ message: "Inquiry status updated", inquiry: updatedInquiry });
+    } catch (error) {
+        console.error("Error updating inquiry status:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };

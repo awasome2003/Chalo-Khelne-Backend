@@ -151,23 +151,26 @@ const turfController = {
       // Calculate pagination
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
-      // Execute query with pagination
-      const turfs = await Turf.find(query)
-        .populate("owner", "name email mobile")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean();
+      const parsedLimit = parseInt(limit);
+      const parsedPage = parseInt(page);
 
-      // Get total count for pagination
-      const total = await Turf.countDocuments(query);
+      // Run find and count in parallel for better performance
+      const [turfs, total] = await Promise.all([
+        Turf.find(query)
+          .populate("owner", "name email mobile")
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(parsedLimit)
+          .lean(),
+        Turf.countDocuments(query),
+      ]);
 
       res.json({
         turfs,
         pagination: {
           total,
-          page: parseInt(page),
-          pages: Math.ceil(total / parseInt(limit)),
+          page: parsedPage,
+          pages: Math.ceil(total / parsedLimit),
         },
       });
     } catch (error) {

@@ -124,6 +124,7 @@ router.delete(
 //*Registred Players*//
 
 router.post("/bookings/create", bookingController.createBooking);
+router.post("/bookings/bulk-create", bookingController.bulkCreateBookings);
 router.get("/bookings/check", bookingController.checkBooking);
 router.get("/bookings/user/:userId", bookingController.getUserBookings);
 router.get(

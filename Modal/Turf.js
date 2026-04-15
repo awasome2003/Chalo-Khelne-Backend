@@ -147,6 +147,7 @@ turfSchema.index({ "address.pincode": 1 });
 turfSchema.index({ "sports.name": 1 });
 turfSchema.index({ owner: 1 });
 turfSchema.index({ isActive: 1, isApproved: 1 });
+turfSchema.index({ isActive: 1, createdAt: -1 });
 
 const Turf = mongoose.model("Turf", turfSchema);
 

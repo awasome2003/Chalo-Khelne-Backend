@@ -489,8 +489,12 @@ const teamKnockoutController = {
       // Shuffle non-bye teams for random matchups
       const shuffledTeams = [...nonByeTeams].sort(() => 0.5 - Math.random());
 
+      // Normalize setCount to a supported value (3, 5, or 7)
+      const rawSetCount = parseInt(setCount, 10) || 3;
+      const validSetCount = rawSetCount >= 7 ? 7 : rawSetCount >= 5 ? 5 : 3;
+
       const matches = [];
-      const format = `${tournamentType} - ${setCount} Sets`;
+      const format = `${tournamentType} - ${validSetCount} Sets`;
       const baseStartTime = new Date(scheduleDetails.matchStartTime);
       const intervalMinutes = parseInt(scheduleDetails.matchInterval) || 0;
 
@@ -510,7 +514,7 @@ const teamKnockoutController = {
           );
 
           // Use config-driven format if davisCupFormatId is set, otherwise derive from legacy params
-          const formatId = tournament.davisCupFormatId || deriveFormatId(tournamentType, setCount, createdTeams);
+          const formatId = tournament.davisCupFormatId || deriveFormatId(tournamentType, validSetCount, createdTeams);
           let formatConfig;
           try {
             formatConfig = getFormat(formatId);
@@ -551,13 +555,19 @@ const teamKnockoutController = {
           // Odd team gets a bye
           console.log(`Creating odd-team bye match for: ${team1.teamName}`);
 
+          // BYE matches still need a valid formatId to satisfy schema validation
+          const byeFormatId = tournament.davisCupFormatId || deriveFormatId(tournamentType, validSetCount, createdTeams);
+          let byeFormatName = `${tournamentType} - ${validSetCount} Sets`;
+          try { byeFormatName = getFormat(byeFormatId).name; } catch {}
+
           matches.push({
             tournamentId: new mongoose.Types.ObjectId(tournamentId),
             round: 1,
             bracketPosition: maxBracketPosition + Math.floor(i / 2) + 1,
             team1Id: team1._id,
             team2Id: null,
-            format: `${tournamentType} - ${setCount} Sets`,
+            formatId: byeFormatId,
+            format: byeFormatName,
             matchDate: matchStartTime,
             courtNumber: "BYE",
             status: "BYE",
@@ -572,6 +582,10 @@ const teamKnockoutController = {
       }
 
       // Create bye matches for pre-assigned bye teams
+      const preAssignedByeFormatId = tournament.davisCupFormatId || deriveFormatId(tournamentType, validSetCount, createdTeams);
+      let preAssignedByeFormatName = `${tournamentType} - ${validSetCount} Sets`;
+      try { preAssignedByeFormatName = getFormat(preAssignedByeFormatId).name; } catch {}
+
       byeTeams.forEach((team, index) => {
         console.log(`Creating pre-assigned bye match for: ${team.teamName}`);
 
@@ -581,7 +595,8 @@ const teamKnockoutController = {
           bracketPosition: maxBracketPosition + Math.floor(shuffledTeams.length / 2) + index + 1,
           team1Id: team._id,
           team2Id: null,
-          format,
+          formatId: preAssignedByeFormatId,
+          format: preAssignedByeFormatName,
           matchDate: baseStartTime,
           courtNumber: "BYE",
           status: "BYE",
@@ -671,16 +686,45 @@ const teamKnockoutController = {
       }
 
       // Get all active teams for this tournament
-      const teams = await TeamKnockoutTeams.find({
+      let teams = await TeamKnockoutTeams.find({
         tournamentId,
         status: { $in: ["ACTIVE", "BYE_ASSIGNED"] },
       }).session(session);
 
+      // If no TeamKnockoutTeams exist (round robin is being run before any knockout),
+      // bootstrap them from the tournament's bookings so the user can use round robin
+      // standalone without first creating a knockout bracket.
       if (teams.length < 2) {
-        return res.status(400).json({
-          success: false,
-          message: "Need at least 2 teams to generate round robin matches",
+        const bookings = await Booking.find({ tournamentId }).session(session);
+
+        if (bookings.length < 2) {
+          return res.status(400).json({
+            success: false,
+            message: "Need at least 2 registered teams to generate round robin matches",
+          });
+        }
+
+        const bootstrapRecords = bookings.map((booking, index) => {
+          const validPlayers = getFirstTwoValidPlayers(booking.team || {});
+          const substitutes = extractSubstitutes(booking.team?.substitutes);
+          return {
+            tournamentId: new mongoose.Types.ObjectId(tournamentId),
+            originalBookingId: booking._id,
+            teamName: (booking.team?.name || `Team ${index + 1}`).trim(),
+            playerPositions: {
+              A: validPlayers.A,
+              B: validPlayers.B,
+              C: null,
+            },
+            substitutes,
+            seeding: index + 1,
+            byeAssigned: false,
+            status: "ACTIVE",
+          };
         });
+
+        const inserted = await TeamKnockoutTeams.insertMany(bootstrapRecords, { session });
+        teams = inserted;
       }
 
       // Check if round robin matches already exist (round = 0 means round robin)
@@ -712,8 +756,21 @@ const teamKnockoutController = {
       const useTwoPlayerFormat = teams.every(
         (t) => !t.playerPositions.C || t.playerPositions.C === null
       );
-      let effectiveFormat = `${tournamentType} - ${setCount} Sets`;
+
+      // Normalize setCount to a supported value (only 3, 5, 7 are supported by the
+      // match-sequence registry). Anything below 3 maps to 3, between 3-5 maps to 5,
+      // 7+ maps to 7. This protects round robin from tournaments stored with legacy
+      // setFormat values like "1 set" or "2 sets".
+      const rawSetCount = parseInt(setCount, 10) || 3;
+      const validSetCount = rawSetCount >= 7 ? 7 : rawSetCount >= 5 ? 5 : 3;
+
+      let effectiveFormat = `${tournamentType} - ${validSetCount} Sets`;
       if (useTwoPlayerFormat) effectiveFormat += " (2 Players)";
+
+      // Resolve formatId (required by schema). Prefer tournament's davisCupFormatId, else derive
+      const rrFormatId = tournament?.davisCupFormatId || deriveFormatId(tournamentType, validSetCount, teams);
+      let rrFormatName = effectiveFormat;
+      try { rrFormatName = getFormat(rrFormatId).name; } catch {}
 
       // Generate all possible matchups (round robin: every team plays every other team)
       const matches = [];
@@ -754,7 +811,8 @@ const teamKnockoutController = {
             bracketPosition: matchIndex + 1,
             team1Id: team1._id,
             team2Id: team2._id,
-            format: effectiveFormat,
+            formatId: rrFormatId,
+            format: rrFormatName,
             gameRules: gameRulesFromTournament,
             matchDate: matchStartTime,
             courtNumber: scheduleDetails.courtNumber || "TBD",
@@ -1445,8 +1503,8 @@ const teamKnockoutController = {
         maxPointsCap: tf.maxPointsCap || null,
       }
 
-      // Validate setCount properly
-      const validatedSetCount = [3, 5].includes(parseInt(setCount)) ? parseInt(setCount) : 3;
+      // Validate setCount properly (registry supports 3, 5, 7)
+      const validatedSetCount = [3, 5, 7].includes(parseInt(setCount)) ? parseInt(setCount) : 3;
 
       // Determine match format components
       let finalPlayFormat = playFormat;
@@ -1467,6 +1525,11 @@ const teamKnockoutController = {
 
       // Reconstruct the format string to ensure it's ALWAYS valid (matches enum: "Singles - 3 Sets", etc.)
       const format = `${standardizedPlayFormat} - ${validatedSetCount} Sets`;
+
+      // Resolve formatId for the schema (required field)
+      const nextRoundFormatId = tournament?.davisCupFormatId || deriveFormatId(standardizedPlayFormat, validatedSetCount, []);
+      let nextRoundFormatName = format;
+      try { nextRoundFormatName = getFormat(nextRoundFormatId).name; } catch {}
 
       console.log(`Setting match format to: "${format}" (derived from playFormat: "${playFormat}", setCount: "${setCount}")`);
 
@@ -1563,7 +1626,8 @@ const teamKnockoutController = {
             bracketPosition: Math.floor(i / 2) + 1,
             team1Id: team1._id,
             team2Id: team2._id,
-            format,
+            formatId: nextRoundFormatId,
+            format: nextRoundFormatName,
             gameRules: gameRulesFromTournament,
             matchDate: matchStartTime,
             courtNumber: scheduleDetails.courtNumber || "TBD",
@@ -1588,7 +1652,8 @@ const teamKnockoutController = {
             bracketPosition: Math.floor(i / 2) + 1,
             team1Id: team1._id,
             team2Id: null,
-            format,
+            formatId: nextRoundFormatId,
+            format: nextRoundFormatName,
             matchDate: matchStartTime,
             courtNumber: "BYE",
             status: "BYE",
