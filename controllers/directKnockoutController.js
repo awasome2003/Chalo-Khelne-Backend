@@ -11,7 +11,7 @@ const isPowerOfTwo = (n) => {
 };
 
 const getValidTournamentSizes = () => {
-  return [16, 32, 64]; // Supported bracket sizes
+  return [4, 8, 16, 32, 64, 128]; // Supported bracket sizes
 };
 
 // 🔥 Validate Player Selection for Direct Knockout
@@ -109,8 +109,8 @@ const getBracketSize = (n) => {
   let v = 1;
   while (v < n) v *= 2;
 
-  // Enforce minimum size of 16
-  if (v < 16) return 16;
+  // Enforce minimum size of 4
+  if (v < 4) return 4;
 
   return v;
 };
@@ -130,35 +130,39 @@ const getSeedOrder = (size) => {
 };
 
 // 🎪 Generate Tournament Bracket Structure with Draw Methods
-const generateBracketStructure = (players, drawMethod = "global", seededPlayerIds = []) => {
+// drawMethod: "standard" | "random" | "hybrid"
+// numberOfSeeds: how many top players (by input order) get fixed seeding positions
+//   standard — all players placed by input order into fixed seeding positions
+//   random   — all players shuffled randomly
+//   hybrid   — top N (numberOfSeeds) keep order, rest shuffled randomly
+const generateBracketStructure = (players, drawMethod = "standard", seededPlayerIds = [], numberOfSeeds = 0, requestedDrawSize = 0) => {
   const playerCount = players.length;
-  const bracketSize = getBracketSize(playerCount);
+  // Use requested draw size if valid, otherwise compute from player count
+  const bracketSize = (requestedDrawSize && requestedDrawSize >= playerCount) ? requestedDrawSize : getBracketSize(playerCount);
   const totalRounds = Math.log2(bracketSize);
 
-  // 1. Arrange Players by Seed
-  // If seededPlayerIds are provided, they take spots 1..K. Rest are K+1..N.
-  let rankedPlayers = []; // index 0 = Rank 1, index 1 = Rank 2...
-
-  if (seededPlayerIds && seededPlayerIds.length > 0) {
-    const seeds = seededPlayerIds.map(id => players.find(p =>
-      (p.playerId && p.playerId.toString() === id.toString()) ||
-      (p._id && p._id.toString() === id.toString()) ||
-      (p.id && p.id.toString() === id.toString())
-    )).filter(Boolean);
-
-    const seededIdsSet = new Set(seeds.map(p => (p.playerId || p._id || p.id).toString()));
-    const unseeded = players.filter(p => !seededIdsSet.has((p.playerId || p._id || p.id).toString()));
-
-    rankedPlayers = [...seeds, ...unseeded];
-  } else {
-    // If no explicit seeds, assume input order determines rank (or input is already sorted)
-    rankedPlayers = [...players];
-  }
-
-  // 2. Get Standard Seeding Order
+  // Get Standard Seeding Order (determines bracket line positions)
   const seedOrder = getSeedOrder(bracketSize);
 
-  const bracket = [];
+  // Build rankedPlayers array based on draw method and numberOfSeeds
+  let rankedPlayers = [];
+
+  if (drawMethod === "random") {
+    // Shuffle all players randomly
+    rankedPlayers = [...players].sort(() => Math.random() - 0.5);
+  } else if (drawMethod === "standard") {
+    // Standard: input order = seed order (seed 1 = index 0, seed 2 = index 1, etc.)
+    rankedPlayers = [...players];
+  } else if (numberOfSeeds > 0 && numberOfSeeds < playerCount) {
+    // Top N players keep their order (fixed seeding positions), rest are shuffled
+    const seedCount = Math.min(numberOfSeeds, playerCount);
+    const seeded = players.slice(0, seedCount);
+    const unseeded = players.slice(seedCount).sort(() => Math.random() - 0.5);
+    rankedPlayers = [...seeded, ...unseeded];
+  } else {
+    // Standard: input order = seed order (seed 1 = index 0, seed 2 = index 1, etc.)
+    rankedPlayers = [...players];
+  }
 
   // Determine round names helper
   const getRoundName = (roundNumber, total) => {
@@ -166,14 +170,13 @@ const generateBracketStructure = (players, drawMethod = "global", seededPlayerId
     if (roundsFromEnd === 1) return "final";
     if (roundsFromEnd === 2) return "semi-final";
     if (roundsFromEnd === 3) return "quarter-final";
-    if (roundsFromEnd === 4) return "round-of-16";
-    if (roundsFromEnd === 5) return "round-of-32";
-    if (roundsFromEnd === 6) return "round-of-64";
-    if (roundsFromEnd === 7) return "round-of-128";
-    return `round-${roundNumber}`;
+    const playersInRound = Math.pow(2, roundsFromEnd);
+    return `round-of-${playersInRound}`;
   };
 
-  // 3. Generate Rounds
+  // Generate Rounds
+  const bracket = [];
+
   for (let r = 1; r <= totalRounds; r++) {
     const roundName = getRoundName(r, totalRounds);
     const numMatches = bracketSize / Math.pow(2, r);
@@ -181,15 +184,11 @@ const generateBracketStructure = (players, drawMethod = "global", seededPlayerId
 
     for (let m = 0; m < numMatches; m++) {
       if (r === 1) {
-        // First round: Populate with actual players using Seed Order
-        // Match 1: seedOrder[0] vs seedOrder[1]
-        // Match m: seedOrder[2*m] vs seedOrder[2*m+1]
-
+        // First round: place players using seed order positions
         const seed1 = seedOrder[m * 2];
         const seed2 = seedOrder[m * 2 + 1];
 
-        // Players are 1-based in seedOrder, but 0-based in rankedPlayers
-        // If seed index > actual player count, it's a BYE
+        // If seed index > actual player count, slot is empty (BYE)
         const p1 = (seed1 <= playerCount) ? rankedPlayers[seed1 - 1] : null;
         const p2 = (seed2 <= playerCount) ? rankedPlayers[seed2 - 1] : null;
 
@@ -202,7 +201,7 @@ const generateBracketStructure = (players, drawMethod = "global", seededPlayerId
           bracketPosition: `R${r}M${m + 1}`
         });
       } else {
-        // Subsequent rounds: Empty slots (winners from previous round)
+        // Subsequent rounds: empty slots (winners from previous round)
         roundMatches.push({
           round: roundName,
           roundNumber: r,
@@ -227,7 +226,7 @@ const generateBracketStructure = (players, drawMethod = "global", seededPlayerId
 // 🚀 Create Direct Knockout Matches
 const createDirectKnockoutMatches = async (req, res) => {
   try {
-    const { tournamentId, selectedPlayers, schedule, drawMethod, seededPlayers } = req.body; // Extract new params
+    const { tournamentId, selectedPlayers, schedule, drawMethod, seededPlayers, numberOfSeeds } = req.body;
 
     // Validate inputs
     if (!tournamentId || !selectedPlayers || !schedule) {
@@ -246,12 +245,12 @@ const createDirectKnockoutMatches = async (req, res) => {
       });
     }
 
-    // Validate: player count must exactly match draw size
+    // Validate: player count must not exceed draw size
     const requestedDraw = schedule?.drawSize || getBracketSize(selectedPlayers.length);
-    if (getValidTournamentSizes().includes(requestedDraw) && selectedPlayers.length !== requestedDraw) {
+    if (getValidTournamentSizes().includes(requestedDraw) && selectedPlayers.length > requestedDraw) {
       return res.status(400).json({
         success: false,
-        message: `Player count (${selectedPlayers.length}) must exactly match draw size (${requestedDraw}). Select exactly ${requestedDraw} players.`,
+        message: `Too many players (${selectedPlayers.length}) for a ${requestedDraw}-draw. Maximum: ${requestedDraw}`,
       });
     }
 
@@ -266,7 +265,7 @@ const createDirectKnockoutMatches = async (req, res) => {
     const matchFormat = tournament.matchFormat;
 
     // Generate bracket structure for ALL rounds
-    const bracket = generateBracketStructure(selectedPlayers, drawMethod, seededPlayers);
+    const bracket = generateBracketStructure(selectedPlayers, drawMethod || "standard", seededPlayers || [], numberOfSeeds || 0, requestedDraw);
     const totalRounds = bracket.length;
 
     // Clear any existing direct knockout matches for this tournament to prevent duplicates
@@ -344,6 +343,59 @@ const createDirectKnockoutMatches = async (req, res) => {
     // Save all matches
     const savedMatches = await DirectKnockoutMatch.insertMany(allMatchDocs);
 
+    // Auto-BYE: For first-round matches where one player is TBD (null),
+    // auto-advance the real player to the next round
+    let byeCount = 0;
+    const firstRoundMatches = await DirectKnockoutMatch.find({
+      tournamentId,
+      roundNumber: 1,
+    });
+
+    for (const match of firstRoundMatches) {
+      const p1Real = match.player1?.playerName && match.player1.playerName !== "TBD";
+      const p2Real = match.player2?.playerName && match.player2.playerName !== "TBD";
+
+      if (p1Real && !p2Real) {
+        match.status = "COMPLETED";
+        match.result = {
+          winner: { playerId: match.player1.playerId, playerName: match.player1.playerName },
+          finalScore: { player1Sets: 0, player2Sets: 0 },
+          matchDuration: 0,
+          completedAt: new Date(),
+        };
+        match.notes = `BYE — ${match.player1.playerName} advances automatically (no opponent).`;
+        if (match.nextMatchId) {
+          const nextMatch = await DirectKnockoutMatch.findOne({ matchId: match.nextMatchId });
+          if (nextMatch) {
+            const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
+            nextMatch[slot] = { playerId: match.player1.playerId, playerName: match.player1.playerName };
+            await nextMatch.save();
+          }
+        }
+        await match.save();
+        byeCount++;
+      } else if (p2Real && !p1Real) {
+        match.status = "COMPLETED";
+        match.result = {
+          winner: { playerId: match.player2.playerId, playerName: match.player2.playerName },
+          finalScore: { player1Sets: 0, player2Sets: 0 },
+          matchDuration: 0,
+          completedAt: new Date(),
+        };
+        match.notes = `BYE — ${match.player2.playerName} advances automatically (no opponent).`;
+        if (match.nextMatchId) {
+          const nextMatch = await DirectKnockoutMatch.findOne({ matchId: match.nextMatchId });
+          if (nextMatch) {
+            const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
+            nextMatch[slot] = { playerId: match.player2.playerId, playerName: match.player2.playerName };
+            await nextMatch.save();
+          }
+        }
+        await match.save();
+        byeCount++;
+      }
+    }
+
     // Update tournament to direct knockout mode
     await Tournament.findByIdAndUpdate(tournamentId, {
       roundTwoMode: "direct-knockout"
@@ -351,7 +403,7 @@ const createDirectKnockoutMatches = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Direct Knockout matches created successfully",
+      message: `Direct Knockout matches created successfully${byeCount > 0 ? ` (${byeCount} auto-BYEs)` : ""}`,
       tournament: {
         id: tournamentId,
         mode: "direct-knockout"
@@ -359,7 +411,8 @@ const createDirectKnockoutMatches = async (req, res) => {
       bracket: {
         totalRounds: bracket.length,
         totalMatches: savedMatches.length,
-        playerCount: selectedPlayers.length
+        playerCount: selectedPlayers.length,
+        byeCount,
       },
       matches: savedMatches,
       schedule: {
@@ -557,14 +610,23 @@ const validateStandalonePlayers = async (req, res) => {
       });
     }
 
-    if (players.length !== bracketSize) {
+    if (players.length > bracketSize) {
       return res.status(400).json({
         success: false,
-        message: `Player count (${players.length}) must exactly match draw size (${bracketSize}). Select exactly ${bracketSize} players for a ${bracketSize}-draw.`,
+        message: `Too many players (${players.length}) for a ${bracketSize}-draw. Maximum: ${bracketSize}`,
+      });
+    }
+
+    const minPlayers = Math.ceil(bracketSize / 2) + 1;
+    if (players.length < minPlayers) {
+      return res.status(400).json({
+        success: false,
+        message: `Need at least ${minPlayers} players for a ${bracketSize}-draw. Currently: ${players.length}`,
       });
     }
 
     const rounds = Math.log2(bracketSize);
+    const byeCount = bracketSize - players.length;
 
     return res.json({
       success: true,
@@ -572,6 +634,7 @@ const validateStandalonePlayers = async (req, res) => {
       bracketSize,
       rounds,
       totalMatches: bracketSize - 1,
+      byeCount,
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -581,7 +644,7 @@ const validateStandalonePlayers = async (req, res) => {
 // Create standalone knockout matches — players passed directly, no TopPlayers needed
 const createStandaloneKnockout = async (req, res) => {
   try {
-    const { tournamentId, players, schedule, drawSize, drawMethod, seededPlayers } = req.body;
+    const { tournamentId, players, schedule, drawSize, drawMethod, seededPlayers, numberOfSeeds } = req.body;
 
     if (!tournamentId || !Array.isArray(players) || players.length < 2) {
       return res.status(400).json({
@@ -606,10 +669,18 @@ const createStandaloneKnockout = async (req, res) => {
       });
     }
 
-    if (players.length !== selectedDraw) {
+    if (players.length > selectedDraw) {
       return res.status(400).json({
         success: false,
-        message: `Player count (${players.length}) must exactly match draw size (${selectedDraw}). Select exactly ${selectedDraw} players.`,
+        message: `Too many players (${players.length}) for a ${selectedDraw}-draw. Maximum: ${selectedDraw}`,
+      });
+    }
+
+    const minPlayers = Math.ceil(selectedDraw / 2) + 1;
+    if (players.length < minPlayers) {
+      return res.status(400).json({
+        success: false,
+        message: `Need at least ${minPlayers} players for a ${selectedDraw}-draw. Currently: ${players.length}`,
       });
     }
 
@@ -636,7 +707,7 @@ const createStandaloneKnockout = async (req, res) => {
     const matchFormatResolved = resolveMatchFormat(tournament);
 
     // Generate bracket
-    const bracket = generateBracketStructure(normalizedPlayers, drawMethod || "global", seededPlayers || []);
+    const bracket = generateBracketStructure(normalizedPlayers, drawMethod || "standard", seededPlayers || [], numberOfSeeds || 0, bracketSize);
     const totalRounds = bracket.length;
 
     const sched = schedule || {};
@@ -686,23 +757,79 @@ const createStandaloneKnockout = async (req, res) => {
       }
     }
 
-    // No auto-BYEs — player count must exactly match draw size
-    // BYEs are given manually after generation via the giveBye endpoint
-
     const saved = await DirectKnockoutMatch.insertMany(allMatchDocs);
+
+    // Auto-BYE: For first-round matches where one player is TBD (null),
+    // auto-advance the real player to the next round
+    let byeCount = 0;
+    const firstRoundMatches = await DirectKnockoutMatch.find({
+      tournamentId,
+      roundNumber: 1,
+    });
+
+    for (const match of firstRoundMatches) {
+      const p1Real = match.player1?.playerName && match.player1.playerName !== "TBD";
+      const p2Real = match.player2?.playerName && match.player2.playerName !== "TBD";
+
+      // Only auto-BYE when exactly one player is real and the other is TBD
+      if (p1Real && !p2Real) {
+        // Player 1 gets auto-advance, Player 2 is BYE
+        match.status = "COMPLETED";
+        match.result = {
+          winner: { playerId: match.player1.playerId, playerName: match.player1.playerName },
+          finalScore: { player1Sets: 0, player2Sets: 0 },
+          matchDuration: 0,
+          completedAt: new Date(),
+        };
+        match.notes = `BYE — ${match.player1.playerName} advances automatically (no opponent).`;
+
+        if (match.nextMatchId) {
+          const nextMatch = await DirectKnockoutMatch.findOne({ matchId: match.nextMatchId });
+          if (nextMatch) {
+            const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
+            nextMatch[slot] = { playerId: match.player1.playerId, playerName: match.player1.playerName };
+            await nextMatch.save();
+          }
+        }
+        await match.save();
+        byeCount++;
+      } else if (p2Real && !p1Real) {
+        // Player 2 gets auto-advance, Player 1 is BYE
+        match.status = "COMPLETED";
+        match.result = {
+          winner: { playerId: match.player2.playerId, playerName: match.player2.playerName },
+          finalScore: { player1Sets: 0, player2Sets: 0 },
+          matchDuration: 0,
+          completedAt: new Date(),
+        };
+        match.notes = `BYE — ${match.player2.playerName} advances automatically (no opponent).`;
+
+        if (match.nextMatchId) {
+          const nextMatch = await DirectKnockoutMatch.findOne({ matchId: match.nextMatchId });
+          if (nextMatch) {
+            const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
+            nextMatch[slot] = { playerId: match.player2.playerId, playerName: match.player2.playerName };
+            await nextMatch.save();
+          }
+        }
+        await match.save();
+        byeCount++;
+      }
+    }
 
     // Update tournament
     await Tournament.findByIdAndUpdate(tournamentId, { roundTwoMode: "direct-knockout" });
 
     return res.status(201).json({
       success: true,
-      message: `Direct Knockout bracket created: ${saved.length} matches across ${totalRounds} rounds`,
+      message: `Direct Knockout bracket created: ${saved.length} matches across ${totalRounds} rounds${byeCount > 0 ? ` (${byeCount} auto-BYEs)` : ""}`,
       bracket: {
         totalRounds,
         totalMatches: saved.length,
         playerCount: normalizedPlayers.length,
         bracketSize,
         byes: bracketSize - normalizedPlayers.length,
+        byeCount,
       },
       matches: saved,
     });

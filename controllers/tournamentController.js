@@ -3984,11 +3984,10 @@ function getRoundName(playerCount, roundNumber) {
   if (roundNumber === rounds) return "final";
   if (roundNumber === rounds - 1) return "semi-final";
   if (roundNumber === rounds - 2) return "quarter-final";
-  if (roundNumber === rounds - 3) return "round-of-8";
-  if (roundNumber === rounds - 4) return "round-of-16";
-  if (roundNumber === rounds - 5) return "round-of-32";
-
-  return `round-${roundNumber}`;
+  // Dynamic round naming for any bracket size
+  const roundsFromEnd = rounds - roundNumber + 1;
+  const playersInRound = Math.pow(2, roundsFromEnd);
+  return `round-of-${playersInRound}`;
 }
 
 // Get groups without matches

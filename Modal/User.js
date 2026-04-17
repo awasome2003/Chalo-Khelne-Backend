@@ -7,7 +7,7 @@ const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   mobile: { type: String, required: true },
-  dateOfBirth: { type: Date },
+  dateOfBirth: { type: Date, required: true },
   age: { type: Number },
   sex: { type: String, enum: ["male", "female", "other"] },
 
@@ -106,6 +106,20 @@ const UserSchema = new mongoose.Schema({
   profilePicture: { type: String }, // For Google profile pictures
   needsMobileUpdate: { type: Boolean, default: false },
 
+  // Child Safety & Parental Controls
+  isMinor: { type: Boolean, default: false },
+  ageGroup: { type: String, enum: ["under13", "13to17", "adult"], default: "adult" },
+  parentalConsent: { type: Boolean, default: false },
+  privacyPolicyAccepted: { type: Boolean, default: false },
+  privacyPolicyAcceptedAt: { type: Date },
+  parentalControls: {
+    enabled: { type: Boolean, default: false },
+    pin: { type: String, default: null },
+    allowMessaging: { type: Boolean, default: true },
+    allowSocial: { type: Boolean, default: true },
+    allowMediaSharing: { type: Boolean, default: true },
+  },
+
   // Push Notifications
   expoPushToken: {
     type: String,
@@ -123,6 +137,33 @@ UserSchema.pre("save", async function (next) {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
   }
+
+  // Auto-calculate isMinor and ageGroup from dateOfBirth
+  if (this.isModified("dateOfBirth") && this.dateOfBirth) {
+    const today = new Date();
+    const dob = new Date(this.dateOfBirth);
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+      age--;
+    }
+    this.age = age;
+    this.isMinor = age < 18;
+    if (age < 13) {
+      this.ageGroup = "under13";
+    } else if (age < 18) {
+      this.ageGroup = "13to17";
+    } else {
+      this.ageGroup = "adult";
+    }
+  }
+
+  // Hash parental PIN if modified
+  if (this.isModified("parentalControls.pin") && this.parentalControls?.pin) {
+    const salt = await bcrypt.genSalt(10);
+    this.parentalControls.pin = await bcrypt.hash(this.parentalControls.pin, salt);
+  }
+
   this.updatedAt = Date.now();
   next();
 });
@@ -130,6 +171,11 @@ UserSchema.pre("save", async function (next) {
 // Methods
 UserSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
+};
+
+UserSchema.methods.compareParentalPin = async function (candidatePin) {
+  if (!this.parentalControls?.pin) return false;
+  return await bcrypt.compare(candidatePin, this.parentalControls.pin);
 };
 
 // Indexes for performance optimization

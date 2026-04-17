@@ -107,6 +107,35 @@ router.get("/:id", async (req, res) => {
 });
 
 // ════════════════════════════════════
+// RENAME CHAT (owner only)
+// ════════════════════════════════════
+router.put("/:id/rename", async (req, res) => {
+  try {
+    const { requesterId, name } = req.body;
+    if (!requesterId || !name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "requesterId and name required" });
+    }
+
+    const chat = await GroupChat.findById(req.params.id);
+    if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
+
+    if (!isOwner(chat, requesterId)) {
+      return res.status(403).json({ success: false, message: "Only the chat owner can rename this chat" });
+    }
+
+    chat.name = name.trim();
+    await chat.save();
+
+    const io = req.app.get("io");
+    if (io) io.to(`gchat_${chat._id}`).emit("gchat:updated", { chatId: chat._id, action: "renamed", name: chat.name });
+
+    res.json({ success: true, chat });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ════════════════════════════════════
 // ADD MEMBER (owner only)
 // ════════════════════════════════════
 router.post("/:id/add", async (req, res) => {

@@ -35,9 +35,12 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
   round: {
     type: String,
     enum: [
+      "round-of-128",
+      "round-of-64",
       "round-of-32",
       "round-of-16",
       "round-of-8",
+      "round-of-4",
       "quarter-final",
       "semi-final",
       "final"
