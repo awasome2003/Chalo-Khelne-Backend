@@ -82,19 +82,32 @@ const matchSchema = new mongoose.Schema({
       comment: "Maximum sets in match (3=best of 3, 5=best of 5, 7=best of 7)"
     },
 
-    // Game Configuration
+    // Game Configuration (nullable for flat-set sports — TT, Badminton, Volleyball)
+    // Nested-game sports (Tennis) use positive integers; flat-set sports store null
+    // to explicitly signal "no games layer between set and points".
     gamesToWin: {
       type: Number,
       default: 3,
-      min: 1,
-      max: 10,
-      comment: "Number of games needed to win set (calculated from totalGames)"
+      validate: {
+        validator: function (v) {
+          if (v == null) return true; // null = flat-set sport, no games layer
+          return Number.isInteger(v) && v >= 1 && v <= 10;
+        },
+        message: "gamesToWin must be an integer 1\u201310, or null for flat-set sports"
+      },
+      comment: "Games needed to win a set (Tennis). Null for flat-set sports (TT, Badminton)."
     },
     maxGames: {
       type: Number,
       default: 5,
-      enum: [3, 5, 7],
-      comment: "Maximum games per set"
+      validate: {
+        validator: function (v) {
+          if (v == null) return true; // null = flat-set sport
+          return [3, 5, 7].includes(v);
+        },
+        message: "maxGames must be 3, 5, 7, or null for flat-set sports"
+      },
+      comment: "Maximum games per set (Tennis). Null for flat-set sports."
     },
 
     // Points Configuration — no sport-specific defaults
@@ -190,6 +203,18 @@ const matchSchema = new mongoose.Schema({
   // Sport identification
   sportName: { type: String, default: null },
 
+  // STEP 17f — sportId is now required. Boundary validators (16d) and
+  // factory `_stamp` ensure every match created post-16d has sportId.
+  // ~78 orphan matches (parent tournament deleted) carry null sportId
+  // but are unreachable via API. UPDATE saves on existing docs use
+  // `validateModifiedOnly: true` (17f retrofit) so the orphans remain
+  // edit-safe via paths that don't touch sportId.
+  sportId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Sport",
+    required: true,
+  },
+
   // Multi-sport scoring type
   scoringType: {
     type: String,
@@ -225,6 +250,9 @@ const matchSchema = new mongoose.Schema({
 
 // Runtime enforcement: blocks direct instantiation (must use MatchFactory)
 addFactoryEnforcement(matchSchema);
+
+// Multi-sport scoping index. Non-unique — STEP 9a additive.
+matchSchema.index({ tournamentId: 1, sportId: 1 });
 
 const Match = mongoose.model("Match", matchSchema);
 

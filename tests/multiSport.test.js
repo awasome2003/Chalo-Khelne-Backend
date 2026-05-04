@@ -350,3 +350,163 @@ describe("Labels per sport type", () => {
     expect(r.labels.result).toBe("Result");
   });
 });
+
+// ═══════════════════════════════════════════════════
+// 8. hasNestedGames — shape detection
+// ═══════════════════════════════════════════════════
+
+describe("hasNestedGames", () => {
+  const { hasNestedGames } = require("../factories/MatchFactory");
+
+  test("returns false for null/undefined/non-object", () => {
+    expect(hasNestedGames(null)).toBe(false);
+    expect(hasNestedGames(undefined)).toBe(false);
+    expect(hasNestedGames("string")).toBe(false);
+  });
+
+  test("returns true when gamesPerSet > 0", () => {
+    expect(hasNestedGames({ gamesPerSet: 6 })).toBe(true);
+    expect(hasNestedGames({ matchFormat: { gamesPerSet: 4 } })).toBe(true);
+  });
+
+  test("returns false when gamesPerSet is 0 or null", () => {
+    expect(hasNestedGames({ gamesPerSet: 0 })).toBe(false);
+    expect(hasNestedGames({ gamesPerSet: null })).toBe(false);
+  });
+
+  test("returns true when totalGames > 1 AND differs from totalSets", () => {
+    expect(hasNestedGames({ totalSets: 3, totalGames: 6 })).toBe(true);
+  });
+
+  test("returns false when totalGames equals totalSets (flat fallback)", () => {
+    expect(hasNestedGames({ totalSets: 5, totalGames: 5 })).toBe(false);
+  });
+
+  test("returns false for TT preset shape (totalSets, pointsPerSet only)", () => {
+    expect(hasNestedGames({ totalSets: 5, pointsPerSet: 11 })).toBe(false);
+  });
+
+  test("returns true for Tennis preset shape", () => {
+    expect(hasNestedGames({ totalSets: 3, gamesPerSet: 6, pointsPerGame: 4 })).toBe(true);
+  });
+
+  test("accepts a tournament object and reads .matchFormat", () => {
+    const tournament = { matchFormat: { totalSets: 5, pointsPerSet: 11 } };
+    expect(hasNestedGames(tournament)).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// 9. readMatchFormat — shape awareness
+// ═══════════════════════════════════════════════════
+
+describe("readMatchFormat — shape awareness", () => {
+  const { readMatchFormat } = require("../utils/matchFormatUtils");
+
+  test("flat TT with null games fields passes validation", () => {
+    const match = {
+      _id: "tt-flat",
+      matchFormat: {
+        scoringType: "sets",
+        totalSets: 5, setsToWin: 3,
+        totalGames: null, gamesToWin: null,
+        pointsToWinGame: 11, marginToWin: 2, deuceRule: true,
+      },
+    };
+    const r = readMatchFormat(match);
+    expect(r.gamesToWin).toBeNull();
+    expect(r.totalGames).toBeNull();
+  });
+
+  test("nested Tennis keeps games layer values", () => {
+    const match = {
+      _id: "tennis",
+      matchFormat: {
+        scoringType: "sets",
+        totalSets: 3, setsToWin: 2,
+        totalGames: 6, gamesToWin: 4, gamesPerSet: 6,
+        pointsToWinGame: 4, marginToWin: 2, deuceRule: false,
+      },
+    };
+    const r = readMatchFormat(match);
+    expect(r.gamesToWin).toBe(4);
+    expect(r.totalGames).toBe(6);
+  });
+
+  test("legacy TT with equal totalSets==totalGames validates (nested=false, no derivation needed)", () => {
+    const match = {
+      _id: "tt-legacy",
+      matchFormat: {
+        scoringType: "sets",
+        totalSets: 5, setsToWin: 3,
+        totalGames: 5, gamesToWin: 3,
+        pointsToWinGame: 11, marginToWin: 2, deuceRule: true,
+      },
+    };
+    const r = readMatchFormat(match);
+    expect(r.totalSets).toBe(5);
+    expect(r.gamesToWin).toBe(3);
+  });
+
+  test("nested format missing gamesToWin derives from totalGames", () => {
+    const match = {
+      _id: "tennis-missing",
+      matchFormat: {
+        scoringType: "sets",
+        totalSets: 3, setsToWin: 2,
+        totalGames: 6, gamesToWin: null, gamesPerSet: 6,
+        pointsToWinGame: 4, marginToWin: 2, deuceRule: false,
+      },
+    };
+    const r = readMatchFormat(match);
+    expect(r.gamesToWin).toBe(3); // ceil(6/2)
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// 10. resolveMatchFormat — shape branching
+// ═══════════════════════════════════════════════════
+
+describe("resolveMatchFormat — shape branching", () => {
+  const { resolveMatchFormat, hasNestedGames } = require("../factories/MatchFactory");
+
+  test("TT tournament produces flat-shape frozen format", () => {
+    // STEP 17b.iii — multi-sport shape: per-sport config in sports[].
+    const tournament = {
+      sports: [{
+        sportName: "Table Tennis",
+        matchFormat: {
+          scoringType: "sets",
+          totalSets: 5, pointsPerSet: 11, winByMargin: 2, deuceEnabled: true,
+        },
+      }],
+    };
+    const frozen = resolveMatchFormat(tournament);
+    expect(frozen.scoringType).toBe("sets");
+    expect(hasNestedGames(frozen)).toBe(false);
+  });
+
+  test("Tennis tournament produces nested-shape frozen format", () => {
+    // Post-normalizeMatchFormat shape: totalGames is populated from gamesPerSet.
+    // In production, tournaments go through normalizeMatchFormat before save, which
+    // sets totalGames = gamesPerSet (Tennis 6), ensuring freeze preserves the nested signal.
+    // STEP 17b.iii — multi-sport shape: per-sport config in sports[].
+    const tournament = {
+      sports: [{
+        sportName: "Tennis",
+        matchFormat: {
+          scoringType: "sets",
+          totalSets: 3, totalGames: 6, gamesToWin: 4,
+          gamesPerSet: 6, pointsPerGame: 4, winByMargin: 2,
+        },
+      }],
+    };
+    const frozen = resolveMatchFormat(tournament);
+    expect(frozen.scoringType).toBe("sets");
+    expect(hasNestedGames(frozen)).toBe(true);
+  });
+
+  test("throws on null tournament", () => {
+    expect(() => resolveMatchFormat(null)).toThrow();
+  });
+});

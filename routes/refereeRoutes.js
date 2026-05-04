@@ -33,6 +33,9 @@ router.get("/assignments/:id", refereeController.getRefereeAssignments);
 router.get("/assignments/completed/:id", refereeController.getCompletedAssignments);
 router.put("/assignments/:id/:assignmentId/accept", refereeController.acceptAssignment);
 router.put("/assignments/:id/:assignmentId/decline", refereeController.declineAssignment);
+router.get("/applicants/:tournamentId", refereeController.getTournamentApplicants);
+router.post("/assign-match/:matchId", refereeController.assignUmpireToMatch);
+router.get("/my-authorizations/:userId/:tournamentId", refereeController.getMyAuthorizations);
 router.put("/availability/:id", refereeController.updateAvailability);
 router.get("/stats/:id", refereeController.getRefereeStats);
 

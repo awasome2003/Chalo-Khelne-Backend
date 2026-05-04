@@ -19,6 +19,7 @@ const {
 const KnockoutMatch = require("../Modal/semifinal");
 const teamKnockoutController = require("../controllers/teamKnockoutController");
 const tournamentLeaderboardController = require("../controllers/tournamentLeaderboardController");
+const { allowUserOrManager } = require("../middleware/authMiddleware");
 
 //*Create Tournament*//
 
@@ -99,6 +100,7 @@ router.post(
 // Live scoring for Direct Knockout
 router.post(
   "/direct-knockout/matches/:matchId/complete-game",
+  allowUserOrManager,
   directKnockoutController.completeGame
 );
 
@@ -148,6 +150,13 @@ router.delete(
   "/bookinggroups/:groupId",
   bookingGroupController.deleteBookingGroup
 );
+// Bulk delete — body: { groupIds: [] }. Cascades matches per group, blocks
+// (per-group 409 in the response payload) when a group has completed matches
+// AND its sport has progressed past group_stage. Sub-step Plan A.
+router.post(
+  "/bookinggroups/bulk-delete",
+  bookingGroupController.deleteBulkBookingGroups
+);
 
 // 🚀 Group-specific match format routes
 router.get(
@@ -163,6 +172,10 @@ router.put(
 
 router.post("/matches/create", matchController.createMatches);
 router.post("/matches/generate-group", matchController.generateGroupMatches);
+// Bulk generate — body: { tournamentId, groupIds: [], courtNumber?, startTime?,
+// intervalMinutes? }. Iterates server-side; skipped groups (already have
+// matches) are reported in the response, not failed. Sub-step Plan A.
+router.post("/matches/generate-bulk", matchController.generateBulkGroupMatches);
 router.post("/matches/transition-to-knockout", matchController.transitionToKnockout);
 
 //*GROUP STAGE SCOREBOARD ROUTES (Must come before general match routes)*//
@@ -183,7 +196,7 @@ router.get("/scores/:matchId", groupStageScoreboardController.getMatchScore);
 router.put("/matches/:matchId/live-score", groupStageScoreboardController.updateLiveScore);
 
 // Complete current game and progress match
-router.post("/matches/:matchId/complete-game", groupStageScoreboardController.completeGame);
+router.post("/matches/:matchId/complete-game", allowUserOrManager, groupStageScoreboardController.completeGame);
 
 // Reset match (admin function)
 router.post("/matches/:matchId/reset", groupStageScoreboardController.resetMatch);
@@ -312,6 +325,17 @@ router.post("/topplayers/save", tournamentController.saveTopPlayers);
 router.get("/topplayers/:tournamentId/:groupId", tournamentController.getTopPlayersByGroup);
 
 router.get("/topplayers/:tournamentId", tournamentController.getTopPlayersByTournament);
+
+router.delete(
+  "/topplayers/:tournamentId/:groupId/player/:playerId",
+  tournamentController.removeTopPlayer
+);
+
+// Toggle skip-Round-2 flag on a Top Player (seeds them for the final KO)
+router.post(
+  "/topplayers/:tournamentId/skip-round2",
+  tournamentController.toggleSkipRound2
+);
 
 //*TOURNAMENT PROGRESSION ROUTES*//
 

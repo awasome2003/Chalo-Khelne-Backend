@@ -5,6 +5,7 @@ const User = require("../Modal/User");
 const Notification = require("../Modal/Notification");
 const Tournament = require("../Modal/Tournament");
 const { validateTeamSize } = require("../utils/teamValidation");
+const { assertSportSelections, handleSportContextError } = require("../middleware/requireSportContext");
 
 const bookingController = {
 
@@ -21,6 +22,9 @@ const bookingController = {
         paymentMethod,
         tournamentType,
         selectedCategories,
+        // Multi-sport: forward-looking shape. Either or both may be sent.
+        // Accepted shape: [{ sportId, sportName, categoryName, fee }]
+        sportSelections,
       } = req.body;
 
       // Basic validation
@@ -37,6 +41,16 @@ const bookingController = {
           message: `Missing required fields: ${missingFields.join(", ")}`,
           receivedData: req.body,
         });
+      }
+
+      // STEP 16c — sportSelections is now required at the API boundary.
+      // Reject legacy `selectedCategories`-only payloads up front.
+      let _sportSelections;
+      try {
+        _sportSelections = assertSportSelections(req.body);
+      } catch (err) {
+        if (handleSportContextError(err, res)) return;
+        throw err;
       }
 
       // ✅ Normalize paymentMethod (default = "cash")
@@ -82,7 +96,18 @@ const bookingController = {
         }
       }
 
-      // Check for existing booking
+      // Check for existing booking.
+      //
+      // STEP 12 v1 LIMITATION (revisit in v2): in a multi-sport tournament,
+      // the player must pick ALL their sport+category entries up front in
+      // their first booking. Once a booking exists, additional sports
+      // cannot be added later — re-submission is blocked by this check.
+      // To support "add another sport to my existing booking", the v2
+      // model would either:
+      //   (a) merge new sportSelections into existingBooking.sportSelections
+      //       (and bump totalFee + create a follow-up payment), or
+      //   (b) allow multiple Booking docs per (userId, tournamentId) keyed
+      //       on (userId, tournamentId, sportId) and aggregate downstream.
       const existingBooking = await Booking.findOne({ userId, tournamentId });
       if (existingBooking) {
         return res.status(200).json({
@@ -94,6 +119,35 @@ const bookingController = {
         });
       }
 
+      // STEP 17c — sportSelections is the only shape written. Legacy
+      // `selectedCategories` dual-write removed (kept since STEP 9c).
+      // Backfill missing sportId/sportName per entry from the tournament
+      // so downstream readers always see a populated track ref. The
+      // resolveSportId helper accepts both string and ObjectId-shaped
+      // inputs; Mongoose casts at save time. Legacy `tournament.sportsType`
+      // fallback removed — sports[0].sportName is the only source.
+      const { resolveSportId } = require("../utils/sportTrackUtils");
+      _sportSelections = _sportSelections.map((s) => {
+        const resolvedSportId = s.sportId
+          ? s.sportId
+          : resolveSportId(tournament, req.body.sportId);
+        const resolvedSportName = s.sportName
+          || tournament?.sports?.[0]?.sportName
+          || null;
+        return {
+          sportId: resolvedSportId,
+          sportName: resolvedSportName,
+          categoryName: s.categoryName,
+          fee: Number(s.fee),
+        };
+      });
+
+      // totalFee is server-authoritative — sum of sportSelections.fee.
+      const _totalFee = _sportSelections.reduce(
+        (sum, s) => sum + Number(s.fee),
+        0
+      );
+
       let bookingData = {
         userId,
         userName,
@@ -103,7 +157,8 @@ const bookingController = {
         tournamentType,
         paymentMethod: normalizedPaymentMethod, // ✅ always set to cash if not sent
         paymentStatus: "pending",
-        selectedCategories: selectedCategories || [],
+        sportSelections: _sportSelections,
+        totalFee: _totalFee,
         employeeId: req.body.employeeId,
       };
 
@@ -167,10 +222,11 @@ const bookingController = {
           });
         }
 
-        // Sport-aware team size validation
+        // Sport-aware team size validation — STEP 17b.iv: per-sport name.
         try {
           const tournament = await Tournament.findById(tournamentId).lean();
-          const sportName = tournament?.sportsType;
+          const { getSportName } = require("../utils/sportTrackUtils");
+          const sportName = getSportName(tournament, req.body.sportId);
           const playerCount = (team.players || []).length + (team.captain ? 1 : 0);
           if (sportName && playerCount > 0) {
             const teamCheck = validateTeamSize(playerCount, sportName);
@@ -547,24 +603,53 @@ const bookingController = {
         const phone = (player.phone || player.mobile || "").trim() || null;
         const employeeId = (player.employeeId || "").trim() || null;
 
-        // Build selected categories from player data or default to first tournament category
-        let selectedCategories = [];
-        if (player.category && tournament.category?.length) {
-          const match = tournament.category.find(
-            c => c.name.toLowerCase() === player.category.toLowerCase()
-          );
-          if (match) {
-            selectedCategories = [{ name: match.name, price: match.fee }];
-          }
+        // STEP 16c — bulk path now writes both shapes.
+        // Resolve the matching category from sports[0] (multi-sport
+        // canonical) with a legacy tournament.category fallback for
+        // any pre-migration tournament that somehow slipped through.
+        // Multi-sport bulk upload (per-row sport selection) is a
+        // separate feature — for now bulk uses sports[0] uniformly.
+        const track0 = Array.isArray(tournament.sports) && tournament.sports.length > 0
+          ? tournament.sports[0]
+          : null;
+
+        // STEP 17c — read categories off sports[0] only. Legacy
+        // tournament.category fallback removed; every tournament has
+        // sports[] populated post-STEP-16.
+        const sportCats = Array.isArray(track0?.categories) ? track0.categories : [];
+
+        // Pick the matched category (by player.category) or fall back
+        // to the first available.
+        let matchedSportCat = null;
+        if (player.category) {
+          const lc = player.category.toLowerCase();
+          matchedSportCat = sportCats.find((c) => (c.name || "").toLowerCase() === lc) || null;
         }
-        if (selectedCategories.length === 0 && tournament.category?.length) {
-          selectedCategories = [{ name: tournament.category[0].name, price: tournament.category[0].fee }];
+        if (!matchedSportCat && sportCats.length > 0) matchedSportCat = sportCats[0];
+
+        // Build sportSelections from matched sport-category. Skip legacy
+        // selectedCategories write entirely.
+        let sportSelections = [];
+        let totalFee = 0;
+        if (matchedSportCat && track0) {
+          const fee = Number(matchedSportCat.fee ?? 0);
+          sportSelections = [{
+            sportId: track0.sportId || null,
+            sportName: track0.sportName || null,
+            categoryName: matchedSportCat.name,
+            fee,
+          }];
+          totalFee = fee;
         }
 
-        // Build team data only for team-format tournaments
+        // Build team data only for team-format tournaments.
+        // STEP 17c — read formats off sports[0] (the canonical source).
         let teamData = undefined;
-        const isTeamTournament = ["Teams", "Teams Knockout", "Davis Cup"].includes(tournament.knockoutFormat) ||
-          tournament.groupStageFormat === "Teams";
+        const _isTeamTournamentTrack0 = (Array.isArray(tournament.sports) && tournament.sports.length > 0)
+          ? tournament.sports[0]
+          : null;
+        const isTeamTournament = ["Teams", "Teams Knockout", "Davis Cup"].includes(_isTeamTournamentTrack0?.knockoutFormat) ||
+          _isTeamTournamentTrack0?.groupStageFormat === "Teams";
 
         if (isTeamTournament && player.teamName) {
           const teamPlayers = Array.isArray(player.teamPlayers)
@@ -596,7 +681,8 @@ const bookingController = {
           paymentMethod: "cash",
           employeeId,
           isGuestBooking: true,
-          selectedCategories,
+          sportSelections,
+          totalFee,
           team: teamData,
         });
 

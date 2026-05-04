@@ -2,8 +2,16 @@ const mongoose = require("mongoose");
 const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
 const Tournament = require("../Modal/Tournament");
 const TopPlayers = require("../Modal/TopPlayers");
+const BookingGroup = require("../Modal/bookinggroup");
 const { readMatchFormat } = require("../utils/matchFormatUtils");
 const { createKnockoutMatch, resolveMatchFormat } = require("../factories/MatchFactory");
+const { getSeedOrder, buildR1SlotAssignment } = require("../utils/seedingUtils");
+const { assertSportInTournament, handleSportContextError } = require("../middleware/requireSportContext");
+
+// In-memory lock to reject duplicate in-flight generate requests for the same
+// tournament. Prevents the "frontend timed out, retried, second request's
+// deleteMany wiped first request's docs" race that produces DocumentNotFound.
+const generationLocks = new Set();
 
 // 🎯 Power of 2 Validation - The Foundation
 const isPowerOfTwo = (n) => {
@@ -115,19 +123,7 @@ const getBracketSize = (n) => {
   return v;
 };
 
-// Standard Seeding logic (recursive)
-const getSeedOrder = (size) => {
-  let seeds = [1, 2];
-  while (seeds.length < size) {
-    let nextSeeds = [];
-    for (let i = 0; i < seeds.length; i++) {
-      nextSeeds.push(seeds[i]);
-      nextSeeds.push(2 * seeds.length + 1 - seeds[i]);
-    }
-    seeds = nextSeeds;
-  }
-  return seeds;
-};
+// Standard seeding order (Mirror & Flip) — imported from ../utils/seedingUtils.
 
 // 🎪 Generate Tournament Bracket Structure with Draw Methods
 // drawMethod: "standard" | "random" | "hybrid"
@@ -174,6 +170,26 @@ const generateBracketStructure = (players, drawMethod = "standard", seededPlayer
     return `round-of-${playersInRound}`;
   };
 
+  // R1 slot assignment: route through buildR1SlotAssignment when priority BYE
+  // applies (standard = all implicitly seeded by input order; hybrid with
+  // numberOfSeeds > 0). Random mode and the 0-seeds fallback keep the legacy
+  // "rankedPlayers[seed-1], null if out of range" path.
+  const useSlotHelper =
+    (drawMethod === "standard" && playerCount > 0) ||
+    (drawMethod === "hybrid" && numberOfSeeds > 0 && numberOfSeeds < playerCount) ||
+    (drawMethod !== "random" && drawMethod !== "standard" && numberOfSeeds > 0);
+
+  let r1Slots = null;
+  if (useSlotHelper) {
+    const effectiveSeeds = drawMethod === "standard" ? playerCount : numberOfSeeds;
+    const { slots } = buildR1SlotAssignment({
+      drawSize: bracketSize,
+      numberOfSeeds: effectiveSeeds,
+      players: rankedPlayers, // already ordered: seeded first (or all, in standard)
+    });
+    r1Slots = slots;
+  }
+
   // Generate Rounds
   const bracket = [];
 
@@ -184,13 +200,20 @@ const generateBracketStructure = (players, drawMethod = "standard", seededPlayer
 
     for (let m = 0; m < numMatches; m++) {
       if (r === 1) {
-        // First round: place players using seed order positions
-        const seed1 = seedOrder[m * 2];
-        const seed2 = seedOrder[m * 2 + 1];
-
-        // If seed index > actual player count, slot is empty (BYE)
-        const p1 = (seed1 <= playerCount) ? rankedPlayers[seed1 - 1] : null;
-        const p2 = (seed2 <= playerCount) ? rankedPlayers[seed2 - 1] : null;
+        let p1, p2;
+        if (r1Slots) {
+          // Priority-BYE placement via shared helper. Slot entries carry the
+          // original player fields plus a `seed` number when seeded; null = BYE.
+          p1 = r1Slots[m * 2] || null;
+          p2 = r1Slots[m * 2 + 1] || null;
+        } else {
+          // Legacy path: random mode / sequential fallback. Uses seedOrder
+          // directly and leaves slots null when seed > playerCount.
+          const seed1 = seedOrder[m * 2];
+          const seed2 = seedOrder[m * 2 + 1];
+          p1 = (seed1 <= playerCount) ? rankedPlayers[seed1 - 1] : null;
+          p2 = (seed2 <= playerCount) ? rankedPlayers[seed2 - 1] : null;
+        }
 
         roundMatches.push({
           round: roundName,
@@ -225,8 +248,19 @@ const generateBracketStructure = (players, drawMethod = "standard", seededPlayer
 
 // 🚀 Create Direct Knockout Matches
 const createDirectKnockoutMatches = async (req, res) => {
+  const { tournamentId } = req.body || {};
+
+  // Reject concurrent generate requests for the same tournament.
+  if (tournamentId && generationLocks.has(String(tournamentId))) {
+    return res.status(409).json({
+      success: false,
+      message: "Another bracket generation is already in progress for this tournament. Please wait for it to finish."
+    });
+  }
+  if (tournamentId) generationLocks.add(String(tournamentId));
+
   try {
-    const { tournamentId, selectedPlayers, schedule, drawMethod, seededPlayers, numberOfSeeds } = req.body;
+    const { selectedPlayers, schedule, drawMethod, seededPlayers, numberOfSeeds } = req.body;
 
     // Validate inputs
     if (!tournamentId || !selectedPlayers || !schedule) {
@@ -254,15 +288,29 @@ const createDirectKnockoutMatches = async (req, res) => {
       });
     }
 
-    // Extract dynamic match format from tournament settings
-    // NO hardcoded TT defaults — tournament MUST have matchFormat configured
-    if (!tournament.matchFormat) {
+    // Extract dynamic match format from tournament settings.
+    // STEP 17b.iv — read per-sport (req.body.sportId is asserted below;
+    // here we use it pre-assert for the validation gate).
+    const { getMatchFormat: _gmf } = require("../utils/sportTrackUtils");
+    const _trackMF = _gmf(tournament, req.body.sportId);
+    if (!_trackMF) {
       return res.status(400).json({
         success: false,
         message: "Tournament matchFormat is not configured. Please set match format before creating knockout matches."
       });
     }
-    const matchFormat = tournament.matchFormat;
+    const matchFormat = _trackMF;
+
+    // STEP 16d — sportId required at the boundary. Direct knockout has
+    // no group context (tournament-level bracket); manager UI sends
+    // activeSportId in body.
+    try {
+      assertSportInTournament(req.body.sportId, tournament);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
+    const _dkSportId = req.body.sportId;
 
     // Generate bracket structure for ALL rounds
     const bracket = generateBracketStructure(selectedPlayers, drawMethod || "standard", seededPlayers || [], numberOfSeeds || 0, requestedDraw);
@@ -314,21 +362,27 @@ const createDirectKnockoutMatches = async (req, res) => {
 
         const matchStartTime = new Date(baseDateTime.getTime() + (matchesBefore * schedule.intervalMinutes * 60000));
 
+        // Round 1 null slots are BYEs (no opponent). Later-round null slots
+        // are TBD (to be determined by the round's winners). Label them
+        // explicitly so the bracket UI shows the right text instead of falling
+        // back to the factory default.
+        const resolveSlot = (p) => {
+          if (p) return { playerId: p.playerId, playerName: p.userName };
+          return dbRoundNumber === 1
+            ? { playerId: null, playerName: "BYE" }
+            : null; // factory default → "TBD"
+        };
+
         allMatchDocs.push(createKnockoutMatch({
           tournament,
           tournamentId,
+          sportId: _dkSportId,
           matchId,
           round: match.round,
           roundNumber: dbRoundNumber,
           matchNumber: match.matchNumber,
-          player1: match.player1 ? {
-            playerId: match.player1.playerId,
-            playerName: match.player1.userName
-          } : null,
-          player2: match.player2 ? {
-            playerId: match.player2.playerId,
-            playerName: match.player2.userName
-          } : null,
+          player1: resolveSlot(match.player1),
+          player2: resolveSlot(match.player2),
           courtNumber: schedule.courtNumber || 1,
           matchStartTime,
           nextMatchId,
@@ -351,9 +405,31 @@ const createDirectKnockoutMatches = async (req, res) => {
       roundNumber: 1,
     });
 
+    // Safe save: ignores DocumentNotFoundError which can arise only if the
+    // match was deleted concurrently (shouldn't happen with the generation
+    // lock in place, but defensive against manual deletes mid-generate).
+    const safeSave = async (doc) => {
+      try {
+        await doc.save();
+      } catch (err) {
+        if (err && err.name === "DocumentNotFoundError") {
+          console.warn(`[DK BYE] Skipped save for missing doc _id=${doc._id} (likely concurrent delete).`);
+          return;
+        }
+        throw err;
+      }
+    };
+
+    // A "real" player here means an actual registered player (not a placeholder
+    // like "TBD" for next-round slots or "BYE" for empty R1 slots).
+    const isRealPlayer = (p) => {
+      const name = p?.playerName;
+      return !!name && name !== "TBD" && name !== "BYE";
+    };
+
     for (const match of firstRoundMatches) {
-      const p1Real = match.player1?.playerName && match.player1.playerName !== "TBD";
-      const p2Real = match.player2?.playerName && match.player2.playerName !== "TBD";
+      const p1Real = isRealPlayer(match.player1);
+      const p2Real = isRealPlayer(match.player2);
 
       if (p1Real && !p2Real) {
         match.status = "COMPLETED";
@@ -369,10 +445,10 @@ const createDirectKnockoutMatches = async (req, res) => {
           if (nextMatch) {
             const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
             nextMatch[slot] = { playerId: match.player1.playerId, playerName: match.player1.playerName };
-            await nextMatch.save();
+            await safeSave(nextMatch);
           }
         }
-        await match.save();
+        await safeSave(match);
         byeCount++;
       } else if (p2Real && !p1Real) {
         match.status = "COMPLETED";
@@ -388,10 +464,10 @@ const createDirectKnockoutMatches = async (req, res) => {
           if (nextMatch) {
             const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
             nextMatch[slot] = { playerId: match.player2.playerId, playerName: match.player2.playerName };
-            await nextMatch.save();
+            await safeSave(nextMatch);
           }
         }
-        await match.save();
+        await safeSave(match);
         byeCount++;
       }
     }
@@ -429,6 +505,8 @@ const createDirectKnockoutMatches = async (req, res) => {
       message: "Failed to create Direct Knockout matches",
       error: error.message
     });
+  } finally {
+    if (tournamentId) generationLocks.delete(String(tournamentId));
   }
 };
 
@@ -436,6 +514,7 @@ const createDirectKnockoutMatches = async (req, res) => {
 const getDirectKnockoutMatches = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    const { sportId } = req.query;
 
     if (!tournamentId) {
       return res.status(400).json({
@@ -444,13 +523,115 @@ const getDirectKnockoutMatches = async (req, res) => {
       });
     }
 
-    const matches = await DirectKnockoutMatch.find({ tournamentId })
+    // Multi-sport: strict sportId match.
+    const matchFilter = sportId ? { tournamentId, sportId } : { tournamentId };
+    let matches = await DirectKnockoutMatch.find(matchFilter)
       .populate('player1.playerId', 'name profileImage')
       .populate('player2.playerId', 'name profileImage')
       .sort({ roundNumber: 1, matchNumber: 1 });
 
+    // Self-heal: scan for completed matches whose winners haven't been pushed
+    // to the next-round slot, and run progression. Fixes brackets where a prior
+    // bulk upload completed matches before progression was wired in.
+    try {
+      const byMatchId = new Map();
+      matches.forEach((m) => { if (m.matchId) byMatchId.set(m.matchId, m); });
+      let healed = false;
+      for (const m of matches) {
+        if (String(m.status).toUpperCase() !== "COMPLETED") continue;
+        if (!m.nextMatchId) continue;
+        const nextMatch = byMatchId.get(m.nextMatchId);
+        if (!nextMatch) continue;
+        const winnerId =
+          m.result?.winner?.playerId ||
+          m.matchResult?.winner?.playerId ||
+          m.winner?.playerId;
+        if (!winnerId) continue;
+        const winnerIdStr = winnerId.toString();
+        const nextP1Id = nextMatch.player1?.playerId?._id?.toString?.() || nextMatch.player1?.playerId?.toString?.();
+        const nextP2Id = nextMatch.player2?.playerId?._id?.toString?.() || nextMatch.player2?.playerId?.toString?.();
+        const alreadyThere = nextP1Id === winnerIdStr || nextP2Id === winnerIdStr;
+        if (alreadyThere) continue;
+        try {
+          // Re-fetch WITHOUT populate — processDirectKnockoutProgression does
+          // `match.player1.playerId.toString()` which breaks on populated docs.
+          const freshMatch = await DirectKnockoutMatch.findById(m._id);
+          await processDirectKnockoutProgression(freshMatch, winnerId);
+          healed = true;
+        } catch (progErr) {
+          console.warn(`[HEAL] Progression error for ${m.matchId}:`, progErr.message);
+        }
+      }
+      if (healed) {
+        matches = await DirectKnockoutMatch.find({ tournamentId })
+          .populate('player1.playerId', 'name profileImage')
+          .populate('player2.playerId', 'name profileImage')
+          .sort({ roundNumber: 1, matchNumber: 1 });
+      }
+    } catch (healErr) {
+      console.warn("[HEAL] Self-heal pass failed:", healErr.message);
+    }
+
+    // Enrich each match with category derived from BookingGroup+TopPlayers lookup.
+    // DirectKnockoutMatch doesn't carry category itself.
+    const [bookingGroups, topPlayersDocs, tournamentDoc] = await Promise.all([
+      BookingGroup.find({ tournamentId }).select("category players").lean(),
+      TopPlayers.find({ tournamentId }).select("topPlayers players").lean(),
+      Tournament.findById(tournamentId).select("category").lean(),
+    ]);
+    const idToCategory = {};
+    const nameToCategory = {};
+    bookingGroups.forEach((g) => {
+      if (!g.category) return;
+      (g.players || []).forEach((p) => {
+        if (p.playerId) idToCategory[p.playerId.toString()] = g.category;
+        if (p.userName) nameToCategory[p.userName] = g.category;
+      });
+    });
+    topPlayersDocs.forEach((doc) => {
+      (doc.topPlayers || []).concat(doc.players || []).forEach((p) => {
+        if (!p?.category) return;
+        if (p.playerId) idToCategory[p.playerId.toString()] = p.category;
+        const nm = p.playerName || p.userName;
+        if (nm) nameToCategory[nm] = p.category;
+      });
+    });
+
+    // Build a normalizer that maps raw/slugged values (e.g., "open_category",
+    // "above_40", "Open") to the canonical tournament.category[].name.
+    const canonicalNames = (tournamentDoc?.category || []).map((c) => c?.name).filter(Boolean);
+    const slugify = (s) => String(s || "").toLowerCase().replace(/[\s_-]+/g, "").trim();
+    const canonicalBySlug = {};
+    canonicalNames.forEach((n) => { canonicalBySlug[slugify(n)] = n; });
+    const normalizeCategory = (raw) => {
+      if (!raw) return raw;
+      const slug = slugify(raw);
+      if (canonicalBySlug[slug]) return canonicalBySlug[slug];
+      // Partial match — e.g., raw "Open" → "Open Category"
+      const partial = canonicalNames.find((n) => {
+        const ns = slugify(n);
+        return ns.startsWith(slug) || slug.startsWith(ns);
+      });
+      return partial || raw;
+    };
+
+    const enriched = matches.map((m) => {
+      const obj = m.toObject();
+      const p1Id = obj.player1?.playerId?._id?.toString?.() || obj.player1?.playerId?.toString?.();
+      const p2Id = obj.player2?.playerId?._id?.toString?.() || obj.player2?.playerId?.toString?.();
+      const cat =
+        idToCategory[p1Id] ||
+        idToCategory[p2Id] ||
+        nameToCategory[obj.player1?.playerName] ||
+        nameToCategory[obj.player2?.playerName] ||
+        obj.category ||
+        null;
+      if (cat) obj.category = normalizeCategory(cat);
+      return obj;
+    });
+
     // Group matches by round for easier frontend handling
-    const matchesByRound = matches.reduce((acc, match) => {
+    const matchesByRound = enriched.reduce((acc, match) => {
       if (!acc[match.round]) {
         acc[match.round] = [];
       }
@@ -462,9 +643,9 @@ const getDirectKnockoutMatches = async (req, res) => {
       success: true,
       tournament: tournamentId,
       mode: "direct-knockout",
-      totalMatches: matches.length,
+      totalMatches: enriched.length,
       rounds: Object.keys(matchesByRound).length,
-      matches,
+      matches: enriched,
       matchesByRound
     });
 
@@ -518,7 +699,7 @@ const processDirectKnockoutProgression = async (match, winnerId) => {
       playerName: winnerData.playerName
     };
 
-    await nextMatch.save();
+    await nextMatch.save({ validateModifiedOnly: true });
 
     return {
       success: true,
@@ -695,16 +876,29 @@ const createStandaloneKnockout = async (req, res) => {
       userName: p.userName || p.playerName || p.name || `Player ${i + 1}`,
     }));
 
-    // Build match format from tournament — NO hardcoded TT defaults
-    if (!tournament.matchFormat) {
+    // Build match format from tournament — NO hardcoded TT defaults.
+    // STEP 17b.iv — read matchFormat per-sport.
+    const { getMatchFormat: _gmf2 } = require("../utils/sportTrackUtils");
+    const _track2MF = _gmf2(tournament, req.body.sportId);
+    if (!_track2MF) {
       return res.status(400).json({
         success: false,
         message: "Tournament matchFormat is not configured. Please set match format before creating knockout matches."
       });
     }
-    const mf = tournament.matchFormat;
+    const mf = _track2MF;
     // MatchFactory resolves format from tournament config — no inline building
-    const matchFormatResolved = resolveMatchFormat(tournament);
+    const matchFormatResolved = resolveMatchFormat(tournament, req.body.sportId);
+
+    // STEP 16d — sportId required at the boundary (standalone knockout
+    // is tournament-level, no group context).
+    try {
+      assertSportInTournament(req.body.sportId, tournament);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
+    const _standaloneSportId = req.body.sportId;
 
     // Generate bracket
     const bracket = generateBracketStructure(normalizedPlayers, drawMethod || "standard", seededPlayers || [], numberOfSeeds || 0, bracketSize);
@@ -738,6 +932,7 @@ const createStandaloneKnockout = async (req, res) => {
         allMatchDocs.push(createKnockoutMatch({
           tournament,
           tournamentId,
+          sportId: _standaloneSportId,
           matchId,
           round: match.round,
           roundNumber: round.roundNumber,
@@ -788,10 +983,10 @@ const createStandaloneKnockout = async (req, res) => {
           if (nextMatch) {
             const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
             nextMatch[slot] = { playerId: match.player1.playerId, playerName: match.player1.playerName };
-            await nextMatch.save();
+            await nextMatch.save({ validateModifiedOnly: true });
           }
         }
-        await match.save();
+        await match.save({ validateModifiedOnly: true });
         byeCount++;
       } else if (p2Real && !p1Real) {
         // Player 2 gets auto-advance, Player 1 is BYE
@@ -809,10 +1004,10 @@ const createStandaloneKnockout = async (req, res) => {
           if (nextMatch) {
             const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
             nextMatch[slot] = { playerId: match.player2.playerId, playerName: match.player2.playerName };
-            await nextMatch.save();
+            await nextMatch.save({ validateModifiedOnly: true });
           }
         }
-        await match.save();
+        await match.save({ validateModifiedOnly: true });
         byeCount++;
       }
     }
@@ -853,6 +1048,39 @@ const completeGame = async (req, res) => {
     if (!match) return res.status(404).json({ success: false, message: "Match not found" });
     if (match.status === "COMPLETED") return res.status(400).json({ success: false, message: "Match already completed" });
 
+    // ═══ GUARD: Authorization check (Phase 4b) ═══
+    // Caller must be (a) a manager of this tournament, or
+    // (b) an umpire authorized per umpireAuth (match-level or stage-level grant).
+    const callerId = req.user?._id?.toString() || req.user?.id?.toString();
+    if (!callerId) {
+      return res.status(401).json({ success: false, message: "Not authenticated." });
+    }
+
+    let authorized = false;
+    if (req.userRole === "Manager") {
+      const TournamentModel = require("../Modal/Tournament");
+      const tournamentDoc = await TournamentModel.findById(match.tournamentId)
+        .select("managerId")
+        .lean();
+      const managerIds = Array.isArray(tournamentDoc?.managerId)
+        ? tournamentDoc.managerId.map((id) => id?.toString())
+        : tournamentDoc?.managerId
+        ? [tournamentDoc.managerId.toString()]
+        : [];
+      authorized = managerIds.includes(callerId);
+    } else {
+      const { isUmpireAuthorizedForMatch } = require("../utils/umpireAuth");
+      const result = await isUmpireAuthorizedForMatch(callerId, match);
+      authorized = !!result.authorized;
+    }
+
+    if (!authorized) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to score this match.",
+      });
+    }
+
     if (player1Score === player2Score) {
       return res.status(400).json({ success: false, message: "Scores cannot be tied" });
     }
@@ -878,25 +1106,34 @@ const completeGame = async (req, res) => {
       return res.status(400).json({ success: false, message: `Set ${match.currentSet} is already completed` });
     }
 
-    // Read validated match format (throws if missing — match was not properly initialized)
+    // Read validated match format (throws if missing \u2014 match was not properly initialized)
     const fmt = readMatchFormat(match);
 
-    // Guard: check if set is already decided before adding game
-    const gamesToWinCheck = fmt.gamesToWin;
-    const existingP1Games = (currentSet.games || []).filter((g) => g.winner?.playerName === match.player1.playerName).length;
-    const existingP2Games = (currentSet.games || []).filter((g) => g.winner?.playerName === match.player2.playerName).length;
-    if (existingP1Games >= gamesToWinCheck || existingP2Games >= gamesToWinCheck) {
-      // Set already decided — auto-advance to next set
-      currentSet.status = "COMPLETED";
-      const setW = existingP1Games >= gamesToWinCheck ? match.player1 : match.player2;
-      currentSet.winner = { playerId: setW.playerId, playerName: setW.playerName };
-      match.currentSet += 1;
-      match.currentGame = 1;
-      if (!match.sets[match.currentSet - 1]) {
-        match.sets.push({ setNumber: match.currentSet, status: "IN_PROGRESS", games: [] });
+    // Sport-aware shape detection.
+    // Nested-game sports (Tennis): a set contains multiple games \u2014 tally them.
+    // Flat-set sports (TT, Badminton): a set is atomic \u2014 one game IS the set.
+    const { hasNestedGames } = require("../factories/MatchFactory");
+    const nested = hasNestedGames(fmt);
+
+    // Guard: check if set is already decided before adding game.
+    // Only meaningful for nested sports where games[] can accumulate.
+    if (nested) {
+      const gamesToWinCheck = fmt.gamesToWin;
+      const existingP1Games = (currentSet.games || []).filter((g) => g.winner?.playerName === match.player1.playerName).length;
+      const existingP2Games = (currentSet.games || []).filter((g) => g.winner?.playerName === match.player2.playerName).length;
+      if (existingP1Games >= gamesToWinCheck || existingP2Games >= gamesToWinCheck) {
+        // Set already decided \u2014 auto-advance to next set
+        currentSet.status = "COMPLETED";
+        const setW = existingP1Games >= gamesToWinCheck ? match.player1 : match.player2;
+        currentSet.winner = { playerId: setW.playerId, playerName: setW.playerName };
+        match.currentSet += 1;
+        match.currentGame = 1;
+        if (!match.sets[match.currentSet - 1]) {
+          match.sets.push({ setNumber: match.currentSet, status: "IN_PROGRESS", games: [] });
+        }
+        await match.save({ validateModifiedOnly: true });
+        return res.status(400).json({ success: false, message: `Set ${match.currentSet - 1} was already won. Moved to Set ${match.currentSet}. Please re-submit.` });
       }
-      await match.save();
-      return res.status(400).json({ success: false, message: `Set ${match.currentSet - 1} was already won. Moved to Set ${match.currentSet}. Please re-submit.` });
     }
 
     const gameWinner = player1Score > player2Score ? "player1" : "player2";
@@ -912,15 +1149,29 @@ const completeGame = async (req, res) => {
       endTime: new Date(),
     });
 
-    // Count game wins in this set
-    const p1Games = currentSet.games.filter((g) => g.winner?.playerName === match.player1.playerName).length;
-    const p2Games = currentSet.games.filter((g) => g.winner?.playerName === match.player2.playerName).length;
+    // Sport-aware set-win decision.
+    // Nested: tally games in this set; flat: the game just added IS the set winner.
+    let p1Games, p2Games, setWon, setWinner;
+    if (nested) {
+      p1Games = currentSet.games.filter((g) => g.winner?.playerName === match.player1.playerName).length;
+      p2Games = currentSet.games.filter((g) => g.winner?.playerName === match.player2.playerName).length;
+      const gamesToWin = fmt.gamesToWin;
+      if (p1Games >= gamesToWin || p2Games >= gamesToWin) {
+        setWon = true;
+        setWinner = p1Games >= gamesToWin ? match.player1 : match.player2;
+      } else {
+        setWon = false;
+      }
+    } else {
+      // Flat-set: the single game just pushed IS the set.
+      p1Games = gameWinner === "player1" ? 1 : 0;
+      p2Games = gameWinner === "player2" ? 1 : 0;
+      setWon = true;
+      setWinner = winnerData;
+    }
 
-    const gamesToWin = fmt.gamesToWin;
-
-    if (p1Games >= gamesToWin || p2Games >= gamesToWin) {
+    if (setWon) {
       // Set complete
-      const setWinner = p1Games >= gamesToWin ? match.player1 : match.player2;
       currentSet.status = "COMPLETED";
       currentSet.winner = { playerId: setWinner.playerId, playerName: setWinner.playerName };
 
@@ -947,7 +1198,7 @@ const completeGame = async (req, res) => {
             const isOdd = match.matchNumber % 2 !== 0;
             const slot = isOdd ? "player1" : "player2";
             nextMatch[slot] = { playerId: matchWinner.playerId, playerName: matchWinner.playerName };
-            await nextMatch.save();
+            await nextMatch.save({ validateModifiedOnly: true });
           }
         }
       } else {
@@ -961,14 +1212,14 @@ const completeGame = async (req, res) => {
         });
       }
     } else {
-      // Move to next game
+      // Only nested reaches here \u2014 continue to next game in current set
       match.currentGame += 1;
     }
 
     // Update live score
     match.liveScore = { player1Points: player1Score, player2Points: player2Score };
 
-    await match.save();
+    await match.save({ validateModifiedOnly: true });
 
     return res.json({
       success: true,
@@ -1067,11 +1318,11 @@ const bulkUploadScores = async (req, res) => {
             const isOdd = match.matchNumber % 2 !== 0;
             const slot = isOdd ? "player1" : "player2";
             nextMatch[slot] = { playerId: matchWinner.playerId, playerName: matchWinner.playerName };
-            await nextMatch.save();
+            await nextMatch.save({ validateModifiedOnly: true });
           }
         }
 
-        await match.save();
+        await match.save({ validateModifiedOnly: true });
 
         results.push({
           matchId: match.matchId,
@@ -1154,11 +1405,11 @@ const giveBye = async (req, res) => {
         const isOdd = match.matchNumber % 2 !== 0;
         const slot = isOdd ? "player1" : "player2";
         nextMatch[slot] = { playerId: winner.playerId, playerName: winner.playerName };
-        await nextMatch.save();
+        await nextMatch.save({ validateModifiedOnly: true });
       }
     }
 
-    await match.save();
+    await match.save({ validateModifiedOnly: true });
 
     return res.json({
       success: true,

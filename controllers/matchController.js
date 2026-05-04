@@ -6,6 +6,7 @@ const Booking = require("../Modal/BookingModel");
 const Referee = require("../Modal/Referee");
 const { freezeMatchFormat, getScoringType } = require("../utils/matchFormatUtils");
 const { createGroupStageMatch } = require("../factories/MatchFactory");
+const { assertGroupHasSport, handleSportContextError } = require("../middleware/requireSportContext");
 
 // Create Matches — already provided
 const createMatches = async (req, res) => {
@@ -28,6 +29,17 @@ const createMatches = async (req, res) => {
     const groupExists = await BookingGroup.findById(groupId);
     if (!groupExists) {
       return res.status(404).json({ success: false, message: "Group not found." });
+    }
+
+    // STEP 16d — group-derived sportId. Match inherits the group's
+    // sportId; if the group is unmigrated/orphaned (no sportId), refuse
+    // rather than silently fall back to tournament.sports[0].
+    let _resolvedSportId;
+    try {
+      _resolvedSportId = assertGroupHasSport(groupExists);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
     }
 
     // Collect all valid playerIds from group
@@ -80,6 +92,7 @@ const createMatches = async (req, res) => {
       matchDocuments.push(createGroupStageMatch({
         tournament: tournamentExists,
         tournamentId,
+        sportId: _resolvedSportId,
         groupId,
         matchNumber,
         player1,
@@ -256,7 +269,152 @@ const deleteGroupMatches = async (req, res) => {
   }
 };
 
-// Auto-generate all round-robin matches for a group
+// Internal helper — generate matches for ONE group. Used by both the single
+// HTTP handler and the bulk endpoint. Returns a structured result rather than
+// writing to res, so the bulk caller can aggregate per-group outcomes.
+//
+// Returns one of:
+//   { ok: true, count, matches, groupName }
+//   { ok: false, status, reason: "skipped" | "invalid" | "error", message }
+//
+// The status code is the same one the HTTP handler would have returned.
+const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
+  const { courtNumber, startTime, intervalMinutes } = opts;
+  const tournamentId = tournament._id;
+
+  let _generatedSportId;
+  try {
+    _generatedSportId = assertGroupHasSport(group);
+  } catch (err) {
+    return { ok: false, status: 400, reason: "invalid", message: err.message || "Group is missing sportId" };
+  }
+
+  if (group.players.length < 2) {
+    return {
+      ok: false, status: 400, reason: "invalid",
+      message: "Group must have at least 2 players to generate matches.",
+    };
+  }
+
+  const existingMatches = await Match.find({ tournamentId, groupId: group._id });
+  if (existingMatches.length > 0) {
+    return {
+      ok: false, status: 400, reason: "skipped",
+      message: `${existingMatches.length} matches already exist for this group.`,
+      existingCount: existingMatches.length,
+    };
+  }
+
+  // Resolve match format override: group-level takes priority
+  const matchFormatOverride2 = (group.matchFormat && (group.matchFormat.totalSets || group.matchFormat.scoringType))
+    ? group.matchFormat
+    : null;
+
+  // STEP 17b.iv — Determine match type from per-sport groupStageFormat.
+  const { getGroupStageFormat } = require("../utils/sportTrackUtils");
+  const isDoubles = getGroupStageFormat(tournament, group?.sportId) === "Doubles";
+  const players = group.players;
+  const matchDocuments = [];
+  let matchCount = 0;
+  const baseTime = startTime ? new Date(startTime) : new Date();
+  const interval = parseInt(intervalMinutes) || 30;
+  const groupId = group._id;
+
+  if (isDoubles) {
+    if (players.length % 2 !== 0) {
+      return {
+        ok: false, status: 400, reason: "invalid",
+        message: "Doubles format requires an even number of players in the group.",
+      };
+    }
+    const pairs = [];
+    for (let i = 0; i < players.length; i += 2) {
+      pairs.push({ lead: players[i], partner: players[i + 1] });
+    }
+    for (let i = 0; i < pairs.length; i++) {
+      for (let j = i + 1; j < pairs.length; j++) {
+        matchCount++;
+        const doc = createGroupStageMatch({
+          tournament,
+          tournamentId,
+          sportId: _generatedSportId,
+          groupId,
+          matchNumber: `M${matchCount}`,
+          player1: {
+            playerId: pairs[i].lead.playerId,
+            userName: pairs[i].lead.userName,
+            partner: {
+              playerId: pairs[i].partner.playerId,
+              userName: pairs[i].partner.userName,
+            },
+          },
+          player2: {
+            playerId: pairs[j].lead.playerId,
+            userName: pairs[j].lead.userName,
+            partner: {
+              playerId: pairs[j].partner.playerId,
+              userName: pairs[j].partner.userName,
+            },
+          },
+          courtNumber: courtNumber || "1",
+          startTime: new Date(baseTime.getTime() + (matchCount - 1) * interval * 60000),
+          matchFormatOverride: matchFormatOverride2,
+        });
+        doc.matchType = "doubles";
+        matchDocuments.push(doc);
+      }
+    }
+  } else {
+    for (let i = 0; i < players.length; i++) {
+      for (let j = i + 1; j < players.length; j++) {
+        matchCount++;
+        const doc = createGroupStageMatch({
+          tournament,
+          tournamentId,
+          sportId: _generatedSportId,
+          groupId,
+          matchNumber: `M${matchCount}`,
+          player1: {
+            playerId: players[i].playerId,
+            userName: players[i].userName,
+          },
+          player2: {
+            playerId: players[j].playerId,
+            userName: players[j].userName,
+          },
+          courtNumber: courtNumber || "1",
+          startTime: new Date(baseTime.getTime() + (matchCount - 1) * interval * 60000),
+          matchFormatOverride: matchFormatOverride2,
+        });
+        doc.matchType = "singles";
+        matchDocuments.push(doc);
+      }
+    }
+  }
+
+  const createdMatches = await Match.insertMany(matchDocuments);
+
+  // STEP 17b.iv — Update per-sport stage.
+  const { getCurrentStage, setCurrentStage } = require("../utils/sportTrackUtils");
+  const _stage = getCurrentStage(tournament, group?.sportId);
+  if (_stage === "registration" || _stage === null) {
+    await setCurrentStage(tournamentId, group?.sportId, "group_stage");
+    if (!tournament.rulesLockedAt) {
+      tournament.rulesLockedAt = new Date();
+      await tournament.save({ validateModifiedOnly: true });
+    }
+  }
+
+  return {
+    ok: true,
+    count: createdMatches.length,
+    matches: createdMatches,
+    groupName: group.groupName,
+    totalPlayers: players.length,
+  };
+};
+
+// HTTP handler — single group. Wraps the helper into the previous response shape.
 const generateGroupMatches = async (req, res) => {
   try {
     const { tournamentId, groupId, courtNumber, startTime, intervalMinutes } = req.body;
@@ -268,7 +426,6 @@ const generateGroupMatches = async (req, res) => {
       });
     }
 
-    // Validate tournament and group
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) {
       return res.status(404).json({ success: false, message: "Tournament not found." });
@@ -279,127 +436,24 @@ const generateGroupMatches = async (req, res) => {
       return res.status(404).json({ success: false, message: "Group not found." });
     }
 
-    if (group.players.length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: "Group must have at least 2 players to generate matches.",
-      });
-    }
+    const result = await _runGenerateMatchesForGroup(tournament, group, {
+      courtNumber, startTime, intervalMinutes,
+    });
 
-    // Check if matches already exist for this group
-    const existingMatches = await Match.find({ tournamentId, groupId });
-    if (existingMatches.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `${existingMatches.length} matches already exist for this group. Delete them first to regenerate.`,
-      });
-    }
-
-    // Resolve match format override: group-level takes priority
-    const matchFormatOverride2 = (group.matchFormat && (group.matchFormat.totalSets || group.matchFormat.scoringType))
-      ? group.matchFormat
-      : null;
-
-    // Determine match type from tournament format
-    const isDoubles = tournament.groupStageFormat === "Doubles";
-    const players = group.players;
-    const matchDocuments = [];
-    let matchCount = 0;
-    const baseTime = startTime ? new Date(startTime) : new Date();
-    const interval = parseInt(intervalMinutes) || 30;
-
-    if (isDoubles) {
-      // Doubles: pair players sequentially (1+2 vs 3+4, 1+2 vs 5+6, etc.)
-      // Players must be even count
-      if (players.length % 2 !== 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Doubles format requires an even number of players in the group.",
-        });
-      }
-
-      // Create pairs: [0,1], [2,3], [4,5], ...
-      const pairs = [];
-      for (let i = 0; i < players.length; i += 2) {
-        pairs.push({ lead: players[i], partner: players[i + 1] });
-      }
-
-      // Round-robin between pairs
-      for (let i = 0; i < pairs.length; i++) {
-        for (let j = i + 1; j < pairs.length; j++) {
-          matchCount++;
-          const doc = createGroupStageMatch({
-            tournament,
-            tournamentId,
-            groupId,
-            matchNumber: `M${matchCount}`,
-            player1: {
-              playerId: pairs[i].lead.playerId,
-              userName: pairs[i].lead.userName,
-              partner: {
-                playerId: pairs[i].partner.playerId,
-                userName: pairs[i].partner.userName,
-              },
-            },
-            player2: {
-              playerId: pairs[j].lead.playerId,
-              userName: pairs[j].lead.userName,
-              partner: {
-                playerId: pairs[j].partner.playerId,
-                userName: pairs[j].partner.userName,
-              },
-            },
-            courtNumber: courtNumber || "1",
-            startTime: new Date(baseTime.getTime() + (matchCount - 1) * interval * 60000),
-            matchFormatOverride: matchFormatOverride2,
-          });
-          doc.matchType = "doubles";
-          matchDocuments.push(doc);
-        }
-      }
-    } else {
-      // Singles: standard round-robin n*(n-1)/2
-      for (let i = 0; i < players.length; i++) {
-        for (let j = i + 1; j < players.length; j++) {
-          matchCount++;
-          const doc = createGroupStageMatch({
-            tournament,
-            tournamentId,
-            groupId,
-            matchNumber: `M${matchCount}`,
-            player1: {
-              playerId: players[i].playerId,
-              userName: players[i].userName,
-            },
-            player2: {
-              playerId: players[j].playerId,
-              userName: players[j].userName,
-            },
-            courtNumber: courtNumber || "1",
-            startTime: new Date(baseTime.getTime() + (matchCount - 1) * interval * 60000),
-            matchFormatOverride: matchFormatOverride2,
-          });
-          doc.matchType = "singles";
-          matchDocuments.push(doc);
-        }
-      }
-    }
-
-    const createdMatches = await Match.insertMany(matchDocuments);
-
-    // Update tournament stage + lock rules
-    if (tournament.currentStage === "registration") {
-      tournament.currentStage = "group_stage";
-      if (!tournament.rulesLockedAt) tournament.rulesLockedAt = new Date();
-      await tournament.save();
+    if (!result.ok) {
+      // Preserve the existing "already exist — delete first" message verbatim.
+      const message = result.reason === "skipped"
+        ? `${result.existingCount} matches already exist for this group. Delete them first to regenerate.`
+        : result.message;
+      return res.status(result.status).json({ success: false, message });
     }
 
     res.status(201).json({
       success: true,
-      message: `${createdMatches.length} round-robin matches generated for group "${group.groupName}"`,
-      totalPlayers: players.length,
-      totalMatches: createdMatches.length,
-      matches: createdMatches,
+      message: `${result.count} round-robin matches generated for group "${result.groupName}"`,
+      totalPlayers: result.totalPlayers,
+      totalMatches: result.count,
+      matches: result.matches,
     });
   } catch (error) {
     console.error("[GENERATE_GROUP_MATCHES] Error:", error);
@@ -411,10 +465,80 @@ const generateGroupMatches = async (req, res) => {
   }
 };
 
+// HTTP handler — bulk generation across multiple groups in one shot.
+// Body: { tournamentId, groupIds: [], courtNumber?, startTime?, intervalMinutes? }
+// Returns 200 with a per-group breakdown so the UI can toast a summary
+// (e.g. "Generated 18 matches across 5 groups; skipped 1 group").
+const generateBulkGroupMatches = async (req, res) => {
+  try {
+    const { tournamentId, groupIds, courtNumber, startTime, intervalMinutes } = req.body;
+
+    if (!tournamentId || !Array.isArray(groupIds) || groupIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "tournamentId and a non-empty groupIds[] are required.",
+      });
+    }
+
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: "Tournament not found." });
+    }
+
+    const generated = [];
+    const skipped = [];
+    const failed = [];
+    let totalMatchesCreated = 0;
+
+    for (const gid of groupIds) {
+      const group = await BookingGroup.findById(gid);
+      if (!group) {
+        failed.push({ groupId: gid, error: "Group not found" });
+        continue;
+      }
+
+      const r = await _runGenerateMatchesForGroup(tournament, group, {
+        courtNumber, startTime, intervalMinutes,
+      });
+
+      if (r.ok) {
+        generated.push({ groupId: gid, groupName: r.groupName, count: r.count });
+        totalMatchesCreated += r.count;
+      } else if (r.reason === "skipped") {
+        skipped.push({
+          groupId: gid, groupName: group.groupName,
+          reason: r.message, existingCount: r.existingCount,
+        });
+      } else {
+        failed.push({ groupId: gid, groupName: group.groupName, error: r.message });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Generated ${totalMatchesCreated} match(es) across ${generated.length} group(s)` +
+        (skipped.length ? `; skipped ${skipped.length}` : "") +
+        (failed.length ? `; failed ${failed.length}` : ""),
+      totalGroupsRequested: groupIds.length,
+      totalMatchesCreated,
+      generated,
+      skipped,
+      failed,
+    });
+  } catch (error) {
+    console.error("[GENERATE_BULK_GROUP_MATCHES] Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to bulk-generate group matches",
+      error: error.message,
+    });
+  }
+};
+
 // Check if all group stage matches are done and transition to knockout
 const transitionToKnockout = async (req, res) => {
   try {
-    const { tournamentId } = req.body;
+    const { tournamentId, sportId } = req.body;
 
     if (!tournamentId) {
       return res.status(400).json({ success: false, message: "tournamentId is required." });
@@ -425,8 +549,11 @@ const transitionToKnockout = async (req, res) => {
       return res.status(404).json({ success: false, message: "Tournament not found." });
     }
 
-    // Must be a combined tournament
-    if (!tournament.type.includes("group stage") || !tournament.type.includes("knockout")) {
+    // STEP 17b.i — per-sport gate. The transition is per-sport: each
+    // sport must have both group stage and knockout phases configured.
+    const { getTournamentType } = require("../utils/sportTrackUtils");
+    const tournamentType = getTournamentType(tournament, sportId) || "";
+    if (!tournamentType.includes("group stage") || !tournamentType.includes("knockout")) {
       return res.status(400).json({
         success: false,
         message: "This tournament does not have both group stage and knockout.",
@@ -454,9 +581,11 @@ const transitionToKnockout = async (req, res) => {
       });
     }
 
-    // Get standings for each group and pick top N
+    // Get standings for each group and pick top N.
+    // STEP 17b.iv — qualifyPerGroup read per-sport from track.
     const GroupStandings = require("../Modal/GroupStandings");
-    const qualifyPerGroup = tournament.qualifyPerGroup || 2;
+    const { getQualifyPerGroup } = require("../utils/sportTrackUtils");
+    const qualifyPerGroup = getQualifyPerGroup(tournament, sportId);
     const qualifiedPlayers = [];
 
     for (const group of groups) {
@@ -485,7 +614,7 @@ const transitionToKnockout = async (req, res) => {
         player.qualified = player.rank <= qualifyPerGroup;
       }
       standings.isFinalized = true;
-      await standings.save();
+      await standings.save({ validateModifiedOnly: true });
 
       for (const player of topN) {
         qualifiedPlayers.push({
@@ -504,9 +633,9 @@ const transitionToKnockout = async (req, res) => {
       });
     }
 
-    // Update tournament stage
-    tournament.currentStage = "knockout";
-    await tournament.save();
+    // STEP 17b.iv — advance per-sport stage via helper.
+    const { setCurrentStage: _setStage } = require("../utils/sportTrackUtils");
+    await _setStage(tournamentId, sportId, "knockout");
 
     res.status(200).json({
       success: true,
@@ -528,6 +657,7 @@ const transitionToKnockout = async (req, res) => {
 module.exports = {
   createMatches,
   generateGroupMatches,
+  generateBulkGroupMatches,
   transitionToKnockout,
   getMatchesByGroup,
   updateMatch,

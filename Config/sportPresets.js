@@ -2,6 +2,13 @@
  * Sport Presets Configuration
  * 15 pre-configured sports with scoring systems, match formats, and display configs.
  * Used by the seed endpoint to populate the Sports Master database.
+ *
+ * STEP 17b.iii — the per-sport default match format is named
+ * `defaultMatchFormat` here to disambiguate it from the deprecated
+ * Tournament.matchFormat root scalar (per-tournament shape, removed in
+ * 17e). The destination Sport collection still stores it under
+ * `Sport.matchFormat` — sportController and sportFieldConfig handle the
+ * mapping at the seed-write boundary.
  */
 
 const SPORT_CATEGORIES = {
@@ -28,7 +35,7 @@ const sportPresets = [
     slug: "badminton",
     category: SPORT_CATEGORIES.RACQUET,
     scoringType: SCORING_TYPES.SETS_GAMES_POINTS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: 3,
       gamesPerSet: null,
       pointsPerSet: 21,
@@ -61,7 +68,7 @@ const sportPresets = [
     slug: "table-tennis",
     category: SPORT_CATEGORIES.RACQUET,
     scoringType: SCORING_TYPES.SETS_GAMES_POINTS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: 5,
       gamesPerSet: null,
       pointsPerSet: 11,
@@ -94,7 +101,7 @@ const sportPresets = [
     slug: "tennis",
     category: SPORT_CATEGORIES.RACQUET,
     scoringType: SCORING_TYPES.SETS_GAMES_POINTS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: 3,
       gamesPerSet: 6,
       pointsPerSet: null,
@@ -127,7 +134,7 @@ const sportPresets = [
     slug: "pickleball",
     category: SPORT_CATEGORIES.RACQUET,
     scoringType: SCORING_TYPES.SETS_GAMES_POINTS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: 3,
       gamesPerSet: null,
       pointsPerSet: 11,
@@ -162,7 +169,7 @@ const sportPresets = [
     slug: "cricket",
     category: SPORT_CATEGORIES.TEAM,
     scoringType: SCORING_TYPES.INNINGS_OVERS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -195,7 +202,7 @@ const sportPresets = [
     slug: "football",
     category: SPORT_CATEGORIES.TEAM,
     scoringType: SCORING_TYPES.HALVES_GOALS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -228,7 +235,7 @@ const sportPresets = [
     slug: "basketball",
     category: SPORT_CATEGORIES.TEAM,
     scoringType: SCORING_TYPES.QUARTERS_POINTS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -261,7 +268,7 @@ const sportPresets = [
     slug: "volleyball",
     category: SPORT_CATEGORIES.TEAM,
     scoringType: SCORING_TYPES.SETS_GAMES_POINTS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: 5,
       gamesPerSet: null,
       pointsPerSet: 25,
@@ -294,7 +301,7 @@ const sportPresets = [
     slug: "hockey",
     category: SPORT_CATEGORIES.TEAM,
     scoringType: SCORING_TYPES.HALVES_GOALS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -327,7 +334,7 @@ const sportPresets = [
     slug: "kabaddi",
     category: SPORT_CATEGORIES.TEAM,
     scoringType: SCORING_TYPES.HALVES_GOALS,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -362,7 +369,7 @@ const sportPresets = [
     slug: "chess",
     category: SPORT_CATEGORIES.BOARD,
     scoringType: SCORING_TYPES.SINGLE_SCORE,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -395,7 +402,7 @@ const sportPresets = [
     slug: "carrom",
     category: SPORT_CATEGORIES.BOARD,
     scoringType: SCORING_TYPES.SINGLE_SCORE,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -428,7 +435,7 @@ const sportPresets = [
     slug: "snooker",
     category: SPORT_CATEGORIES.INDIVIDUAL,
     scoringType: SCORING_TYPES.SINGLE_SCORE,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -463,7 +470,7 @@ const sportPresets = [
     slug: "turf-games",
     category: SPORT_CATEGORIES.CUSTOM,
     scoringType: SCORING_TYPES.CUSTOM,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,
@@ -496,7 +503,7 @@ const sportPresets = [
     slug: "cricket-nets",
     category: SPORT_CATEGORIES.CUSTOM,
     scoringType: SCORING_TYPES.CUSTOM,
-    matchFormat: {
+    defaultMatchFormat: {
       totalSets: null,
       gamesPerSet: null,
       pointsPerSet: null,

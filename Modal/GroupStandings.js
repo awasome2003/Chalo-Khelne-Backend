@@ -32,6 +32,14 @@ const groupStandingsSchema = new mongoose.Schema(
       ref: "Tournament",
       required: true,
     },
+    // STEP 17f — sportId required. 1 true orphan remains (parent
+    // tournament deleted; unreachable). The 10 false-orphan standings
+    // were backfilled in 17f Step 1. UPDATE paths use validateModifiedOnly.
+    sportId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sport",
+      required: true,
+    },
     groupId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "BookingGroup",
@@ -47,5 +55,9 @@ const groupStandingsSchema = new mongoose.Schema(
 
 // One standings doc per group
 groupStandingsSchema.index({ tournamentId: 1, groupId: 1 }, { unique: true });
+// Multi-sport scoping index. NON-UNIQUE in STEP 9a — existing docs have
+// sportId: null, which would collide if marked unique. Upgrades to UNIQUE
+// in STEP 16 once every doc has sportId populated by the migration script.
+groupStandingsSchema.index({ tournamentId: 1, sportId: 1, groupId: 1 });
 
 module.exports = mongoose.model("GroupStandings", groupStandingsSchema);

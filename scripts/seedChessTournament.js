@@ -99,6 +99,12 @@ async function seed() {
     // Create bookings for each player
     const createdBookings = [];
     for (const user of createdUsers) {
+      // STEP 17c — write sportSelections + totalFee on bookings.
+      // Resolve sportId from tournament.sports[0] when present;
+      // legacy seed data may pre-date sports[] so default to null.
+      const _track = (Array.isArray(tournament?.sports) && tournament.sports.length > 0)
+        ? tournament.sports[0]
+        : null;
       const booking = await Booking.create({
         userId: user._id,
         userName: user.name,
@@ -111,13 +117,15 @@ async function seed() {
         paymentStatus: "paid",
         paymentAmount: 0,
         paymentMethod: "cash",
-        selectedCategories: [
+        sportSelections: [
           {
-            id: CATEGORY_ID,
-            name: CATEGORY_NAME,
-            price: 0,
+            sportId: _track?.sportId || null,
+            sportName: _track?.sportName || "Chess",
+            categoryName: CATEGORY_NAME,
+            fee: 0,
           },
         ],
+        totalFee: 0,
       });
       createdBookings.push(booking);
       console.log(`Created booking for: ${user.name}`);

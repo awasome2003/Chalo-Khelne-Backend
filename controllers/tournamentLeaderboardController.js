@@ -6,161 +6,172 @@ const TournamentMatch = require('../Modal/Tournnamentmatch');
 const TeamKnockoutMatches = require('../Modal/TeamKnockoutMatches');
 const TeamKnockoutTeams = require('../Modal/TeamKnockoutTeams');
 const Booking = require('../Modal/BookingModel');
+const {
+  getSportName,
+  getTournamentType,
+  getCurrentStage,
+} = require('../utils/sportTrackUtils');
 
-// GET ALL TOURNAMENTS WITH LEADERBOARD METADATA
+// GET ALL TOURNAMENTS WITH LEADERBOARD METADATA — optimized with aggregation
 const getAllTournamentsWithLeaderboard = async (req, res) => {
   try {
+    // Pagination support — only return what's needed
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const skip = (page - 1) * limit;
 
-    // Fetch all tournaments
-    const tournaments = await Tournament.find({}).sort({ createdAt: -1 });
+    // Fetch tournaments + total count in parallel.
+    // STEP 17b.i — pull sports[] (for per-sport reads) instead of root
+    // sportsType / type / currentStage. Helpers below derive headline
+    // values from sports[0].
+    const [tournaments, total] = await Promise.all([
+      Tournament.find({ isPrivate: { $ne: true } })
+        .select("title tournamentLogo eventLocation startDate endDate tournamentStatus roundTwoMode createdAt sports")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Tournament.countDocuments({ isPrivate: { $ne: true } }),
+    ]);
 
-    const tournamentsWithMetadata = await Promise.all(
-      tournaments.map(async (tournament) => {
-        try {
-          let metadata = {
-            totalParticipants: 0,
-            completedMatches: 0,
-            totalMatches: 0,
-            hasData: false,
-            leaderboardType: tournament.type?.toLowerCase().includes('group stage') ? 'players' : 'teams'
-          };
+    if (tournaments.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: { tournaments: [], summary: { totalTournaments: 0 } },
+      });
+    }
 
-          if (tournament.type?.toLowerCase().includes('group stage')) {
-            // GROUP STAGE - Count players from bookings AND matches
-            const [tournamentMatches, superMatches, directMatches, bookings] = await Promise.all([
-              TournamentMatch.find({ tournamentId: tournament._id }),
-              SuperMatch.find({ tournamentId: tournament._id }),
-              DirectKnockoutMatch.find({ tournamentId: tournament._id }),
-              Booking.find({ tournamentId: tournament._id, status: 'confirmed' })
-            ]);
+    const tournamentIds = tournaments.map(t => t._id);
 
-            // Count unique players from bookings (most accurate)
-            const uniquePlayersFromBookings = new Set();
-            bookings.forEach(booking => {
-              if (booking.userId) {
-                uniquePlayersFromBookings.add(booking.userId.toString());
-              }
-            });
+    // Run ALL aggregations in parallel — single round-trip per collection
+    const [bookingCounts, tournamentMatchStats, superMatchStats, directMatchStats, knockoutMatchStats, knockoutTeamCounts] = await Promise.all([
+      Booking.aggregate([
+        { $match: { tournamentId: { $in: tournamentIds }, status: "confirmed" } },
+        { $group: { _id: "$tournamentId", count: { $sum: 1 } } },
+      ]),
+      TournamentMatch.aggregate([
+        { $match: { tournamentId: { $in: tournamentIds } } },
+        {
+          $group: {
+            _id: "$tournamentId",
+            total: { $sum: 1 },
+            completed: { $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] } },
+          },
+        },
+      ]),
+      SuperMatch.aggregate([
+        { $match: { tournamentId: { $in: tournamentIds } } },
+        {
+          $group: {
+            _id: "$tournamentId",
+            total: { $sum: 1 },
+            completed: { $sum: { $cond: [{ $in: ["$status", ["completed", "COMPLETED"]] }, 1, 0] } },
+          },
+        },
+      ]),
+      DirectKnockoutMatch.aggregate([
+        { $match: { tournamentId: { $in: tournamentIds } } },
+        {
+          $group: {
+            _id: "$tournamentId",
+            total: { $sum: 1 },
+            completed: { $sum: { $cond: [{ $eq: ["$status", "COMPLETED"] }, 1, 0] } },
+          },
+        },
+      ]),
+      TeamKnockoutMatches.aggregate([
+        { $match: { tournamentId: { $in: tournamentIds } } },
+        {
+          $group: {
+            _id: "$tournamentId",
+            total: { $sum: 1 },
+            completed: { $sum: { $cond: [{ $or: [{ $eq: ["$status", "COMPLETED"] }, { $ifNull: ["$winnerId", false] }] }, 1, 0] } },
+          },
+        },
+      ]),
+      TeamKnockoutTeams.aggregate([
+        { $match: { tournamentId: { $in: tournamentIds } } },
+        { $group: { _id: "$tournamentId", count: { $sum: 1 } } },
+      ]),
+    ]);
 
-            // Also count unique players from matches (fallback if no bookings)
-            const uniquePlayersFromMatches = new Set();
+    // Build lookup maps (O(1) access)
+    const toMap = (arr) => arr.reduce((m, x) => { m[x._id.toString()] = x; return m; }, {});
+    const bookingMap = toMap(bookingCounts);
+    const tMatchMap = toMap(tournamentMatchStats);
+    const sMatchMap = toMap(superMatchStats);
+    const dMatchMap = toMap(directMatchStats);
+    const kMatchMap = toMap(knockoutMatchStats);
+    const kTeamMap = toMap(knockoutTeamCounts);
 
-            // 🚀 ROBUST PLAYER EXTRACTION: Handle multiple data structures
-            const extractPlayerId = (player) => {
-              if (!player) return null;
-              if (player.playerId) return player.playerId.toString();
-              if (typeof player === 'object' && player._id) return player._id.toString();
-              if (typeof player === 'string') return player;
-              return null;
-            };
+    // Assemble metadata for each tournament — pure in-memory join.
+    // STEP 17b.i — read type / sportName / currentStage via per-sport
+    // helpers (sports[0] is the headline). Also surface multiSport flag.
+    const tournamentsWithMetadata = tournaments.map((tournament) => {
+      const id = tournament._id.toString();
+      const tournamentType = getTournamentType(tournament) || "";
+      const isGroupStage = tournamentType.toLowerCase().includes("group stage");
+      const isKnockout = tournamentType.toLowerCase().includes("knockout");
 
-            // From TournamentMatch (League)
-            tournamentMatches.forEach(match => {
-              const player1Id = extractPlayerId(match.player1);
-              const player2Id = extractPlayerId(match.player2);
-              if (player1Id) uniquePlayersFromMatches.add(player1Id);
-              if (player2Id) uniquePlayersFromMatches.add(player2Id);
-            });
+      let totalParticipants = 0;
+      let totalMatches = 0;
+      let completedMatches = 0;
 
-            // From SuperMatch (Top Players)
-            superMatches.forEach(match => {
-              const player1Id = extractPlayerId(match.player1);
-              const player2Id = extractPlayerId(match.player2);
-              if (player1Id) uniquePlayersFromMatches.add(player1Id);
-              if (player2Id) uniquePlayersFromMatches.add(player2Id);
-            });
+      if (isGroupStage) {
+        const tStats = tMatchMap[id] || { total: 0, completed: 0 };
+        const sStats = sMatchMap[id] || { total: 0, completed: 0 };
+        const dStats = dMatchMap[id] || { total: 0, completed: 0 };
+        totalMatches = tStats.total + sStats.total + dStats.total;
+        completedMatches = tStats.completed + sStats.completed + dStats.completed;
+        totalParticipants = bookingMap[id]?.count || 0;
+      } else if (isKnockout) {
+        const kStats = kMatchMap[id] || { total: 0, completed: 0 };
+        totalMatches = kStats.total;
+        completedMatches = kStats.completed;
+        totalParticipants = kTeamMap[id]?.count || bookingMap[id]?.count || 0;
+      }
 
-            // From DirectKnockoutMatch (Finals)
-            directMatches.forEach(match => {
-              const player1Id = extractPlayerId(match.player1);
-              const player2Id = extractPlayerId(match.player2);
-              if (player1Id) uniquePlayersFromMatches.add(player1Id);
-              if (player2Id) uniquePlayersFromMatches.add(player2Id);
-            });
+      const sportsArr = Array.isArray(tournament.sports) ? tournament.sports : [];
 
-            // Use bookings count if available, otherwise use matches count
-            metadata.totalParticipants = uniquePlayersFromBookings.size > 0
-              ? uniquePlayersFromBookings.size
-              : uniquePlayersFromMatches.size;
-
-            metadata.totalMatches = tournamentMatches.length + superMatches.length + directMatches.length;
-
-            // Count completed matches
-            metadata.completedMatches =
-              tournamentMatches.filter(m => m.status === 'COMPLETED').length +
-              superMatches.filter(m => m.status === 'completed' || m.status === 'COMPLETED').length +
-              directMatches.filter(m => m.status === 'COMPLETED').length;
-
-            metadata.hasData = metadata.totalMatches > 0;
-
-          } else if (tournament.type?.toLowerCase().includes('knockout')) {
-            // KNOCKOUT - Count teams from TeamKnockoutTeams AND bookings
-            const [knockoutMatches, knockoutTeams, bookings] = await Promise.all([
-              TeamKnockoutMatches.find({ tournamentId: tournament._id }),
-              TeamKnockoutTeams.find({ tournamentId: tournament._id }),
-              Booking.find({ tournamentId: tournament._id, status: 'confirmed', tournamentType: 'Team Knockouts' })
-            ]);
-
-            // Use knockoutTeams count if available, otherwise use bookings count
-            metadata.totalParticipants = knockoutTeams.length > 0
-              ? knockoutTeams.length
-              : bookings.length;
-
-            metadata.totalMatches = knockoutMatches.length;
-            metadata.completedMatches = knockoutMatches.filter(m =>
-              m.status === 'COMPLETED' || m.winnerId
-            ).length;
-            metadata.hasData = metadata.totalMatches > 0 || metadata.totalParticipants > 0;
-          }
-
-          return {
-            _id: tournament._id,
-            title: tournament.title,
-            tournamentLogo: tournament.tournamentLogo,
-            type: tournament.type,
-            sportsType: tournament.sportsType,
-            eventLocation: tournament.eventLocation,
-            startDate: tournament.startDate,
-            endDate: tournament.endDate,
-            tournamentStatus: tournament.tournamentStatus,
-            roundTwoMode: tournament.roundTwoMode,
-            currentStage: tournament.currentStage,
-            createdAt: tournament.createdAt,
-            metadata
-          };
-
-        } catch (error) {
-          console.error(`Error processing tournament ${tournament._id}:`, error);
-          return {
-            _id: tournament._id,
-            title: tournament.title,
-            type: tournament.type,
-            metadata: { totalParticipants: 0, hasData: false, leaderboardType: 'unknown' }
-          };
-        }
-      })
-    );
+      return {
+        ...tournament,
+        // Derived headline fields for list rendering — frontends still
+        // expecting the legacy keys keep working without code changes.
+        type: tournamentType,
+        sportName: getSportName(tournament),
+        currentStage: getCurrentStage(tournament),
+        multiSport: sportsArr.length > 1,
+        metadata: {
+          totalParticipants,
+          totalMatches,
+          completedMatches,
+          hasData: totalMatches > 0 || totalParticipants > 0,
+          leaderboardType: isGroupStage ? "players" : "teams",
+        },
+      };
+    });
 
     res.status(200).json({
       success: true,
-      message: 'Tournaments with leaderboard metadata fetched successfully',
       data: {
         tournaments: tournamentsWithMetadata,
+        pagination: {
+          total,
+          page,
+          pages: Math.ceil(total / limit),
+        },
         summary: {
           totalTournaments: tournamentsWithMetadata.length,
-          groupStageTournaments: tournamentsWithMetadata.filter(t => t.type?.includes('group stage')).length,
-          knockoutTournaments: tournamentsWithMetadata.filter(t => t.type?.includes('knockout')).length,
-          tournamentsWithData: tournamentsWithMetadata.filter(t => t.metadata.hasData).length
-        }
-      }
+          tournamentsWithData: tournamentsWithMetadata.filter(t => t.metadata.hasData).length,
+        },
+      },
     });
-
   } catch (error) {
-    console.error('Error fetching tournaments with leaderboard metadata:', error);
+    console.error("Error fetching tournaments leaderboard:", error.message);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch tournaments with leaderboard metadata',
-      error: error.message
+      message: "Failed to fetch tournaments",
+      error: error.message,
     });
   }
 };
@@ -169,6 +180,9 @@ const getAllTournamentsWithLeaderboard = async (req, res) => {
 const getGroupStagePlayersLeaderboard = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    // STEP 17b.i — accept ?sportId=X for per-sport gating + reads.
+    // When omitted on a multi-sport tournament, sports[0] is the headline.
+    const { sportId } = req.query;
 
     // 1. Fetch Tournament Details
     const tournament = await Tournament.findById(tournamentId);
@@ -179,7 +193,8 @@ const getGroupStagePlayersLeaderboard = async (req, res) => {
       });
     }
 
-    if (!tournament.type?.toLowerCase().includes('group stage')) {
+    const tournamentType = getTournamentType(tournament, sportId) || '';
+    if (!tournamentType.toLowerCase().includes('group stage')) {
       return res.status(400).json({
         success: false,
         message: 'This endpoint is for group stage tournaments only'
@@ -263,7 +278,8 @@ const getGroupStagePlayersLeaderboard = async (req, res) => {
             tournament: {
               _id: tournament._id,
               title: tournament.title,
-              type: tournament.type,
+              type: tournamentType,
+              sportName: getSportName(tournament, sportId),
               roundTwoMode: tournament.roundTwoMode,
               currentStage: 'Registration Complete'
             },
@@ -364,7 +380,8 @@ const getGroupStagePlayersLeaderboard = async (req, res) => {
       tournament: {
         _id: tournament._id,
         title: tournament.title,
-        type: tournament.type,
+        type: tournamentType,
+        sportName: getSportName(tournament, sportId),
         roundTwoMode: tournament.roundTwoMode,
         currentStage: currentStage
       },
@@ -434,6 +451,8 @@ const getGroupStagePlayersLeaderboard = async (req, res) => {
 const getKnockoutTeamsLeaderboard = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    // STEP 17b.i — accept ?sportId=X for per-sport gating + reads.
+    const { sportId } = req.query;
 
     // 1. Fetch Tournament Details
     const tournament = await Tournament.findById(tournamentId);
@@ -444,7 +463,8 @@ const getKnockoutTeamsLeaderboard = async (req, res) => {
       });
     }
 
-    if (!tournament.type?.includes('knockout')) {
+    const tournamentType = getTournamentType(tournament, sportId) || '';
+    if (!tournamentType.includes('knockout')) {
       return res.status(400).json({
         success: false,
         message: 'This endpoint is for knockout tournaments only'
@@ -561,8 +581,9 @@ const getKnockoutTeamsLeaderboard = async (req, res) => {
       tournament: {
         _id: tournament._id,
         title: tournament.title,
-        type: tournament.type,
-        currentStage: tournament.currentStage
+        type: tournamentType,
+        sportName: getSportName(tournament, sportId),
+        currentStage: getCurrentStage(tournament, sportId)
       },
       totalTeams: knockoutTeams.length,
       totalMatches: totalMatchesCount,

@@ -293,7 +293,12 @@ async function processPlayerMatch(matchId, scoreData, rowIndex) {
     details: scoreData.details,
   };
 
-  await match.save();
+  // STEP 17f — validateModifiedOnly closes the orphan-save risk: the
+  // 119 confirmed orphans (null sportId, parent tournament deleted)
+  // can still be loaded by _id; without this flag, save() would fail
+  // required:true validation on sportId. With it, only the modified
+  // fields are validated.
+  await match.save({ validateModifiedOnly: true });
 
   return {
     row: rowIndex,
@@ -427,9 +432,14 @@ const bulkResultUploadController = {
       const { tournamentId, matchType = "player" } = req.body;
       if (!tournamentId) return res.status(400).json({ success: false, message: "tournamentId is required" });
 
-      // Detect tournament sport for scoring type
-      const tournament = await Tournament.findById(tournamentId).select("sportsType matchFormat").lean();
-      const scoringType = tournament?.matchFormat?.scoringType || getScoringType(tournament?.sportsType) || null;
+      // STEP 17b.iv — Detect tournament sport for scoring type via per-sport
+      // helpers. Defaults to sports[0] (primary sport) — bulk uploads don't
+      // currently take a sportId, this is acceptable for v1.
+      const tournament = await Tournament.findById(tournamentId).select("sports").lean();
+      const { getMatchFormat, getSportName } = require("../utils/sportTrackUtils");
+      const scoringType = getMatchFormat(tournament)?.scoringType
+        || getScoringType(getSportName(tournament))
+        || null;
 
       let rows;
       try { rows = await parseFile(filePath, req.file.originalname); }

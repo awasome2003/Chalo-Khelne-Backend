@@ -294,33 +294,45 @@ async function seed() {
       const existingUsers = await User.find({ email: { $in: emails } });
       if (existingUsers.length > 0) {
         const ids = existingUsers.map(u => u._id);
-        // Find and delete related tournaments
-        const oldTournaments = await Tournament.find({ title: tourney.title, sportsType: tourney.sport });
+        // STEP 17c — query by per-sport `sports.sportName` instead of
+        // legacy root sportsType (removed in 17e/17g).
+        const oldTournaments = await Tournament.find({
+          title: tourney.title,
+          "sports.sportName": tourney.sport,
+        });
         for (const ot of oldTournaments) {
           await Booking.deleteMany({ tournamentId: ot._id });
           await BookingGroup.deleteMany({ tournamentId: ot._id });
         }
-        await Tournament.deleteMany({ title: tourney.title, sportsType: tourney.sport });
+        await Tournament.deleteMany({
+          title: tourney.title,
+          "sports.sportName": tourney.sport,
+        });
         await User.deleteMany({ email: { $in: emails } });
         console.log(`  Cleaned up ${existingUsers.length} existing seed players`);
       }
 
       // ── Create Tournament ──
+      // STEP 17c — write multi-sport `sports[]:` shape only. Root
+      // scalars (sportsType, type, matchFormat, category, etc.)
+      // dropped — Tournament schema stripping starts in 17e.
       const tournament = await Tournament.create({
         title: tourney.title,
-        type: "group stage",
-        sportsType: tourney.sport,
-        groupStageFormat: "Singles",
-        currentStage: "group_stage",
         tournamentLevel: "district",
         organizerName: manager.name,
         managerId: [manager._id],
         startDate: "2026-04-15",
         endDate: "2026-04-20",
         eventLocation: ["Sports Complex, New Delhi"],
-        category: [{ name: "Open Category", fee: 0 }],
-        matchFormat: tourney.matchFormat,
-        qualifyPerGroup: 2,
+        sports: [{
+          sportName: tourney.sport,
+          type: "group stage",
+          groupStageFormat: "Singles",
+          categories: [{ name: "Open Category", fee: 0 }],
+          matchFormat: tourney.matchFormat,
+          qualifyPerGroup: 2,
+          currentStage: "group_stage",
+        }],
       });
       console.log(`  Tournament created: ${tournament._id}`);
 
@@ -347,6 +359,8 @@ async function seed() {
 
       // ── Create Bookings ──
       for (const user of createdUsers) {
+        // STEP 17c — sportSelections + totalFee instead of selectedCategories.
+        const _track = tournament.sports?.[0];
         await Booking.create({
           userId: user._id,
           userName: user.name,
@@ -359,7 +373,13 @@ async function seed() {
           paymentStatus: "paid",
           paymentAmount: 0,
           paymentMethod: "cash",
-          selectedCategories: [{ id: "open", name: "Open Category", price: 0 }],
+          sportSelections: [{
+            sportId: _track?.sportId || null,
+            sportName: _track?.sportName || tourney.sport,
+            categoryName: "Open Category",
+            fee: 0,
+          }],
+          totalFee: 0,
         });
       }
       console.log(`  Bookings created: ${createdUsers.length}`);

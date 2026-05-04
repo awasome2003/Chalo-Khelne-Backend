@@ -240,7 +240,7 @@ const clubAdminFinanceController = {
       const bookings = await Booking.find({
         tournamentId: { $in: tournamentIds },
       })
-        .select("tournamentId status paymentStatus paymentAmount selectedCategories userName createdAt")
+        .select("tournamentId status paymentStatus paymentAmount sportSelections userName createdAt")
         .sort({ createdAt: -1 })
         .lean();
 
@@ -260,14 +260,15 @@ const clubAdminFinanceController = {
           .filter((b) => b.paymentStatus === "paid")
           .reduce((sum, b) => sum + (b.paymentAmount || 0), 0);
 
-        // Category fee breakdown
+        // STEP 17c — category fee breakdown read off sportSelections.
+        // Field rename: categoryName→key, fee→revenue.
         const categoryRevenue = {};
         confirmed.forEach((b) => {
-          (b.selectedCategories || []).forEach((cat) => {
-            const key = cat.name || "General";
-            if (!categoryRevenue[key]) categoryRevenue[key] = { count: 0, revenue: 0, fee: cat.price || 0 };
+          (b.sportSelections || []).forEach((s) => {
+            const key = s.categoryName || "General";
+            if (!categoryRevenue[key]) categoryRevenue[key] = { count: 0, revenue: 0, fee: s.fee || 0 };
             categoryRevenue[key].count += 1;
-            categoryRevenue[key].revenue += cat.price || 0;
+            categoryRevenue[key].revenue += s.fee || 0;
           });
         });
 
@@ -374,7 +375,7 @@ const clubAdminFinanceController = {
 
       // Get all bookings for this tournament
       const bookings = await Booking.find({ tournamentId })
-        .select("userName userEmail userPhone status paymentStatus paymentAmount paymentMethod selectedCategories team createdAt")
+        .select("userName userEmail userPhone status paymentStatus paymentAmount paymentMethod sportSelections team createdAt")
         .sort({ createdAt: -1 })
         .lean();
 
@@ -384,19 +385,20 @@ const clubAdminFinanceController = {
       const paid = bookings.filter((b) => b.paymentStatus === "paid");
       const totalRevenue = paid.reduce((sum, b) => sum + (b.paymentAmount || 0), 0);
 
-      // Category breakdown
+      // STEP 17c — category breakdown read off sportSelections.
+      // Field rename: categoryName→name, fee→fee.
       const categoryBreakdown = {};
       bookings.forEach((b) => {
-        (b.selectedCategories || []).forEach((cat) => {
-          const key = cat.name || "General";
+        (b.sportSelections || []).forEach((s) => {
+          const key = s.categoryName || "General";
           if (!categoryBreakdown[key]) {
-            categoryBreakdown[key] = { name: key, fee: cat.price || 0, total: 0, confirmed: 0, paid: 0, revenue: 0 };
+            categoryBreakdown[key] = { name: key, fee: s.fee || 0, total: 0, confirmed: 0, paid: 0, revenue: 0 };
           }
           categoryBreakdown[key].total += 1;
           if (b.status === "confirmed") categoryBreakdown[key].confirmed += 1;
           if (b.paymentStatus === "paid") {
             categoryBreakdown[key].paid += 1;
-            categoryBreakdown[key].revenue += cat.price || 0;
+            categoryBreakdown[key].revenue += s.fee || 0;
           }
         });
       });
@@ -464,7 +466,7 @@ const clubAdminFinanceController = {
 
       // Fetch tournament bookings
       const tournamentBookings = await Booking.find({ tournamentId: { $in: tournamentIds } })
-        .select("userName userEmail paymentAmount paymentStatus paymentMethod status tournamentId tournamentName selectedCategories createdAt")
+        .select("userName userEmail paymentAmount paymentStatus paymentMethod status tournamentId tournamentName sportSelections createdAt")
         .sort({ createdAt: -1 })
         .lean();
 
@@ -489,7 +491,8 @@ const clubAdminFinanceController = {
           paymentStatus: b.paymentStatus,
           paymentMethod: b.paymentMethod || "cash",
           reference: b.tournamentName || tournamentNameMap[b.tournamentId?.toString()] || "Tournament",
-          categories: (b.selectedCategories || []).map((c) => c.name).join(", "),
+          // STEP 17c — categories CSV cell read off sportSelections.
+          categories: (b.sportSelections || []).map((s) => s.categoryName).join(", "),
           manager: mgrId ? managerNameMap[mgrId] : "—",
           date: b.createdAt,
         });

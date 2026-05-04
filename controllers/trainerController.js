@@ -7,6 +7,9 @@ const ClubApplication = require("../Modal/TrainerClubApplication");
 const Turf = require("../Modal/Turf");
 
 // Get trainer profile
+// Behavior: by default returns 404 if no profile exists.
+// Pass ?createIfMissing=true to opt into auto-create (used by "Become a Trainer" flow).
+// This prevents side-effect creation from role-probing GETs (e.g., RoleHub).
 exports.getTrainerProfile = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -18,6 +21,11 @@ exports.getTrainerProfile = async (req, res) => {
     let trainer = await Trainer.findOne({ userId: req.params.id });
 
     if (!trainer) {
+      // Opt-in creation: caller must explicitly request it.
+      if (req.query.createIfMissing !== "true") {
+        return res.status(404).json({ message: "Trainer profile not found" });
+      }
+
       const nameParts = user.name
         ? user.name.split(" ")
         : ["Unnamed", "Trainer"];

@@ -295,6 +295,30 @@ function freezeMatchFormat(tournamentMatchFormat) {
 }
 
 // ════════════════════════════════════
+// SHAPE DETECTION (private)
+// ════════════════════════════════════
+
+/**
+ * PRIVATE: Detects whether a format uses the 4-level nested structure (Tennis)
+ * or the flat 3-level structure (Table Tennis, Badminton, etc.).
+ *
+ * TRUE  → Tennis-style: `gamesPerSet` set, OR totalGames > 1 AND != totalSets
+ * FALSE → Flat: a "set" is atomic, scored directly to a point total
+ *
+ * This is a local copy of the public MatchFactory.hasNestedGames helper.
+ * Kept private here to avoid a circular require (MatchFactory requires this file).
+ * Consolidation TODO after the refactor lands.
+ */
+function _hasNestedGamesShape(format) {
+  if (!format || typeof format !== "object") return false;
+  if (format.gamesPerSet != null && Number(format.gamesPerSet) > 0) return true;
+  const tg = Number(format.totalGames);
+  const ts = Number(format.totalSets);
+  if (Number.isFinite(tg) && Number.isFinite(ts) && tg > 1 && tg !== ts) return true;
+  return false;
+}
+
+// ════════════════════════════════════
 // VALIDATE MATCH FORMAT
 // ════════════════════════════════════
 
@@ -321,7 +345,13 @@ function validateMatchFormat(format) {
   if (format.setsToWin != null && format.totalSets != null && format.setsToWin > format.totalSets) {
     errors.push(`setsToWin (${format.setsToWin}) cannot exceed totalSets (${format.totalSets})`);
   }
-  if (format.gamesToWin == null || format.gamesToWin < 1) errors.push("gamesToWin must be >= 1");
+  // gamesToWin: required only for nested-game sports (Tennis).
+  // Flat-set sports (TT, Badminton, Volleyball) legitimately have no games layer.
+  if (_hasNestedGamesShape(format)) {
+    if (format.gamesToWin == null || format.gamesToWin < 1) {
+      errors.push("gamesToWin must be >= 1 for nested-game sports");
+    }
+  }
 
   // Set-based sports require pointsToWinGame and marginToWin
   if (isSetBased) {
@@ -397,18 +427,24 @@ function readMatchFormat(match) {
   const scoringType = result.scoringType || null;
   const isSetBased = scoringType === "sets" || scoringType === null; // null = legacy TT matches
 
-  // Fill ONLY if missing — NEVER override existing values
-  // For non-set sports, totalSets/totalGames default to 1 (single round container)
+  // Fill ONLY if missing — NEVER override existing values.
+  // Shape-aware: flat-set sports (TT, Badminton) legitimately have null totalGames/gamesToWin.
+  const nested = _hasNestedGamesShape(result);
+
   if (result.totalSets == null) { result.totalSets = isSetBased ? (SAFE_DEFAULTS.totalSets || 1) : 1; filled.push("totalSets"); }
-  if (result.totalGames == null) { result.totalGames = isSetBased ? (SAFE_DEFAULTS.totalGames || 1) : 1; filled.push("totalGames"); }
+  // totalGames: only auto-fill for nested-game sports. Flat-set: null is legitimate.
+  if (result.totalGames == null && nested) { result.totalGames = SAFE_DEFAULTS.totalGames || 1; filled.push("totalGames"); }
   // pointsToWinGame and marginToWin: only fill for set-based sports (legacy compat)
   if (result.pointsToWinGame == null && isSetBased) { result.pointsToWinGame = 11; filled.push("pointsToWinGame(legacy-sets)"); }
   if (result.marginToWin == null && isSetBased) { result.marginToWin = 2; filled.push("marginToWin(legacy-sets)"); }
   if (result.deuceRule == null) { result.deuceRule = isSetBased; filled.push("deuceRule"); }
 
-  // Derive ONLY if missing — do NOT override existing setsToWin/gamesToWin
+  // Derive ONLY if missing — do NOT override existing values.
   if (result.setsToWin == null) { result.setsToWin = Math.ceil(result.totalSets / 2); filled.push("setsToWin(derived)"); }
-  if (result.gamesToWin == null) { result.gamesToWin = Math.ceil(result.totalGames / 2); filled.push("gamesToWin(derived)"); }
+  // gamesToWin: only derive for nested-game sports. Flat-set: null is legitimate.
+  if (result.gamesToWin == null && nested && result.totalGames != null) {
+    result.gamesToWin = Math.ceil(result.totalGames / 2); filled.push("gamesToWin(derived)");
+  }
 
   if (filled.length > 0) {
     logScoring("warn", matchId, tournamentId, `Incomplete matchFormat — filled: ${filled.join(", ")}`, { filledFields: filled });

@@ -1,6 +1,7 @@
 const Match = require("../Modal/Tournnamentmatch");
 const SuperMatch = require("../Modal/SuperMatch");
 const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+const KnockoutMatch = require("../Modal/KnockoutMatch");
 const User = require("../Modal/User");
 const Score = require("../Modal/Score");
 const GroupStandings = require("../Modal/GroupStandings");
@@ -119,11 +120,29 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
     const group = await BookingGroup.findById(groupId);
     if (!group) return null;
 
-    // Detect scoringType from tournament
+    // Detect scoringType from the sport-track matching this group's sportId.
+    // Falls back to root tournament.matchFormat for legacy single-sport.
     const Tournament = require("../Modal/Tournament");
     const tournament = await Tournament.findById(tournamentId);
     const { getScoringType } = require("../utils/matchFormatUtils");
-    const scoringType = tournament?.matchFormat?.scoringType
+    const { getMatchFormat, resolveSportId } = require("../utils/sportTrackUtils");
+
+    // STEP 16e — recalculateGroupStandings is internal-only (called from
+    // score-update / progression triggers, never from a direct external
+    // endpoint). Hard-rejecting on a null group.sportId would silently
+    // break standings without surfacing the error to the manager. Log a
+    // warning instead and proceed via resolveSportId fallback so the
+    // standings still get recomputed for legacy/orphaned groups.
+    if (!group?.sportId) {
+      console.warn(
+        `[recalculateGroupStandings] BookingGroup ${groupId} has no sportId — ` +
+        `falling back to tournament.sports[0]. Group is likely orphaned/unmigrated.`
+      );
+    }
+    const sportId = resolveSportId(tournament, group?.sportId);
+    const trackMatchFormat = getMatchFormat(tournament, sportId);
+    const scoringType = trackMatchFormat?.scoringType
+      || tournament?.matchFormat?.scoringType
       || getScoringType(tournament?.sportsType)
       || "sets";
 
@@ -228,27 +247,91 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
       statsMap[p2Id].pointsConceded = statsMap[p2Id].scoreAgainst;
     }
 
-    // Sort: totalPoints DESC → rounds diff DESC → score diff DESC
-    const sorted = Object.values(statsMap).sort((a, b) => {
-      if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
-      const aRoundDiff = a.roundsWon - a.roundsLost;
-      const bRoundDiff = b.roundsWon - b.roundsLost;
-      if (bRoundDiff !== aRoundDiff) return bRoundDiff - aRoundDiff;
-      const aScoreDiff = a.scoreFor - a.scoreAgainst;
-      const bScoreDiff = b.scoreFor - b.scoreAgainst;
-      return bScoreDiff - aScoreDiff;
-    });
+    // Ranking rules (per client spec):
+    //   1. Primary — Matches Won (desc).
+    //   2. Two-way tie — Head-to-head: winner of the match between the two
+    //      tied players ranks higher.
+    //   3. Three+ way tie — Set difference (roundsWon − roundsLost), desc.
+    //   Further ties (unspecified) — score diff, then name for stability.
+
+    // Build head-to-head map: h2h[winnerId] → Set of loserIds they beat.
+    const h2h = {};
+    for (const match of matches) {
+      const result = readMatchResult(match, { tournament });
+      if (!result.winner) continue;
+      const winnerId = result.winner.playerId?.toString();
+      const p1Id = match.player1.playerId.toString();
+      const p2Id = match.player2.playerId.toString();
+      if (!winnerId || (winnerId !== p1Id && winnerId !== p2Id)) continue;
+      const loserId = winnerId === p1Id ? p2Id : p1Id;
+      if (!h2h[winnerId]) h2h[winnerId] = new Set();
+      h2h[winnerId].add(loserId);
+    }
+
+    // Bucket players by matches won, then resolve ties within each bucket.
+    const allPlayers = Object.values(statsMap);
+    const byWon = {};
+    for (const p of allPlayers) {
+      const k = p.won;
+      if (!byWon[k]) byWon[k] = [];
+      byWon[k].push(p);
+    }
+
+    const setDiff = (p) => p.roundsWon - p.roundsLost;
+    const scoreDiff = (p) => p.scoreFor - p.scoreAgainst;
+    const byId = (p) => p.playerId.toString();
+
+    const sorted = [];
+    const wonKeys = Object.keys(byWon)
+      .map(Number)
+      .sort((a, b) => b - a); // highest matches-won first
+
+    for (const won of wonKeys) {
+      const tied = byWon[won];
+      if (tied.length === 1) {
+        sorted.push(tied[0]);
+        continue;
+      }
+      if (tied.length === 2) {
+        // Head-to-head between the two tied players.
+        const [a, b] = tied;
+        const aId = byId(a);
+        const bId = byId(b);
+        const aBeatB = h2h[aId]?.has(bId);
+        const bBeatA = h2h[bId]?.has(aId);
+        let ordered;
+        if (aBeatB && !bBeatA) ordered = [a, b];
+        else if (bBeatA && !aBeatB) ordered = [b, a];
+        else {
+          // No head-to-head played or mutual (rare) — fall back to set diff.
+          ordered = [a, b].sort((x, y) => setDiff(y) - setDiff(x)
+            || scoreDiff(y) - scoreDiff(x)
+            || x.playerName.localeCompare(y.playerName));
+        }
+        sorted.push(...ordered);
+        continue;
+      }
+      // 3+ way tie — set difference, then score diff, then name for stability.
+      const ordered = [...tied].sort((x, y) =>
+        setDiff(y) - setDiff(x)
+        || scoreDiff(y) - scoreDiff(x)
+        || x.playerName.localeCompare(y.playerName)
+      );
+      sorted.push(...ordered);
+    }
 
     // Assign ranks
     sorted.forEach((entry, idx) => {
       entry.rank = idx + 1;
     });
 
-    // Upsert standings
+    // Upsert standings — also stamp sportId so multi-sport reads/queries
+    // can scope by sport. Falls back to null for legacy tournaments.
     const standings = await GroupStandings.findOneAndUpdate(
       { tournamentId, groupId },
       {
         tournamentId,
+        sportId,
         groupId,
         groupName: group.groupName,
         scoringType,
@@ -269,10 +352,12 @@ const initializeMatchScoreboard = async (match, isKnockoutMatch = false, session
   try {
     // 🔥 DYNAMIC MATCH FORMAT - Get from tournament or use intelligent defaults
     if (!match.matchFormat) {
-      // Load tournament format if not already loaded
+      // Load tournament format if not already loaded. STEP 17c — read
+      // per-sport from sports[i] (root matchFormat removed).
       const Tournament = require("../Modal/Tournament");
+      const { getMatchFormat, resolveSportId } = require("../utils/sportTrackUtils");
       const tournament = await Tournament.findById(match.tournamentId);
-      const tournamentFormat = tournament?.matchFormat || {};
+      const tournamentFormat = getMatchFormat(tournament, resolveSportId(tournament, match.sportId)) || {};
 
       // Apply tournament configuration with intelligent defaults
       match.matchFormat = {
@@ -338,7 +423,7 @@ const initializeMatchScoreboard = async (match, isKnockoutMatch = false, session
     if (session) {
       await match.save({ session });
     } else {
-      await match.save();
+      await match.save({ validateModifiedOnly: true });
     }
 
     return match;
@@ -612,14 +697,19 @@ const getLiveMatchState = async (req, res) => {
       forceRefreshFormat ||
       true) { // 🚨 ALWAYS REFRESH for dynamic settings support
 
-      // Load tournament format if not already loaded or missing new fields
+      // Load tournament format if not already loaded or missing new fields.
+      // STEP 17c — root matchFormat/sportsType removed; read per-sport from
+      // sports[i] keyed by match.sportId (with sports[0] fallback for legacy
+      // matches lacking sportId).
       const Tournament = require("../Modal/Tournament");
+      const { getMatchFormat, getSportName, resolveSportId } = require("../utils/sportTrackUtils");
       const tournament = await Tournament.findById(match.tournamentId);
-      const tournamentFormat = tournament?.matchFormat || {};
+      const _resolvedSportId = resolveSportId(tournament, match.sportId);
+      const tournamentFormat = getMatchFormat(tournament, _resolvedSportId) || {};
 
       // Detect scoringType from tournament sport
       const { getScoringType } = require("../utils/matchFormatUtils");
-      const sportName = match.sportsType || tournament?.sportsType;
+      const sportName = match.sportName || match.sportsType || getSportName(tournament, _resolvedSportId);
       const VALID_SCORING_TYPES = ["sets", "time", "innings", "single"];
       const rawScoringType = tournamentFormat.scoringType || getScoringType(sportName);
       const scoringType = VALID_SCORING_TYPES.includes(rawScoringType) ? rawScoringType : (getScoringType(sportName) || "sets");
@@ -651,7 +741,7 @@ const getLiveMatchState = async (req, res) => {
       };
 
       // Save the updated match format
-      await match.save();
+      await match.save({ validateModifiedOnly: true });
     }
 
     // If match not started, only initialize if explicitly requested
@@ -757,7 +847,7 @@ const updateLiveScore = async (req, res) => {
       player2Points: parseInt(player2Points)
     };
 
-    await match.save();
+    await match.save({ validateModifiedOnly: true });
 
     res.status(200).json({
       success: true,
@@ -828,6 +918,43 @@ const completeGame = async (req, res) => {
       });
     }
 
+    // ═══ GUARD: Authorization check (Phase 4b) ═══
+    // Caller must be (a) a manager of this tournament, or
+    // (b) an umpire authorized per umpireAuth (match-level or stage-level grant).
+    const callerId = req.user?._id?.toString() || req.user?.id?.toString();
+    if (!callerId) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(401).json({ success: false, message: "Not authenticated." });
+    }
+
+    let authorized = false;
+    if (req.userRole === "Manager") {
+      const TournamentModel = require("../Modal/Tournament");
+      const tournamentDoc = await TournamentModel.findById(match.tournamentId)
+        .select("managerId")
+        .lean();
+      const managerIds = Array.isArray(tournamentDoc?.managerId)
+        ? tournamentDoc.managerId.map((id) => id?.toString())
+        : tournamentDoc?.managerId
+        ? [tournamentDoc.managerId.toString()]
+        : [];
+      authorized = managerIds.includes(callerId);
+    } else {
+      const { isUmpireAuthorizedForMatch } = require("../utils/umpireAuth");
+      const result = await isUmpireAuthorizedForMatch(callerId, match);
+      authorized = !!result.authorized;
+    }
+
+    if (!authorized) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to score this match.",
+      });
+    }
+
     // 🔥 DYNAMIC MATCH FORMAT - Get from tournament or use intelligent defaults
     if (!match.matchFormat) {
       // Try to get format from tournament
@@ -837,9 +964,11 @@ const completeGame = async (req, res) => {
       if (match.tournamentId) {
         try {
           const Tournament = require("../Modal/Tournament");
+          const { getMatchFormat, getSportName, resolveSportId } = require("../utils/sportTrackUtils");
           const tournament = await Tournament.findById(match.tournamentId);
-          tournamentFormat = tournament?.matchFormat || {};
-          tournamentSportsType = tournament?.sportsType || null;
+          const _resolvedSportId = resolveSportId(tournament, match.sportId);
+          tournamentFormat = getMatchFormat(tournament, _resolvedSportId) || {};
+          tournamentSportsType = getSportName(tournament, _resolvedSportId) || null;
         } catch (error) {
           console.log("Could not fetch tournament format, using defaults");
         }
@@ -847,7 +976,7 @@ const completeGame = async (req, res) => {
 
       // Detect scoringType from tournament sport
       const { getScoringType } = require("../utils/matchFormatUtils");
-      const sportName = match.sportsType || tournamentSportsType;
+      const sportName = match.sportName || match.sportsType || tournamentSportsType;
       const scoringType = tournamentFormat.scoringType || getScoringType(sportName);
 
       // Sport-aware defaults: non-set sports use 1 set / 1 game / 1 point-to-win
@@ -948,35 +1077,52 @@ const completeGame = async (req, res) => {
       playerName: winnerName
     };
 
-    // Calculate games won in current set (with null safety for knockout matches)
-    const player1GamesWon = currentSet.games.filter(g => {
-      if (g.status !== "COMPLETED") return false;
+    // Sport-aware shape branch.
+    // Nested-game sports (Tennis): a set contains multiple games; count games won.
+    // Flat-set sports (TT, Badminton, Volleyball): each submitted score IS the set's
+    // final score \u2014 the synthetic single game's winner IS the set winner. No counting.
+    const { hasNestedGames } = require("../factories/MatchFactory");
+    const nested = hasNestedGames(match.matchFormat);
 
-      // For knockout matches, use playerName if playerId is not available
-      if (match.player1.playerId && g.winner.playerId) {
-        return g.winner.playerId.toString() === match.player1.playerId.toString();
-      } else {
-        // Fallback to playerName comparison
-        const matchPlayer1Name = match.player1.playerName || match.player1.userName;
-        return g.winner.playerName === matchPlayer1Name;
-      }
-    }).length;
+    let player1GamesWon, player2GamesWon, setResult;
 
-    const player2GamesWon = currentSet.games.filter(g => {
-      if (g.status !== "COMPLETED") return false;
+    if (nested) {
+      // Calculate games won in current set (with null safety for knockout matches)
+      player1GamesWon = currentSet.games.filter(g => {
+        if (g.status !== "COMPLETED") return false;
 
-      // For knockout matches, use playerName if playerId is not available
-      if (match.player2.playerId && g.winner.playerId) {
-        return g.winner.playerId.toString() === match.player2.playerId.toString();
-      } else {
-        // Fallback to playerName comparison
-        const matchPlayer2Name = match.player2.playerName || match.player2.userName;
-        return g.winner.playerName === matchPlayer2Name;
-      }
-    }).length;
+        // For knockout matches, use playerName if playerId is not available
+        if (match.player1.playerId && g.winner.playerId) {
+          return g.winner.playerId.toString() === match.player1.playerId.toString();
+        } else {
+          // Fallback to playerName comparison
+          const matchPlayer1Name = match.player1.playerName || match.player1.userName;
+          return g.winner.playerName === matchPlayer1Name;
+        }
+      }).length;
 
-    // Check if set is won
-    const setResult = isSetWon(player1GamesWon, player2GamesWon, match.matchFormat.gamesToWin);
+      player2GamesWon = currentSet.games.filter(g => {
+        if (g.status !== "COMPLETED") return false;
+
+        // For knockout matches, use playerName if playerId is not available
+        if (match.player2.playerId && g.winner.playerId) {
+          return g.winner.playerId.toString() === match.player2.playerId.toString();
+        } else {
+          // Fallback to playerName comparison
+          const matchPlayer2Name = match.player2.playerName || match.player2.userName;
+          return g.winner.playerName === matchPlayer2Name;
+        }
+      }).length;
+
+      // Check if set is won (standard multi-game tally)
+      setResult = isSetWon(player1GamesWon, player2GamesWon, match.matchFormat.gamesToWin);
+    } else {
+      // Flat-set: the game we just completed IS the set.
+      // No counting needed \u2014 gameResult's winner is the set winner.
+      player1GamesWon = gameResult.winner === "player1" ? 1 : 0;
+      player2GamesWon = gameResult.winner === "player2" ? 1 : 0;
+      setResult = { isWon: true, winner: gameResult.winner };
+    }
 
 
     let setCompleted = false;
@@ -1354,7 +1500,7 @@ const resetMatch = async (req, res) => {
       completedAt: null
     };
 
-    await match.save();
+    await match.save({ validateModifiedOnly: true });
 
     res.status(200).json({
       success: true,
@@ -2019,12 +2165,9 @@ const getGroupStandings = async (req, res) => {
   try {
     const { tournamentId, groupId } = req.params;
 
-    let standings = await GroupStandings.findOne({ tournamentId, groupId });
-
-    // If no standings yet, recalculate from matches
-    if (!standings) {
-      standings = await recalculateGroupStandings(tournamentId, groupId);
-    }
+    // Always recompute so tie-break rule changes take effect immediately
+    // without needing a match re-submit to refresh cached standings.
+    let standings = await recalculateGroupStandings(tournamentId, groupId);
 
     if (!standings) {
       return res.status(404).json({ success: false, message: "No standings found for this group." });
@@ -2066,10 +2209,12 @@ const bulkUploadScores = async (req, res) => {
   try {
     const { tournamentId, groupId, scores } = req.body;
 
-    if (!tournamentId || !groupId || !scores || !Array.isArray(scores) || scores.length === 0) {
+    // groupId is optional — knockout-stage bulk uploads pass null because matches
+    // don't belong to a single group.
+    if (!tournamentId || !scores || !Array.isArray(scores) || scores.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "tournamentId, groupId, and scores array are required"
+        message: "tournamentId and scores array are required"
       });
     }
 
@@ -2085,24 +2230,58 @@ const bulkUploadScores = async (req, res) => {
       }
 
       try {
-        // Find the match
+        // Find the match across all match collections. Group-stage tournaments
+        // store matches in `Match`; knockout brackets use SuperMatch (group→KO
+        // progression), DirectKnockoutMatch (standalone KO), or KnockoutMatch
+        // (legacy qualifier_knockout flow).
         let match = await Match.findById(matchId);
+        let matchKind = "group";
+        if (!match) {
+          match = await SuperMatch.findById(matchId);
+          if (match) matchKind = "super";
+        }
+        if (!match) {
+          match = await DirectKnockoutMatch.findById(matchId);
+          if (match) matchKind = "direct";
+        }
+        if (!match) {
+          match = await KnockoutMatch.findById(matchId);
+          if (match) matchKind = "legacyKO";
+        }
         if (!match) {
           errors.push({ matchId, error: "Match not found" });
           continue;
         }
 
-        // Skip already completed matches
+        // Already-completed matches: skip the re-score, but for DirectKnockoutMatch
+        // still attempt progression in case a prior run never advanced the winner.
         if (match.status === "COMPLETED") {
+          if (matchKind === "direct" && match.nextMatchId) {
+            const existingWinnerId =
+              match.result?.winner?.playerId ||
+              match.matchResult?.winner?.playerId ||
+              match.winner?.playerId;
+            if (existingWinnerId) {
+              try {
+                const { processDirectKnockoutProgression } = require("./directKnockoutController");
+                await processDirectKnockoutProgression(match, existingWinnerId);
+                results.push({ matchId, status: "progression-only" });
+              } catch (progErr) {
+                errors.push({ matchId, error: `Progression retry failed: ${progErr.message}` });
+              }
+              continue;
+            }
+          }
           errors.push({ matchId, error: "Match already completed" });
           continue;
         }
 
-        // Resolve match format
+        // Resolve match format. STEP 17c — read per-sport from sports[i].
         if (!match.matchFormat || !match.matchFormat.setsToWin) {
           const Tournament = require("../Modal/Tournament");
+          const { getMatchFormat, resolveSportId } = require("../utils/sportTrackUtils");
           const tournament = await Tournament.findById(match.tournamentId);
-          const tf = tournament?.matchFormat || {};
+          const tf = getMatchFormat(tournament, resolveSportId(tournament, match.sportId)) || {};
 
           match.matchFormat = {
             totalSets: tf.totalSets || tf.maxSets || 1,
@@ -2207,42 +2386,83 @@ const bulkUploadScores = async (req, res) => {
 
         // Determine match winner
         const matchWinner = player1TotalSets >= setsToWin ? "player1" : "player2";
+        const winnerPlayerId = matchWinner === "player1" ? match.player1.playerId : match.player2.playerId;
+        const winnerPlayerName = matchWinner === "player1"
+          ? (match.player1.playerName || match.player1.userName)
+          : (match.player2.playerName || match.player2.userName);
 
-        // Update match
-        match.sets = matchSets;
-        match.status = "COMPLETED";
-        match.currentSet = matchSets.length;
-        match.currentGame = 1;
-        match.liveScore = { player1Points: 0, player2Points: 0 };
-        match.result = {
-          winner: {
-            playerId: matchWinner === "player1" ? match.player1.playerId : match.player2.playerId,
-            playerName: matchWinner === "player1"
-              ? (match.player1.playerName || match.player1.userName)
-              : (match.player2.playerName || match.player2.userName)
-          },
-          finalScore: {
+        if (matchKind === "legacyKO") {
+          // KnockoutMatch has no sets/result/liveScore fields — use the flat
+          // winner subdoc plus matchResult (Mixed) for the final score payload.
+          match.status = "COMPLETED";
+          match.winner = {
+            playerId: winnerPlayerId,
+            playerName: winnerPlayerName,
+            playerType: matchWinner === "player1"
+              ? match.player1.playerType
+              : match.player2.playerType,
+          };
+          match.matchResult = {
+            winner: { playerId: winnerPlayerId, playerName: winnerPlayerName },
+            finalScore: { player1Sets: player1TotalSets, player2Sets: player2TotalSets },
+            sets: matchSets,
+            completedAt: new Date(),
+          };
+        } else {
+          // Match / SuperMatch / DirectKnockoutMatch all carry sets + status +
+          // liveScore; only the result container differs (Match has `result`,
+          // SuperMatch has `score`). We write both defensively — strict mode
+          // drops the one that isn't in the schema.
+          match.sets = matchSets;
+          match.status = "COMPLETED";
+          match.currentSet = matchSets.length;
+          match.currentGame = 1;
+          match.liveScore = { player1Points: 0, player2Points: 0 };
+          match.result = {
+            winner: { playerId: winnerPlayerId, playerName: winnerPlayerName },
+            finalScore: { player1Sets: player1TotalSets, player2Sets: player2TotalSets },
+            matchDuration: 0,
+            completedAt: new Date(),
+          };
+          match.winner = { playerId: winnerPlayerId, playerName: winnerPlayerName };
+          match.score = {
             player1Sets: player1TotalSets,
-            player2Sets: player2TotalSets
-          },
-          matchDuration: 0,
-          completedAt: new Date()
-        };
+            player2Sets: player2TotalSets,
+            setScores: sets.map((s, idx) => ({
+              setNumber: idx + 1,
+              player1Score: s.player1Score,
+              player2Score: s.player2Score,
+            })),
+          };
+        }
 
-        await match.save();
+        await match.save({ validateModifiedOnly: true });
 
-        // Sync Score model for backward compatibility
-        try {
-          await syncScoreModel(match);
-        } catch (syncErr) {
-          console.error(`[BULK_SCORE] Score sync error for match ${matchId}:`, syncErr.message);
+        // Sync Score model for backward compatibility — only meaningful for
+        // group-stage Match docs. Skip for knockout variants.
+        if (matchKind === "group") {
+          try {
+            await syncScoreModel(match);
+          } catch (syncErr) {
+            console.error(`[BULK_SCORE] Score sync error for match ${matchId}:`, syncErr.message);
+          }
+        }
+
+        // Advance the winner to the next bracket match for DirectKnockoutMatch.
+        if (matchKind === "direct" && match.nextMatchId && winnerPlayerId) {
+          try {
+            const { processDirectKnockoutProgression } = require("./directKnockoutController");
+            await processDirectKnockoutProgression(match, winnerPlayerId);
+          } catch (progErr) {
+            console.error(`[BULK_SCORE] Progression error for match ${matchId}:`, progErr.message);
+          }
         }
 
         results.push({
           matchId,
-          player1: match.player1.userName,
-          player2: match.player2.userName,
-          winner: match.result.winner.playerName,
+          player1: match.player1.userName || match.player1.playerName,
+          player2: match.player2.userName || match.player2.playerName,
+          winner: winnerPlayerName,
           finalScore: `${player1TotalSets}-${player2TotalSets}`,
           status: "success"
         });
@@ -2253,11 +2473,14 @@ const bulkUploadScores = async (req, res) => {
       }
     }
 
-    // Recalculate group standings after all scores are uploaded
-    try {
-      await recalculateGroupStandings(tournamentId, groupId);
-    } catch (standingsErr) {
-      console.error("[BULK_SCORE] Error recalculating standings:", standingsErr.message);
+    // Recalculate group standings after all scores are uploaded — only meaningful
+    // when a groupId was provided (group-stage bulk uploads).
+    if (groupId) {
+      try {
+        await recalculateGroupStandings(tournamentId, groupId);
+      } catch (standingsErr) {
+        console.error("[BULK_SCORE] Error recalculating standings:", standingsErr.message);
+      }
     }
 
     res.status(200).json({

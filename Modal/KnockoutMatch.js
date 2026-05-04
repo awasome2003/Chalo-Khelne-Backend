@@ -148,6 +148,14 @@ const knockoutMatchSchema = new mongoose.Schema({
   // Sport identification
   sportName: { type: String, default: null },
 
+  // STEP 17f — sportId required. Collection currently empty (0 docs);
+  // boundary validators ensure new creates always have it.
+  sportId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Sport",
+    required: true,
+  },
+
   scoringType: {
     type: String,
     default: null,
@@ -172,5 +180,7 @@ knockoutMatchSchema.index({ tournamentId: 1, matchType: 1 });
 knockoutMatchSchema.index({ tournamentId: 1, category: 1 });
 knockoutMatchSchema.index({ "player1.playerId": 1 });
 knockoutMatchSchema.index({ "player2.playerId": 1 });
+// Multi-sport scoping index. Non-unique — STEP 9a additive.
+knockoutMatchSchema.index({ tournamentId: 1, sportId: 1 });
 
 module.exports = mongoose.model("KnockoutMatch", knockoutMatchSchema);

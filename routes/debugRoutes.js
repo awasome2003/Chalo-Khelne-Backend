@@ -67,13 +67,16 @@ router.get("/match/:id", async (req, res) => {
           hasSetsWon: !!match.setsWon,
         },
 
-        // Tournament context
-        tournament: tournament ? {
-          title: tournament.title,
-          sportsType: tournament.sportsType,
-          scoringType: tournament.matchFormat?.scoringType,
-          currentStage: tournament.currentStage,
-        } : null,
+        // Tournament context — STEP 17b.i: read via per-sport helpers.
+        tournament: tournament ? (() => {
+          const { getSportName, getMatchFormat, getCurrentStage } = require("../utils/sportTrackUtils");
+          return {
+            title: tournament.title,
+            sportName: getSportName(tournament),
+            scoringType: getMatchFormat(tournament)?.scoringType || null,
+            currentStage: getCurrentStage(tournament),
+          };
+        })() : null,
       },
     });
   } catch (err) {
@@ -127,7 +130,10 @@ router.get("/tournament/:id/health", async (req, res) => {
 
     health.migrationComplete = health.withoutMatchResult === 0;
 
-    res.json({ success: true, tournament: tournament.title, sportsType: tournament.sportsType, health });
+    {
+      const { getSportName: _getSN } = require("../utils/sportTrackUtils");
+      res.json({ success: true, tournament: tournament.title, sportName: _getSN(tournament), health });
+    }
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

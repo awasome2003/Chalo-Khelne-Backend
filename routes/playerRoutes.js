@@ -1147,8 +1147,13 @@ router.post("/verify-payment", async (req, res) => {
           if (!resolvedTournamentType) {
             try {
               const tournament = await Tournament.findById(payment.eventId);
-              if (tournament && tournament.type) {
-                resolvedTournamentType = tournament.type;
+              // STEP 17b.i — derive type via per-sport helper.
+              // Payment context has no sportId — fall back to sports[0]
+              // for the tournamentType label on the booking record.
+              const { getTournamentType } = require("../utils/sportTrackUtils");
+              const _tournamentType = getTournamentType(tournament);
+              if (_tournamentType) {
+                resolvedTournamentType = _tournamentType;
                 console.log(
                   `Retrieved tournament type from database: ${resolvedTournamentType}`
                 );

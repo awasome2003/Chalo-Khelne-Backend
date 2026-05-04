@@ -56,59 +56,70 @@ async function seed() {
   // ===== CREATE TOURNAMENTS =====
   const allManagers = [existingManager, manager1, manager2].filter(Boolean);
 
+  // STEP 17b.iii — write multi-sport `sports[]:` shape only. Root scalars
+  // (sportsType, type, category) removed in 17e; this seed already
+  // matches the post-17g target shape so re-running stays clean.
   const tournamentData = [
     {
       title: "State Badminton Championship 2026",
-      sportsType: "Badminton",
-      type: "group stage",
       managerId: [manager1._id],
       startDate: "2026-04-01",
       endDate: "2026-04-05",
       maxTeams: 32,
-      category: [
-        { name: "Men's Singles", fee: 500 },
-        { name: "Women's Singles", fee: 500 },
-        { name: "Men's Doubles", fee: 800 },
-        { name: "Mixed Doubles", fee: 800 },
-      ],
+      sports: [{
+        sportName: "Badminton",
+        type: "group stage",
+        categories: [
+          { name: "Men's Singles", fee: 500 },
+          { name: "Women's Singles", fee: 500 },
+          { name: "Men's Doubles", fee: 800 },
+          { name: "Mixed Doubles", fee: 800 },
+        ],
+      }],
     },
     {
       title: "Inter-Club Table Tennis League",
-      sportsType: "Table Tennis",
-      type: "knockout",
       managerId: [manager1._id],
       startDate: "2026-04-10",
       endDate: "2026-04-12",
       maxTeams: 16,
-      category: [
-        { name: "Open Category", fee: 300 },
-        { name: "Under-19", fee: 200 },
-      ],
+      sports: [{
+        sportName: "Table Tennis",
+        type: "knockout",
+        categories: [
+          { name: "Open Category", fee: 300 },
+          { name: "Under-19", fee: 200 },
+        ],
+      }],
     },
     {
       title: "City Cricket Tournament",
-      sportsType: "Cricket",
-      type: "knockout",
       managerId: [manager2._id],
       startDate: "2026-05-01",
       endDate: "2026-05-10",
       maxTeams: 8,
-      category: [
-        { name: "T20 Format", fee: 2000 },
-        { name: "T10 Format", fee: 1500 },
-      ],
+      sports: [{
+        sportName: "Cricket",
+        type: "knockout",
+        categories: [
+          { name: "T20 Format", fee: 2000 },
+          { name: "T10 Format", fee: 1500 },
+        ],
+      }],
     },
     {
       title: "Weekend Football Cup",
-      sportsType: "Football",
-      type: "group stage",
       managerId: [manager2._id],
       startDate: "2026-03-01",
       endDate: "2026-03-03",
       maxTeams: 12,
-      category: [
-        { name: "Open", fee: 1000 },
-      ],
+      sports: [{
+        sportName: "Football",
+        type: "group stage",
+        categories: [
+          { name: "Open", fee: 1000 },
+        ],
+      }],
     },
   ];
 
@@ -116,16 +127,18 @@ async function seed() {
   if (existingManager) {
     tournamentData.push({
       title: "Tony's Invitational Badminton Open",
-      sportsType: "Badminton",
-      type: "knockout",
       managerId: [existingManager._id],
       startDate: "2026-04-15",
       endDate: "2026-04-17",
       maxTeams: 16,
-      category: [
-        { name: "Singles", fee: 400 },
-        { name: "Doubles", fee: 600 },
-      ],
+      sports: [{
+        sportName: "Badminton",
+        type: "knockout",
+        categories: [
+          { name: "Singles", fee: 400 },
+          { name: "Doubles", fee: 600 },
+        ],
+      }],
     });
   }
 
@@ -176,7 +189,14 @@ async function seed() {
   let bookingCount = 0;
 
   for (const tournament of tournaments) {
-    const categories = tournament.category || [];
+    // STEP 17c — read per-sport from tournament.sports[0]; write
+    // sportSelections + totalFee on bookings (selectedCategories
+    // dual-write removed).
+    const track = (Array.isArray(tournament.sports) && tournament.sports.length > 0)
+      ? tournament.sports[0]
+      : null;
+    const categories = track?.categories || [];
+    const tournamentType = track?.type || null;
     // Register 3-6 players per tournament
     const numBookings = Math.min(players.length, 3 + Math.floor(Math.random() * 4));
 
@@ -184,13 +204,14 @@ async function seed() {
       const player = players[i % players.length];
       // Pick 1-2 random categories
       const numCats = Math.min(categories.length, 1 + Math.floor(Math.random() * 2));
-      const selectedCats = categories.slice(0, numCats).map((c) => ({
-        name: c.name,
-        price: c.fee,
-        id: c._id?.toString() || "",
+      const sportSelections = categories.slice(0, numCats).map((c) => ({
+        sportId: track?.sportId || null,
+        sportName: track?.sportName || null,
+        categoryName: c.name,
+        fee: Number(c.fee || 0),
       }));
 
-      const totalFee = selectedCats.reduce((sum, c) => sum + c.price, 0);
+      const totalFee = sportSelections.reduce((sum, s) => sum + s.fee, 0);
       const isPaid = Math.random() > 0.2; // 80% paid
       const isConfirmed = isPaid ? true : Math.random() > 0.5;
 
@@ -206,12 +227,13 @@ async function seed() {
           userPhone: player.mobile || "9999999999",
           tournamentId: tournament._id,
           tournamentName: tournament.title,
-          tournamentType: tournament.type,
+          tournamentType,
           status: isConfirmed ? "confirmed" : "pending",
           paymentStatus: isPaid ? "paid" : "pending",
           paymentAmount: isPaid ? totalFee : 0,
           paymentMethod: isPaid ? (Math.random() > 0.5 ? "online" : "cash") : "cash",
-          selectedCategories: selectedCats,
+          sportSelections,
+          totalFee,
           team: {
             name: `Team ${player.name.split(" ")[0]}`,
             captain: { name: player.name, id: player._id?.toString() },

@@ -3,15 +3,20 @@ const Tournament = require("../Modal/Tournament");
 const User = require("../Modal/User");
 const mongoose = require("mongoose");
 const { createLegacyKnockoutMatch } = require("../factories/MatchFactory");
+const { assertSportInTournament, handleSportContextError } = require("../middleware/requireSportContext");
 
 // Get knockout matches by tournament and type
 exports.getKnockoutMatches = async (req, res) => {
   try {
     const { tournamentId } = req.params;
-    const { matchType, round, category } = req.query;
+    const { matchType, round, category, sportId } = req.query;
 
     let query = { tournamentId };
 
+    // STEP 11d — Multi-sport: strict sportId match (post-migration data).
+    if (sportId) {
+      query.sportId = sportId;
+    }
     if (matchType) {
       query.matchType = matchType;
     }
@@ -127,7 +132,7 @@ exports.updateKnockoutMatchResult = async (req, res) => {
     match.status = status || "COMPLETED";
     match.updatedAt = new Date();
 
-    await match.save();
+    await match.save({ validateModifiedOnly: true });
 
     // If this match has a nextMatch reference, update that match
     if (match.nextMatch && match.nextMatch.matchId) {
@@ -166,7 +171,7 @@ const updateNextRoundMatch = async (nextMatchId, position, winner) => {
       fromGroup: winner.fromGroup || null
     };
 
-    await nextMatch.save();
+    await nextMatch.save({ validateModifiedOnly: true });
     console.log(`Updated ${updateField} in next match ${nextMatchId}`);
 
   } catch (error) {
@@ -188,6 +193,22 @@ exports.generateNextRound = async (req, res) => {
       status: "COMPLETED",
       category: category || { $exists: true }
     });
+
+    // STEP 16d — derive sportId from the prior round's first match
+    // (the new round inherits sport scoping). Fall back to req.body.sportId.
+    // If neither resolves, refuse rather than silently picking sports[0].
+    let _priorSportId = completedMatches.find((m) => m.sportId)?.sportId
+      || req.body.sportId
+      || null;
+    {
+      const _tForSport = await Tournament.findById(tournamentId).lean();
+      try {
+        assertSportInTournament(_priorSportId, _tForSport);
+      } catch (err) {
+        if (handleSportContextError(err, res)) return;
+        throw err;
+      }
+    }
 
     const winners = completedMatches
       .filter(match => match.winner && match.winner.playerId)
@@ -238,6 +259,7 @@ exports.generateNextRound = async (req, res) => {
         const byeDoc = createLegacyKnockoutMatch({
           tournament,
           tournamentId,
+          sportId: _priorSportId,
           matchType,
           round: nextRound,
           roundName: roundNames[nextRound] || `Round ${nextRound}`,
@@ -257,6 +279,7 @@ exports.generateNextRound = async (req, res) => {
         const matchDoc = createLegacyKnockoutMatch({
           tournament,
           tournamentId,
+          sportId: _priorSportId,
           matchType,
           round: nextRound,
           roundName: roundNames[nextRound] || `Round ${nextRound}`,
@@ -331,12 +354,14 @@ exports.getTournamentBracket = async (req, res) => {
       bracket[match.matchType][roundKey].matches.push(match);
     });
 
+    // STEP 17b.iv — currentStage read off sports[0] (per-sport).
+    const { getCurrentStage: _getStage } = require("../utils/sportTrackUtils");
     res.status(200).json({
       success: true,
       tournament: {
         id: tournament._id,
         title: tournament.title,
-        currentStage: tournament.currentStage,
+        currentStage: _getStage(tournament),
         tournamentStatus: tournament.tournamentStatus
       },
       bracket

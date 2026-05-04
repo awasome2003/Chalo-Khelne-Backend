@@ -255,7 +255,7 @@ const staffApplicationController = {
   accept: async (req, res) => {
     try {
       const { applicationId } = req.params;
-      const { managerNote, managerId } = req.body;
+      const { managerNote, managerId, stages } = req.body;
 
       const application = await StaffApplication.findById(applicationId);
       if (!application) {
@@ -269,6 +269,15 @@ const staffApplicationController = {
       application.managerNote = managerNote || "";
       application.respondedAt = new Date();
       application.respondedBy = managerId || null;
+
+      // Phase 4d: save stage grants for referee applications.
+      // Values must be a subset of ["group-stage", "knockout"].
+      // Empty array = "all stages allowed" (backward compat for clients that don't send stages).
+      if (application.role === "referee" && Array.isArray(stages)) {
+        const allowed = new Set(["group-stage", "knockout"]);
+        application.stages = stages.filter((s) => allowed.has(s));
+      }
+
       await application.save();
 
       // Notify the applicant

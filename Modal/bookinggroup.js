@@ -82,11 +82,22 @@ const bookingGroupSchema = new mongoose.Schema({
     enum: ["group_stage", "qualifier", null],
     default: "group_stage",
   },
+  // STEP 17f — sportId required. Boundary validator (16d) enforces on
+  // create. ~39 orphans with null sportId are unreachable; UPDATE paths
+  // use validateModifiedOnly so orphan edits stay safe.
+  sportId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Sport",
+    required: true,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
 });
+
+// Multi-sport scoping index. Non-unique — STEP 9a additive.
+bookingGroupSchema.index({ tournamentId: 1, sportId: 1 });
 
 // Changed model name from 'Group' to 'BookingGroup'
 module.exports = mongoose.model("BookingGroup", bookingGroupSchema);

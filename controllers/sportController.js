@@ -208,7 +208,9 @@ exports.getDefaultFormat = async (req, res) => {
       data: {
         name: preset.name,
         scoringType: preset.scoringType,
-        matchFormat: preset.matchFormat,
+        // STEP 17b.iii — preset key is `defaultMatchFormat`; emit as
+        // `matchFormat` for response shape compat.
+        matchFormat: preset.defaultMatchFormat,
         displayConfig: preset.displayConfig,
       },
     });
@@ -229,18 +231,23 @@ exports.seedSports = async (req, res) => {
         const existing = await Sport.findOne({ slug: preset.slug });
 
         if (existing) {
-          // Update existing sport with latest preset data
+          // Update existing sport with latest preset data — STEP 17b.iii:
+          // preset key renamed to `defaultMatchFormat`; Sport.matchFormat
+          // stays the same.
           existing.category = preset.category;
           existing.scoringType = preset.scoringType;
-          existing.matchFormat = preset.matchFormat;
+          existing.matchFormat = preset.defaultMatchFormat;
           existing.displayConfig = preset.displayConfig;
           existing.isPreset = true;
           await existing.save();
           results.updated++;
         } else {
-          // Create new sport
+          // Create new sport — STEP 17b.iii: map preset.defaultMatchFormat
+          // to Sport.matchFormat (schema field name unchanged).
+          const { defaultMatchFormat, ...rest } = preset;
           const sport = new Sport({
-            ...preset,
+            ...rest,
+            matchFormat: defaultMatchFormat,
             isPreset: true,
             isActive: true,
           });

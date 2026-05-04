@@ -16,6 +16,43 @@
 const { getScoringType, freezeMatchFormat } = require("../utils/matchFormatUtils");
 
 // ════════════════════════════════════
+// SHAPE DETECTION (nested vs flat)
+// ════════════════════════════════════
+
+/**
+ * Determines whether a sport's match format uses the 4-level nested structure
+ * (match → sets → games → points) or the flat 3-level structure (match → sets → points).
+ *
+ * TRUE  → Tennis-style: a "set" contains multiple "games", each game scored to a point total.
+ *          Signalled by an explicit `gamesPerSet` in the preset/tournament, OR
+ *          by a frozen format where totalGames > 1 and differs from totalSets.
+ *
+ * FALSE → Table Tennis / Badminton / Volleyball / Squash / Pickleball:
+ *          a "set" is atomic — played directly to a point total, no inner games.
+ *
+ * This is the single source of truth for the shape branch. All downstream
+ * scoring, validation, and UI code MUST route through this helper.
+ *
+ * @param {object} tournamentOrFormat - Tournament document OR matchFormat object
+ * @returns {boolean}
+ */
+function hasNestedGames(tournamentOrFormat) {
+  if (!tournamentOrFormat) return false;
+  const tmf = tournamentOrFormat.matchFormat ?? tournamentOrFormat;
+  if (!tmf || typeof tmf !== "object") return false;
+
+  // Explicit signal from tournament/preset config
+  if (tmf.gamesPerSet != null && Number(tmf.gamesPerSet) > 0) return true;
+
+  // Post-freeze signal: totalGames is a real second layer (>1 AND != totalSets)
+  const tg = Number(tmf.totalGames);
+  const ts = Number(tmf.totalSets);
+  if (Number.isFinite(tg) && Number.isFinite(ts) && tg > 1 && tg !== ts) return true;
+
+  return false;
+}
+
+// ════════════════════════════════════
 // STRICT MATCH FORMAT VALIDATION
 // ════════════════════════════════════
 
@@ -23,8 +60,12 @@ const { getScoringType, freezeMatchFormat } = require("../utils/matchFormatUtils
  * Validates matchFormat based on scoringType rules.
  * Called inside resolveMatchFormat() before returning.
  * Throws on invalid configuration — prevents bad data from entering DB.
+ *
+ * @param {object} fmt - frozen matchFormat
+ * @param {object} [opts]
+ * @param {boolean} [opts.nested=false] - whether format uses nested games layer (Tennis)
  */
-function validateMatchFormatStrict(fmt) {
+function validateMatchFormatStrict(fmt, { nested = false } = {}) {
   if (!fmt) return; // Allow null format for legacy paths
   const st = fmt.scoringType;
   if (!st) return; // No scoringType = legacy match, skip strict validation
@@ -33,6 +74,11 @@ function validateMatchFormatStrict(fmt) {
 
   if (st === "sets") {
     if (!fmt.setsToWin && !fmt.totalSets) errors.push("sets: setsToWin or totalSets required");
+    // Inner-games fields only required for nested sports (Tennis).
+    // Flat-set sports (TT, Badminton, Volleyball) score directly per set — no games layer.
+    if (nested && !fmt.gamesToWin && !fmt.totalGames) {
+      errors.push("sets(nested): gamesToWin or totalGames required for nested-game sports");
+    }
   }
 
   if (st === "time") {
@@ -62,18 +108,29 @@ function validateMatchFormatStrict(fmt) {
  * @param {Object} tournament - Tournament document
  * @returns {Object} Frozen matchFormat ready for match document
  */
-function resolveMatchFormat(tournament) {
+function resolveMatchFormat(tournament, sportId) {
   if (!tournament) throw new Error("[MatchFactory] tournament is required");
 
-  const sportName = tournament.sportsType;
-  const scoringType = tournament.matchFormat?.scoringType || getScoringType(sportName) || null;
-  const tmf = tournament.matchFormat || {};
+  // STEP 17b.i — read per-sport. Falls back via getSportTrack →
+  // synthesizeLegacyTrack until 17d removes synthesizeLegacyTrack.
+  const { getSportName, getMatchFormat } = require("../utils/sportTrackUtils");
+  const sportName = getSportName(tournament, sportId);
+  const tmf = getMatchFormat(tournament, sportId) || {};
+  const scoringType = tmf.scoringType || getScoringType(sportName) || null;
 
   // Freeze tournament format into an immutable match-level copy
   const frozen = freezeMatchFormat({ ...tmf, scoringType });
 
-  // Validate frozen format against scoring type rules
-  validateMatchFormatStrict(frozen);
+  // ── Sport-aware shape branch ────────────────────────────────
+  // Detect whether this sport uses the 4-level nested structure (Tennis)
+  // or the flat 3-level structure (Table Tennis, Badminton, etc.).
+  // The frozen format is emitted identically either way — only the
+  // validator is scoped to the shape at this step. Downstream steps
+  // (controllers, UI) will use hasNestedGames() to branch scoring logic.
+  const nested = hasNestedGames(tmf);
+
+  // Validate frozen format against scoring type rules (shape-aware)
+  validateMatchFormatStrict(frozen, { nested });
 
   return frozen;
 }
@@ -81,10 +138,32 @@ function resolveMatchFormat(tournament) {
 /**
  * Stamps a document with factory tracking fields.
  * All factory methods MUST call this before returning.
+ *
+ * STEP 17d — the `tournament.sports[0].sportId` defense-in-depth fallback
+ * was removed intentionally. Controllers (STEP 16d) are the enforcement
+ * point: every factory caller threads an explicit sportId, validated
+ * against tournament.sports[] via assertSportInTournament /
+ * assertGroupHasSport. The factory's job is to stamp what the caller
+ * provides; if doc.sportId is missing here, that's a controller bug
+ * upstream and the resulting null sportId fails Mongoose schema cast on
+ * save (after 17f required:true flip).
+ *
+ * Similarly, the `tournament.sportsType` legacy fallback for sportName
+ * is removed — sports[].sportName is the only source.
  */
 function _stamp(doc, tournament) {
   doc._createdViaFactory = true;
-  doc.sportName = doc.sportName || tournament?.sportsType || null;
+  // sportName fallback chain reads off the matched sport-track only.
+  // No legacy-root coalesce. Track lookup is by doc.sportId; if that's
+  // null the sportName ends up null too, surfacing the upstream bug.
+  if (!doc.sportName && doc.sportId && Array.isArray(tournament?.sports)) {
+    const idStr = String(doc.sportId);
+    const matched = tournament.sports.find((s) => String(s?.sportId) === idStr);
+    doc.sportName = matched?.sportName || null;
+  } else if (!doc.sportName) {
+    doc.sportName = doc.sportName || null;
+  }
+  doc.sportId = doc.sportId || null;
   return doc;
 }
 
@@ -113,14 +192,16 @@ function createGroupStageMatch(opts) {
     tournament, tournamentId, groupId, matchNumber,
     player1, player2, referee, courtNumber, startTime,
     matchFormatOverride,
+    sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
 
   const matchFormat = matchFormatOverride
     ? freezeMatchFormat(matchFormatOverride)
-    : resolveMatchFormat(tournament);
+    : resolveMatchFormat(tournament, sportId);
 
   return _stamp({
     tournamentId: tournamentId || tournament._id,
+    sportId,
     groupId,
     matchNumber: String(matchNumber),
     player1,
@@ -163,12 +244,14 @@ function createKnockoutMatch(opts) {
     tournament, tournamentId, matchId, round, roundNumber, matchNumber,
     player1, player2, courtNumber, matchStartTime, nextMatchId,
     bracketPosition, mode,
+    sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
 
-  const matchFormat = resolveMatchFormat(tournament);
+  const matchFormat = resolveMatchFormat(tournament, sportId);
 
   return _stamp({
     tournamentId: tournamentId || tournament._id,
+    sportId,
     matchId,
     mode: mode || "direct-knockout",
     round,
@@ -213,12 +296,14 @@ function createSuperMatch(opts) {
   const {
     tournament, tournamentId, matchId, round, roundNumber, matchNumber,
     player1, player2, courtNumber, matchStartTime, nextMatchId,
+    sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
 
-  const matchFormat = resolveMatchFormat(tournament);
+  const matchFormat = resolveMatchFormat(tournament, sportId);
 
   return _stamp({
     tournamentId: tournamentId || tournament._id,
+    sportId,
     matchId,
     round,
     roundNumber,
@@ -262,6 +347,7 @@ function createTeamKnockoutMatch(opts) {
     tournament, tournamentId, round, bracketPosition,
     team1Id, team2Id, formatId, format, sets,
     matchDate, courtNumber, isBye,
+    sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
 
   const tf = tournament?.matchFormat || {};
@@ -277,6 +363,7 @@ function createTeamKnockoutMatch(opts) {
   if (isBye) {
     return _stamp({
       tournamentId,
+      sportId,
       round,
       bracketPosition,
       team1Id,
@@ -300,6 +387,7 @@ function createTeamKnockoutMatch(opts) {
 
   return _stamp({
     tournamentId,
+    sportId,
     round,
     bracketPosition,
     team1Id,
@@ -352,13 +440,17 @@ function createLegacyKnockoutMatch(opts) {
   const {
     tournament, tournamentId, matchType, round, roundName, bracketPosition,
     player1, player2, category, status, isBye, winner,
+    sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
 
-  const scoringType = tournament?.matchFormat?.scoringType
-    || (tournament ? getScoringType(tournament.sportsType) : null);
+  // STEP 17b.i — per-sport scoringType. matchFormat now read off sport-track.
+  const { getMatchFormat: _getMF1, getSportName: _getSN1 } = require("../utils/sportTrackUtils");
+  const scoringType = (tournament && _getMF1(tournament, sportId)?.scoringType)
+    || (tournament ? getScoringType(_getSN1(tournament, sportId)) : null);
 
   return _stamp({
     tournamentId: tournamentId || tournament?._id,
+    sportId,
     matchType,
     round,
     roundName,
@@ -386,13 +478,17 @@ function createLegacyKnockoutMatch(opts) {
 function createSuperGroupMatch(opts) {
   const {
     tournament, tournamentId, groupId, match, index, matchDate,
+    sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
 
-  const scoringType = tournament?.matchFormat?.scoringType
-    || (tournament ? getScoringType(tournament.sportsType) : null);
+  // STEP 17b.i — per-sport scoringType.
+  const { getMatchFormat: _getMF2, getSportName: _getSN2 } = require("../utils/sportTrackUtils");
+  const scoringType = (tournament && _getMF2(tournament, sportId)?.scoringType)
+    || (tournament ? getScoringType(_getSN2(tournament, sportId)) : null);
 
   return _stamp({
     tournamentId,
+    sportId,
     groupId,
     title: match.title || `Super Group Match ${index + 1}`,
     type: match.type || "super_group",
@@ -428,6 +524,7 @@ function createByeMatch(opts) {
 
 module.exports = {
   resolveMatchFormat,
+  hasNestedGames,
   createGroupStageMatch,
   createKnockoutMatch,
   createSuperMatch,

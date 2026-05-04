@@ -37,11 +37,17 @@ exports.getPlayerCareerStats = async (req, res) => {
     const sportStats = {}; // { "Cricket": { matches, wins, losses, draws }, ... }
     const tournamentHistory = []; // detailed per-tournament history
 
+    // STEP 17b.i — per-sport reads off sport-track. Falls back via
+    // synthesizeLegacyTrack until 17d.
+    // TODO: multi-sport breakdown — one row per sport. Currently
+    // collapses to sports[0] for the per-tournament summary.
+    const { getSportName, getTournamentType, getCurrentStage } = require("../utils/sportTrackUtils");
+
     for (const booking of bookings) {
       const t = booking.tournamentId;
       if (!t) continue;
 
-      const sport = t.sportsType || "Unknown";
+      const sport = getSportName(t) || "Unknown";
       if (!sportStats[sport]) sportStats[sport] = { matches: 0, wins: 0, losses: 0, draws: 0 };
 
       let tMatches = 0, tWins = 0, tLosses = 0, tDraws = 0;
@@ -158,11 +164,11 @@ exports.getPlayerCareerStats = async (req, res) => {
       tournamentHistory.push({
         tournamentId: t._id,
         title: t.title,
-        sport: t.sportsType,
-        type: t.type,
+        sport: getSportName(t),
+        type: getTournamentType(t),
         startDate: t.startDate,
         endDate: t.endDate,
-        status: t.currentStage,
+        status: getCurrentStage(t),
         matches: tMatches,
         wins: tWins,
         losses: tLosses,

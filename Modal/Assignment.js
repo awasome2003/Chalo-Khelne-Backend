@@ -25,19 +25,19 @@ const AssignmentSchema = new mongoose.Schema({
   },
   date: {
     type: Date,
-    required: true,
+    required: function () { return this.type === "Match"; },
   },
   startTime: {
     type: String,
-    required: true,
+    required: function () { return this.type === "Match"; },
   },
   endTime: {
     type: String,
-    required: true,
+    required: function () { return this.type === "Match"; },
   },
   location: {
     type: String,
-    required: true,
+    required: function () { return this.type === "Match"; },
   },
   matches: {
     type: Number,
@@ -45,7 +45,13 @@ const AssignmentSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["pending", "accepted", "declined", "completed", "cancelled"],
+    // "applied"    → umpire applied to officiate a tournament (awaiting manager action)
+    // "pending"    → manager assigned umpire to a match (awaiting umpire accept/decline)
+    // "accepted"   → umpire accepted the match assignment
+    // "declined"   → umpire declined
+    // "completed"  → match finished
+    // "cancelled"  → cancelled by either side
+    enum: ["applied", "pending", "accepted", "declined", "completed", "cancelled"],
     default: "pending",
   },
   notes: {

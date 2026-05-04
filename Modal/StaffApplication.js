@@ -90,6 +90,13 @@ const staffApplicationSchema = new mongoose.Schema(
       ref: "Manager",
       default: null,
     },
+    // Stages this umpire is authorized to officiate (for role="referee").
+    // Empty array = all stages (backward-compat default for pre-Phase-4 accepted applications).
+    // Explicit values: subset of ["group-stage", "knockout"].
+    stages: [{
+      type: String,
+      enum: ["group-stage", "knockout"],
+    }],
   },
   { timestamps: true }
 );

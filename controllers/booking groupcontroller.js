@@ -1,6 +1,7 @@
 const BookingGroup = require("../Modal/bookinggroup");
 const Tournament = require("../Modal/Tournament");
 const Booking = require("../Modal/BookingModel");
+const { assertSportInTournament, handleSportContextError } = require("../middleware/requireSportContext");
 
 exports.createBookingGroup = async (req, res) => {
   try {
@@ -60,9 +61,19 @@ exports.createBookingGroup = async (req, res) => {
       }
     }
 
-    // 4. Create and save new booking group (with round info)
+    // STEP 16d — sportId is now required at the boundary. Manager UI
+    // sends activeSportId. Validate against tournament.sports[] so the
+    // group's sportId is always one this tournament actually owns.
+    try {
+      assertSportInTournament(req.body.sportId, tournamentExists);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
+
     const newGroup = new BookingGroup({
       tournamentId,
+      sportId: req.body.sportId,
       groupName,
       category,
       players: playerDocs,
@@ -90,8 +101,15 @@ exports.createBookingGroup = async (req, res) => {
 exports.getBookingGroups = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    const { sportId } = req.query;
 
-    const groups = await BookingGroup.find({ tournamentId })
+    // Multi-sport: when sportId is provided, also include docs where
+    // sportId is null (per STEP 11a approval fix). Pre-migration groups
+    // shouldn't disappear when the filter is active.
+    const filter = sportId
+      ? { tournamentId, $or: [{ sportId }, { sportId: null }] }
+      : { tournamentId };
+    const groups = await BookingGroup.find(filter)
       .populate("tournamentId", "title type")
       .populate({
         path: "players",
@@ -181,7 +199,7 @@ exports.updateBookingGroup = async (req, res) => {
     if (category) bookingGroup.category = category;
 
     /* 5. Save */
-    await bookingGroup.save();
+    await bookingGroup.save({ validateModifiedOnly: true });
 
     return res.status(200).json({
       success: true,
@@ -198,28 +216,121 @@ exports.updateBookingGroup = async (req, res) => {
   }
 };
 
+// Internal helper — runs the single-group deletion with cascade + safety
+// checks. Used by the single HTTP handler and the bulk handler.
+//
+// Returns one of:
+//   { ok: true, deletedMatches, groupName }
+//   { ok: false, status, reason: "notfound" | "blocked" | "error", message }
+//
+// 409 (blocked) condition: the per-sport currentStage has progressed past
+// "group_stage" AND the group has at least one COMPLETED match. Prevents
+// orphaning standings → top-players → knockout downstream chain.
+async function _runDeleteBookingGroup(groupId) {
+  const bookingGroup = await BookingGroup.findById(groupId);
+  if (!bookingGroup) {
+    return { ok: false, status: 404, reason: "notfound", message: "Booking group not found" };
+  }
+
+  const Match = require("../Modal/Tournnamentmatch");
+  const completedCount = await Match.countDocuments({
+    tournamentId: bookingGroup.tournamentId,
+    groupId,
+    status: "COMPLETED",
+  });
+
+  if (completedCount > 0) {
+    const tournament = await Tournament.findById(bookingGroup.tournamentId);
+    const { getCurrentStage } = require("../utils/sportTrackUtils");
+    const stage = getCurrentStage(tournament, bookingGroup.sportId) || "registration";
+    const blockedStages = ["knockout", "completed", "group_completed"];
+    if (blockedStages.includes(stage)) {
+      return {
+        ok: false,
+        status: 409,
+        reason: "blocked",
+        message: `"${bookingGroup.groupName}" has ${completedCount} completed match(es) and the tournament has progressed to ${stage}. Reset the knockout/round-2 stage for this sport before deleting the group.`,
+        completedCount,
+        stage,
+        groupName: bookingGroup.groupName,
+      };
+    }
+  }
+
+  // Cascade-delete the group's matches.
+  const matchesResult = await Match.deleteMany({
+    tournamentId: bookingGroup.tournamentId,
+    groupId,
+  });
+
+  await BookingGroup.findByIdAndDelete(groupId);
+
+  return {
+    ok: true,
+    deletedMatches: matchesResult.deletedCount,
+    groupName: bookingGroup.groupName,
+  };
+}
+
 exports.deleteBookingGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
-
-    const bookingGroup = await BookingGroup.findByIdAndDelete(groupId);
-    if (!bookingGroup) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking group not found",
-      });
+    const result = await _runDeleteBookingGroup(groupId);
+    if (!result.ok) {
+      return res.status(result.status).json({ success: false, message: result.message });
     }
-
     return res.status(200).json({
       success: true,
-      message: "Booking group deleted successfully",
+      message: `"${result.groupName}" deleted (${result.deletedMatches} match(es) also removed)`,
+      deletedMatches: result.deletedMatches,
     });
   } catch (err) {
     console.error("Error deleting booking group:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+// Bulk delete — body: { groupIds: [] }. Aggregates per-group outcomes so the
+// UI can summarize: "Deleted 3 groups (12 matches); blocked 1 (already in
+// knockout)".
+exports.deleteBulkBookingGroups = async (req, res) => {
+  try {
+    const { groupIds } = req.body;
+    if (!Array.isArray(groupIds) || groupIds.length === 0) {
+      return res.status(400).json({ success: false, message: "groupIds[] is required" });
+    }
+
+    const deleted = [];
+    const blocked = [];
+    const failed = [];
+    let totalMatchesRemoved = 0;
+
+    for (const gid of groupIds) {
+      const r = await _runDeleteBookingGroup(gid);
+      if (r.ok) {
+        deleted.push({ groupId: gid, groupName: r.groupName, matchesAlsoDeleted: r.deletedMatches });
+        totalMatchesRemoved += r.deletedMatches;
+      } else if (r.reason === "blocked") {
+        blocked.push({ groupId: gid, groupName: r.groupName, message: r.message, completedCount: r.completedCount, stage: r.stage });
+      } else {
+        failed.push({ groupId: gid, error: r.message });
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Deleted ${deleted.length} group(s) and ${totalMatchesRemoved} match(es)` +
+        (blocked.length ? `; blocked ${blocked.length}` : "") +
+        (failed.length ? `; failed ${failed.length}` : ""),
+      totalGroupsRequested: groupIds.length,
+      totalMatchesRemoved,
+      deleted,
+      blocked,
+      failed,
     });
+  } catch (err) {
+    console.error("[DELETE_BULK_BOOKING_GROUPS] Error:", err);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
 

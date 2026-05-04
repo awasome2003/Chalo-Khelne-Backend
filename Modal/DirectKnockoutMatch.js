@@ -117,19 +117,32 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
       comment: "Maximum sets in match (3=best of 3, 5=best of 5, 7=best of 7)"
     },
 
-    // Game Configuration
+    // Game Configuration (nullable for flat-set sports — TT, Badminton, Volleyball)
+    // Nested-game sports (Tennis) use positive integers; flat-set sports store null
+    // to explicitly signal "no games layer between set and points".
     gamesToWin: {
       type: Number,
       default: 3,
-      min: 1,
-      max: 10,
-      comment: "Number of games needed to win a set (best of 5 games = 3)"
+      validate: {
+        validator: function (v) {
+          if (v == null) return true; // null = flat-set sport, no games layer
+          return Number.isInteger(v) && v >= 1 && v <= 10;
+        },
+        message: "gamesToWin must be an integer 1\u201310, or null for flat-set sports"
+      },
+      comment: "Games needed to win a set (Tennis). Null for flat-set sports (TT, Badminton)."
     },
     maxGames: {
       type: Number,
       default: 5,
-      enum: [3, 5, 7],
-      comment: "Maximum games per set"
+      validate: {
+        validator: function (v) {
+          if (v == null) return true; // null = flat-set sport
+          return [3, 5, 7].includes(v);
+        },
+        message: "maxGames must be 3, 5, 7, or null for flat-set sports"
+      },
+      comment: "Maximum games per set (Tennis). Null for flat-set sports."
     },
 
     // Points Configuration — no sport-specific defaults
@@ -225,6 +238,14 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
   // Sport identification
   sportName: { type: String, default: null },
 
+  // STEP 17f — sportId required. Boundary validator (16d) enforces on
+  // create. Audit confirms 0 orphan DirectKnockoutMatch docs.
+  sportId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Sport",
+    required: true,
+  },
+
   // Multi-sport scoring type
   scoringType: {
     type: String,
@@ -287,5 +308,7 @@ DirectKnockoutMatchSchema.index({ tournamentId: 1, round: 1, matchNumber: 1 });
 DirectKnockoutMatchSchema.index({ tournamentId: 1, status: 1 });
 DirectKnockoutMatchSchema.index({ matchId: 1 });
 DirectKnockoutMatchSchema.index({ tournamentId: 1, mode: 1 });
+// Multi-sport scoping index. Non-unique — STEP 9a additive.
+DirectKnockoutMatchSchema.index({ tournamentId: 1, sportId: 1 });
 
 module.exports = mongoose.model("DirectKnockoutMatch", DirectKnockoutMatchSchema);

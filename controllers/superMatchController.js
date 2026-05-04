@@ -1,8 +1,10 @@
 const SuperMatch = require('../Modal/SuperMatch');
 const Tournament = require('../Modal/Tournament');
+const BookingGroup = require('../Modal/bookinggroup');
 const { createSuperGroupMatch: factoryCreateSuperGroupMatch } = require('../factories/MatchFactory');
+const { assertGroupHasSport, handleSportContextError } = require('../middleware/requireSportContext');
 
-// In SuperMatch controller
+// In SuperMatch controller — group-stage super match (per factory contract).
 const createSuperMatch = async (req, res) => {
   try {
     const { tournamentId, groupId, matches } = req.body;
@@ -17,11 +19,23 @@ const createSuperMatch = async (req, res) => {
     // Load tournament for sport config
     const tournament = await Tournament.findById(tournamentId);
 
+    // STEP 16d — group-derived sportId. Super group matches inherit
+    // sport scoping from the BookingGroup they belong to.
+    const group = await BookingGroup.findById(groupId);
+    let _superSportId;
+    try {
+      _superSportId = assertGroupHasSport(group);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
+
     const matchDocuments = matches.map((match, index) => {
       const matchDate = new Date(match.startTime);
       return factoryCreateSuperGroupMatch({
         tournament,
         tournamentId,
+        sportId: _superSportId,
         groupId,
         match,
         index,
@@ -108,7 +122,7 @@ const updateSuperMatch = async (req, res) => {
       match.status = status || 'completed';
     }
 
-    await match.save();
+    await match.save({ validateModifiedOnly: true });
 
     res.status(200).json({
       success: true,
@@ -150,7 +164,7 @@ const updateMatchWinner = async (req, res) => {
       match.teams[1 - winnerTeamIndex].score = 0; // Set other team's score to 0
     }
 
-    await match.save();
+    await match.save({ validateModifiedOnly: true });
 
     res.json({
       success: true,

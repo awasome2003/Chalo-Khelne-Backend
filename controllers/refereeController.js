@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Referee = require("../Modal/Referee");
 const User = require("../Modal/User");
 const TeamKnockout = require("../Modal/TeamKnockoutMatches"); // Updated to use TeamKnockout instead of Match
@@ -6,6 +7,9 @@ const { cleanupFile } = require("../middleware/uploads");
 const path = require("path");
 
 // Get referee profile
+// Behavior: by default returns 404 if no profile exists.
+// Pass ?createIfMissing=true to opt into auto-create (used by "Become a Referee" flow).
+// This prevents side-effect creation from role-probing GETs (e.g., RoleHub).
 exports.getRefereeProfile = async (req, res) => {
   try {
     // Check if the user exists
@@ -20,6 +24,11 @@ exports.getRefereeProfile = async (req, res) => {
 
     // If no referee profile exists, create a new one
     if (!referee) {
+      // Opt-in creation: caller must explicitly request it.
+      if (req.query.createIfMissing !== "true") {
+        return res.status(404).json({ message: "Referee profile not found" });
+      }
+
       // Split name or use defaults
       const nameParts = user.name
         ? user.name.split(" ")
@@ -295,7 +304,7 @@ exports.acceptAssignment = async (req, res) => {
 
       // Update match status in TeamKnockout
       match.status = "ACCEPTED"; // Use appropriate status field
-      await match.save();
+      await match.save({ validateModifiedOnly: true });
 
       return res.json(match);
     }
@@ -331,7 +340,7 @@ exports.declineAssignment = async (req, res) => {
 
       // Update match status in TeamKnockout
       match.status = "DECLINED"; // Use appropriate status field
-      await match.save();
+      await match.save({ validateModifiedOnly: true });
 
       return res.json(match);
     }
@@ -349,6 +358,319 @@ exports.declineAssignment = async (req, res) => {
   } catch (error) {
     console.error("Error declining assignment:", error);
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// List umpires who applied to officiate a tournament (Phase 1 — manager view).
+// Sources from StaffApplication (role="referee") — the canonical apply record.
+// Default: returns status="pending" only (new applicants).
+// ?includeAll=true → returns pending + accepted (full active staffing).
+exports.getTournamentApplicants = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const includeAll = req.query.includeAll === "true";
+
+    if (!mongoose.Types.ObjectId.isValid(tournamentId)) {
+      return res.status(400).json({ message: "Invalid tournamentId" });
+    }
+
+    const Tournament = require("../Modal/Tournament");
+    const tournament = await Tournament.findById(tournamentId).select(
+      "title sportsType"
+    );
+    if (!tournament) {
+      return res.status(404).json({ message: "Tournament not found" });
+    }
+
+    const StaffApplication = require("../Modal/StaffApplication");
+
+    const statusFilter = includeAll
+      ? { $in: ["pending", "accepted"] }
+      : "pending";
+
+    const applicants = await StaffApplication.aggregate([
+      {
+        $match: {
+          tournamentId: new mongoose.Types.ObjectId(tournamentId),
+          role: "referee",
+          status: statusFilter,
+        },
+      },
+      // Enrich with Referee profile for certificationLevel + legal name
+      {
+        $lookup: {
+          from: "referees",
+          localField: "userId",
+          foreignField: "userId",
+          as: "_profile",
+        },
+      },
+      { $unwind: { path: "$_profile", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          applicationId: "$_id",
+          status: 1,
+          notes: "$message",
+          appliedAt: "$createdAt",
+          rateAmount: 1,
+          rateType: 1,
+          referee: {
+            userId: "$userId",
+            name: "$userName",
+            email: "$userEmail",
+            profileImage: "$userProfileImage",
+            certificationLevel: "$_profile.certificationLevel",
+            experience: { $ifNull: ["$_profile.experience", "$experience"] },
+            sports: { $ifNull: ["$_profile.sports", "$sports"] },
+            firstName: "$_profile.firstName",
+            lastName: "$_profile.lastName",
+          },
+        },
+      },
+      { $sort: { appliedAt: -1 } },
+    ]);
+
+    // STEP 17b.iii — emit only `sportName`. Legacy `sportsType` alias
+    // dropped after mobile-side grep confirmed zero consumers.
+    const { getSportName } = require("../utils/sportTrackUtils");
+    return res.status(200).json({
+      tournament: {
+        _id: tournament._id,
+        title: tournament.title,
+        sportName: getSportName(tournament),
+      },
+      count: applicants.length,
+      applicants,
+    });
+  } catch (error) {
+    console.error("getTournamentApplicants error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
+
+// Manager assigns an umpire to a specific match (Phase 1).
+// Writes match.referee AND creates a match-level Assignment (status="pending").
+// The umpire then uses accept/declineAssignment to confirm.
+exports.assignUmpireToMatch = async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { refereeUserId, paymentAmount, notes } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(matchId)) {
+      return res.status(400).json({ message: "Invalid matchId" });
+    }
+    if (!refereeUserId || !mongoose.Types.ObjectId.isValid(refereeUserId)) {
+      return res
+        .status(400)
+        .json({ message: "refereeUserId is required and must be valid" });
+    }
+
+    // Load match from whichever schema holds it
+    const Match = require("../Modal/Tournnamentmatch");
+    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+    let match = await Match.findById(matchId);
+    let matchKind = "Match";
+    if (!match) {
+      match = await DirectKnockoutMatch.findById(matchId);
+      matchKind = "DirectKnockoutMatch";
+    }
+    if (!match) {
+      return res.status(404).json({ message: "Match not found" });
+    }
+
+    // Guard: match not completed
+    if (match.status === "COMPLETED" || match.status === "completed") {
+      return res
+        .status(400)
+        .json({ message: "Cannot assign umpire to a completed match" });
+    }
+
+    // Guard: match doesn't already have an umpire assigned.
+    // Schema shape varies:
+    //   group-stage Match: nested { refereeId, name, contact } — may be empty-initialized with null fields
+    //   DirectKnockoutMatch: bare ObjectId ref
+    // Only reject if a non-null refereeId is actually present.
+    const existingRef =
+      match.referee && typeof match.referee === "object"
+        ? match.referee.refereeId // nested shape — only the id matters
+        : match.referee; // bare ObjectId (or null)
+    if (existingRef) {
+      return res.status(400).json({
+        message: "Match already has an umpire assigned. Unassign first.",
+        currentReferee: existingRef,
+      });
+    }
+
+    // Validate umpire has a referee profile
+    const referee = await Referee.findOne({ userId: refereeUserId });
+    if (!referee) {
+      return res
+        .status(404)
+        .json({ message: "Umpire has no referee profile" });
+    }
+    const user = await User.findById(refereeUserId).select("name email");
+    if (!user) {
+      return res.status(404).json({ message: "Umpire user not found" });
+    }
+
+    // Tournament for assignment title
+    const Tournament = require("../Modal/Tournament");
+    const tournament = await Tournament.findById(match.tournamentId).select(
+      "title"
+    );
+
+    // Assignment schema requires date/startTime/endTime/location for type="Match".
+    // Source them from the match doc (manager can edit later via updateAssignment).
+    const startTime = match.matchStartTime || match.startTime || new Date();
+    const startTimeStr = new Date(startTime).toISOString();
+    const courtNumber = match.courtNumber
+      ? `Court ${match.courtNumber}`
+      : "TBD";
+
+    // Create match-level assignment
+    const assignment = new Assignment({
+      title: `${tournament?.title || "Tournament"} — ${match.round || "Match " + (match.matchNumber || "")}`,
+      type: "Match",
+      refereeId: refereeUserId,
+      tournamentId: match.tournamentId,
+      matchId: match._id,
+      date: startTime,
+      startTime: startTimeStr,
+      endTime: startTimeStr, // manager can edit later
+      location: courtNumber,
+      status: "pending",
+      paymentAmount: paymentAmount || undefined,
+      notes: notes || undefined,
+    });
+    await assignment.save();
+
+    // Write match.referee — shape differs between schemas
+    if (matchKind === "Match") {
+      // group-stage schema: nested object { refereeId, name, contact }
+      match.referee = {
+        refereeId: refereeUserId,
+        name: user.name,
+      };
+    } else {
+      // DirectKnockoutMatch: ObjectId ref directly
+      match.referee = refereeUserId;
+    }
+    await match.save({ validateModifiedOnly: true });
+
+    // Mark the source StaffApplication as accepted (if umpire applied through
+    // the staff-applications flow). Idempotent: only updates pending → accepted.
+    // Silent on "no application" — managers may assign umpires directly without prior application.
+    let staffApplicationUpdated = false;
+    try {
+      const StaffApplication = require("../Modal/StaffApplication");
+      const result = await StaffApplication.updateOne(
+        {
+          userId: refereeUserId,
+          tournamentId: match.tournamentId,
+          role: "referee",
+          status: "pending",
+        },
+        {
+          $set: {
+            status: "accepted",
+            respondedAt: new Date(),
+          },
+        }
+      );
+      staffApplicationUpdated = result.modifiedCount > 0;
+    } catch (saErr) {
+      // Don't fail the assignment if the StaffApplication update fails —
+      // the match-level Assignment is already created and is the source of truth.
+      console.warn(
+        "assignUmpireToMatch: StaffApplication update failed:",
+        saErr.message
+      );
+    }
+
+    return res.status(201).json({
+      message: "Umpire assigned. Awaiting their accept/decline.",
+      assignment,
+      matchKind,
+      staffApplicationUpdated,
+    });
+  } catch (error) {
+    console.error("assignUmpireToMatch error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
+
+// Phase 4c — returns the caller's authorization summary for a tournament.
+// Used by the mobile TournamentLeaderboardDetail to decide which matches are tappable.
+exports.getMyAuthorizations = async (req, res) => {
+  try {
+    const { userId, tournamentId } = req.params;
+    if (
+      !mongoose.Types.ObjectId.isValid(userId) ||
+      !mongoose.Types.ObjectId.isValid(tournamentId)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid userId or tournamentId" });
+    }
+
+    // Stage-level grant via accepted StaffApplication
+    const StaffApplication = require("../Modal/StaffApplication");
+    const staffApp = await StaffApplication.findOne({
+      userId,
+      tournamentId,
+      role: "referee",
+      status: "accepted",
+    })
+      .select("stages")
+      .lean();
+
+    let stages = [];
+    let stagesSource = "none";
+    if (staffApp) {
+      const hasExplicitStages =
+        Array.isArray(staffApp.stages) && staffApp.stages.length > 0;
+      if (hasExplicitStages) {
+        stages = staffApp.stages.slice();
+        stagesSource = "explicit";
+      } else {
+        // Pre-Phase-4 legacy accepted app → backward-compat "all stages".
+        stages = ["group-stage", "knockout"];
+        stagesSource = "all-default";
+      }
+    }
+
+    // Match-level grants via accepted Assignments
+    const matchAssignments = await Assignment.find({
+      refereeId: userId,
+      tournamentId,
+      status: "accepted",
+      matchId: { $ne: null },
+    })
+      .select("matchId")
+      .lean();
+
+    const matchIds = matchAssignments
+      .map((a) => a.matchId?.toString())
+      .filter(Boolean);
+
+    return res.status(200).json({
+      userId,
+      tournamentId,
+      hasAnyGrant: stages.length > 0 || matchIds.length > 0,
+      stages,
+      stagesSource,
+      matchIds,
+    });
+  } catch (error) {
+    console.error("getMyAuthorizations error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
 

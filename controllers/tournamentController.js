@@ -20,6 +20,13 @@ const SuperPlayers = require("../Modal/SuperPlayers");
 const Sport = require("../Modal/Sport");
 const { createSuperMatch, createLegacyKnockoutMatch } = require("../factories/MatchFactory");
 const { sanitizeMatchFormat, validateMatchFormat: validateSportMatchFormat } = require("../utils/sportFieldConfig");
+const { assertNonEmptySports, assertSportInTournament, assertGroupHasSport, handleSportContextError } = require("../middleware/requireSportContext");
+const { getSeedOrder, buildR1SlotAssignment } = require("../utils/seedingUtils");
+
+// Per-tournament generation lock — prevents concurrent /knockout/generate
+// requests (frontend timeout + retry) from racing each other.
+const knockoutGenerationLocks = new Set();
+const VALID_KO_DRAW_SIZES = [4, 8, 16, 32, 64, 128];
 
 // ===================== ROUND 2 PROGRESSION SYSTEM =====================
 
@@ -27,6 +34,7 @@ const { sanitizeMatchFormat, validateMatchFormat: validateSportMatchFormat } = r
 exports.getRound2Status = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    const { sportId } = req.query;
 
     // Check tournament stage
     const tournament = await Tournament.findById(tournamentId);
@@ -37,11 +45,17 @@ exports.getRound2Status = async (req, res) => {
       });
     }
 
-    // Check if Round 2 has been initiated
-    const round2Groups = await BookingGroup.find({
-      tournamentId,
-      round: 2
-    });
+    // STEP 17b.iv — read currentStage per-sport. Defaults to sports[0]
+    // when sportId is omitted (no legacy root fallback).
+    const { getCurrentStage } = require("../utils/sportTrackUtils");
+    const sportCurrentStage = getCurrentStage(tournament, sportId);
+
+    // Round 2 groups: BookingGroup filter includes null sportId so
+    // pre-migration groups don't disappear when filter is active.
+    const groupFilter = sportId
+      ? { tournamentId, round: 2, $or: [{ sportId }, { sportId: null }] }
+      : { tournamentId, round: 2 };
+    const round2Groups = await BookingGroup.find(groupFilter);
 
     if (round2Groups.length > 0) {
       return res.json({
@@ -54,8 +68,8 @@ exports.getRound2Status = async (req, res) => {
       });
     }
 
-    // Check if knockout has been initiated (you can extend this based on your knockout system)
-    if (tournament.currentStage === 'qualifier_knockout') {
+    // Check if knockout has been initiated for this sport.
+    if (sportCurrentStage === 'qualifier_knockout') {
       return res.json({
         success: true,
         status: {
@@ -134,7 +148,7 @@ exports.initiateRound2 = async (req, res) => {
 
     return res.status(400).json({
       success: false,
-      message: "Invalid option. Must be 'knockout' or 'group_stage'"
+      message: "Invalid option. Must be 'knockout' or 'group_stage'."
     });
 
   } catch (error) {
@@ -168,6 +182,14 @@ exports.createRound2Groups = async (req, res) => {
       });
     }
 
+    // STEP 16d — sportId required at the boundary for Round 2 group create.
+    try {
+      assertSportInTournament(req.body.sportId, tournament);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
+
     const createdGroups = [];
 
     // Create Round 2 groups
@@ -184,6 +206,7 @@ exports.createRound2Groups = async (req, res) => {
 
       const round2Group = new BookingGroup({
         tournamentId,
+        sportId: req.body.sportId,
         groupName,
         category: players[0]?.category || 'Open',
         players: groupPlayers,
@@ -221,11 +244,15 @@ exports.createRound2Groups = async (req, res) => {
 exports.getRound2Groups = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    const { sportId } = req.query;
 
-    const round2Groups = await BookingGroup.find({
-      tournamentId,
-      round: 2
-    }).populate({
+    // Multi-sport: include sportId-null docs so pre-migration groups
+    // don't disappear when the filter is active (same pattern as
+    // getBookingGroups per STEP 11a approval fix).
+    const filter = sportId
+      ? { tournamentId, round: 2, $or: [{ sportId }, { sportId: null }] }
+      : { tournamentId, round: 2 };
+    const round2Groups = await BookingGroup.find(filter).populate({
       path: "players.playerId",
       select: "name profileImage"
     });
@@ -284,9 +311,19 @@ exports.identifySuperPlayers = async (req, res) => {
       }
     }
 
-    // Save Super Players to TopPlayers collection
+    // STEP 16e — sportId required at the boundary. Super Players are
+    // tournament-level (not group-derived), so the caller must send
+    // sportId explicitly.
+    const _tournamentForSport = await Tournament.findById(tournamentId).lean();
+    try {
+      assertSportInTournament(req.body.sportId, _tournamentForSport);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
     const superPlayersDoc = new TopPlayers({
       tournamentId,
+      sportId: req.body.sportId,
       groupId: 'round2_super_players',
       groupName: 'Super Players',
       players: superPlayers,
@@ -322,10 +359,13 @@ exports.identifySuperPlayers = async (req, res) => {
 exports.getSuperPlayers = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    const { sportId } = req.query;
 
-    const superPlayersDoc = await SuperPlayers.findOne({
-      tournamentId
-    }).populate('players.playerId', 'name profileImage');
+    // Multi-sport: strict sportId match. STEP 9d migration backfills
+    // sportId on every SuperPlayers doc.
+    const filter = sportId ? { tournamentId, sportId } : { tournamentId };
+    const superPlayersDoc = await SuperPlayers.findOne(filter)
+      .populate('players.playerId', 'name profileImage');
 
     if (!superPlayersDoc) {
       return res.json({
@@ -351,43 +391,67 @@ exports.getSuperPlayers = async (req, res) => {
 // Reset Round 2 Progress
 exports.resetRound2Progress = async (req, res) => {
   try {
-    const { tournamentId } = req.body;
+    const { tournamentId, sportId } = req.body;
 
-    // Reset tournament stage back to group_stage
-    await Tournament.findByIdAndUpdate(tournamentId, {
-      currentStage: 'group_stage',
-      'stageConfig.qualifierKnockout.enabled': false,
-      'stageConfig.qualifierKnockout.completed': false
-    });
+    // Multi-sport: when sportId is provided, scope all deletes to that sport
+    // so a Tennis reset doesn't wipe Badminton's Round 2 data. BookingGroup
+    // queries include sportId-null docs (pre-migration safety, mirrors
+    // STEP 11a). Other collections use strict match (post-migration data).
+    const groupFilter = sportId
+      ? { tournamentId, round: 2, $or: [{ sportId }, { sportId: null }] }
+      : { tournamentId, round: 2 };
 
-    // Find Round 2 group IDs before deleting them
-    const round2Groups = await BookingGroup.find({ tournamentId, round: 2 }).select("_id");
+    // Reset tournament stage back to group_stage. With sportId, write to
+    // the per-sport track via setStageConfigPath/setCurrentStage; otherwise
+    // legacy root-scalar reset.
+    if (sportId) {
+      const { setCurrentStage, setStageConfigPath } = require("../utils/sportTrackUtils");
+      await setCurrentStage(tournamentId, sportId, 'group_stage');
+      await setStageConfigPath(tournamentId, sportId, 'qualifierKnockout.enabled', false);
+      await setStageConfigPath(tournamentId, sportId, 'qualifierKnockout.completed', false);
+    } else {
+      await Tournament.findByIdAndUpdate(tournamentId, {
+        currentStage: 'group_stage',
+        'stageConfig.qualifierKnockout.enabled': false,
+        'stageConfig.qualifierKnockout.completed': false
+      });
+    }
+
+    // Find Round 2 group IDs before deleting them (sport-scoped when sportId given).
+    const round2Groups = await BookingGroup.find(groupFilter).select("_id");
     const round2GroupIds = round2Groups.map(g => g._id);
 
     // Delete matches belonging to Round 2 groups
     let deletedMatches = 0;
     if (round2GroupIds.length > 0) {
       const Match = require("../Modal/Tournnamentmatch");
-      const result = await Match.deleteMany({
-        tournamentId,
-        groupId: { $in: round2GroupIds }
-      });
+      const matchFilter = sportId
+        ? { tournamentId, sportId, groupId: { $in: round2GroupIds } }
+        : { tournamentId, groupId: { $in: round2GroupIds } };
+      const result = await Match.deleteMany(matchFilter);
       deletedMatches = result.deletedCount || 0;
     }
 
     // Delete Round 2 groups
-    const groupResult = await BookingGroup.deleteMany({ tournamentId, round: 2 });
+    const groupResult = await BookingGroup.deleteMany(groupFilter);
 
-    // Delete any Round 2 TopPlayers records
-    await TopPlayers.deleteMany({ tournamentId, round: 2 });
+    // Delete any Round 2 TopPlayers records (strict sportId match — TopPlayers
+    // are post-migration writes via STEP 9c).
+    const topPlayersFilter = sportId
+      ? { tournamentId, sportId, round: 2 }
+      : { tournamentId, round: 2 };
+    await TopPlayers.deleteMany(topPlayersFilter);
 
-    // Also delete DirectKnockoutMatch if Round 2 was knockout mode
+    // Also delete DirectKnockoutMatch if Round 2 was knockout mode (strict).
     const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-    const dkResult = await DirectKnockoutMatch.deleteMany({ tournamentId });
+    const dkFilter = sportId ? { tournamentId, sportId } : { tournamentId };
+    const dkResult = await DirectKnockoutMatch.deleteMany(dkFilter);
 
     return res.json({
       success: true,
-      message: "Round 2 progress has been reset successfully",
+      message: sportId
+        ? "Round 2 progress has been reset successfully for this sport"
+        : "Round 2 progress has been reset successfully",
       deleted: {
         groups: groupResult.deletedCount || 0,
         matches: deletedMatches,
@@ -411,7 +475,6 @@ exports.createTournament = async (req, res) => {
     const {
       title,
       type,
-      sportsType,
       description,
       selectedTime,
       startDate,
@@ -435,19 +498,40 @@ exports.createTournament = async (req, res) => {
       drawSize, // Knockout bracket size (16, 32, 64)
       isPrivate, // Private/public visibility toggle
       clientId, // Custom client ID for private tournaments
+      // Multi-sport payload (STEP 10a). When non-empty, this is the source of
+      // truth — root scalars are derived from sports[0] for legacy compat.
+      // May arrive as a JSON-encoded string when posted via multipart/form-data.
+      sports,
     } = req.body;
 
-    // --- Basic validation ---
-    if (!title || !type || !sportsType) {
-      return res.status(400).json({ message: "Title, Type, and Sports Type are required." });
+    // STEP 16b — sports[] is now required at the API boundary. Reject
+    // legacy single-sport payloads (sportsType + category, no sports[])
+    // up front. Any payload that gets past this is multi-sport-shaped.
+    let parsedSports;
+    try {
+      parsedSports = assertNonEmptySports(req.body);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
     }
 
-    // --- Validation for per-stage play formats ---
-    if (type && type.includes("group stage") && !groupStageFormat) {
-      return res.status(400).json({ message: "Group Stage Format is required for group stage tournaments." });
-    }
-    if (type && type.includes("knockout") && !knockoutFormat) {
-      return res.status(400).json({ message: "Knockout Format is required for knockout tournaments." });
+    // STEP 17c — root sportsType is no longer accepted from the
+    // request body. Downstream lookups (sport rule book, match format
+    // normalization, sanitize) read the primary sport name from
+    // parsedSports[0].sportName.
+    //
+    // TODO: per-sport rule book lookup for multi-sport tournaments.
+    // Currently only sports[0] gets a SportRuleBook auto-attached at
+    // create time. Multi-sport tournaments with > 1 sport need each
+    // sport's rule book resolved independently. Tracked as future work.
+    const _primarySportName = parsedSports[0]?.sportName || null;
+
+    // --- Basic validation ---
+    // Per-sport `type` / groupStageFormat / knockoutFormat are validated by
+    // assertNonEmptySports above (one check per sport entry). Root-level
+    // checks were removed when those fields moved to per-sport in STEP 17c.
+    if (!title) {
+      return res.status(400).json({ message: "Title is required." });
     }
 
     // --- Parse turfIds (for backward compatibility) ---
@@ -475,18 +559,9 @@ exports.createTournament = async (req, res) => {
       }
     }
 
-    // --- Parse category ---
-    let parsedCategory = [];
-    if (category) {
-      try {
-        parsedCategory = JSON.parse(category);
-        if (!Array.isArray(parsedCategory)) throw new Error();
-      } catch {
-        return res.status(400).json({ message: "Invalid category format" });
-      }
-    } else {
-      parsedCategory = [{ name: "Open Category", fee: 0 }];
-    }
+    // STEP 17c — root `category` parsing removed. Per-sport categories
+    // are part of parsedSports[i].categories, validated by
+    // assertNonEmptySports above.
 
     // --- Parse selectedTime ---
     let parsedSelectedTime = null;
@@ -499,33 +574,46 @@ exports.createTournament = async (req, res) => {
     }
 
     // --- Auto-attach locked sport rules from rule book ---
-    let sportRulesData = null;
-    const level = tournamentLevel || "district";
-    const isUnranked = level === "unranked";
+    // Per-sport level: each entry in parsedSports has its own tournamentLevel.
+    // Root tournamentLevel is a legacy fallback for clients that haven't
+    // migrated yet (the per-sport wizard sends per-sport, the legacy edit
+    // modal sends root).
+    const _sportZeroLevel = parsedSports[0]?.tournamentLevel || tournamentLevel || "district";
+    // isUnranked drives the validateCustomRules branch below; sport[0] is
+    // representative for that decision (validation runs against the primary
+    // sport's overrides only).
+    const isUnranked = _sportZeroLevel === "unranked";
 
-    // Only fetch ruleBook for ranked tournaments
-    if (sportsType && !isUnranked) {
+    // Sub-step Plan A — per-sport rule book attachment.
+    // For each sport: read its tournamentLevel (fall back to root for legacy
+    // clients) and attach a frozen sportRules copy when ranked.
+    const sportRulesBySportName = {};
+    for (const s of parsedSports) {
+      const perSportLevel = s.tournamentLevel || tournamentLevel || "district";
+      if (perSportLevel === "unranked" || !s.sportName) continue;
       try {
-        const ruleBook = await SportRuleBook.findOne({
-          sportName: { $regex: new RegExp(`^${sportsType}$`, "i") },
-          level: level,
+        const rb = await SportRuleBook.findOne({
+          sportName: { $regex: new RegExp(`^${s.sportName}$`, "i") },
+          level: perSportLevel,
         }).lean();
-
-        if (ruleBook) {
-          sportRulesData = {
-            ruleBookId: ruleBook._id,
-            sportName: ruleBook.sportName,
-            level: ruleBook.level,
-            format: ruleBook.format,
-            rules: ruleBook.rules,
-            equipment: ruleBook.equipment,
+        if (rb) {
+          sportRulesBySportName[s.sportName] = {
+            ruleBookId: rb._id,
+            sportName: rb.sportName,
+            level: rb.level,
+            format: rb.format,
+            rules: rb.rules,
+            equipment: rb.equipment,
             isLocked: true,
           };
         }
       } catch (ruleErr) {
-        console.log("Rule book lookup skipped:", ruleErr.message);
+        console.log(`Rule book lookup skipped for ${s.sportName} @ ${perSportLevel}:`, ruleErr.message);
       }
     }
+    // Legacy alias for downstream blocks that reference sportRulesData
+    // (matchFormat normalize). Uses sports[0]'s entry.
+    const sportRulesData = sportRulesBySportName[_primarySportName] || null;
 
     // --- Parse & validate dynamic matchFormatOverrides ---
     let parsedMatchFormatOverrides = null;
@@ -557,9 +645,9 @@ exports.createTournament = async (req, res) => {
       parsedMatchFormatOverrides = flattenOverrides(parsedMatchFormatOverrides);
 
       // Backend safety: validate + sanitize against sport config
-      if (sportsType) {
+      if (_primarySportName) {
         const sportDoc = await Sport.findOne({
-          name: { $regex: new RegExp(`^${sportsType}$`, "i") },
+          name: { $regex: new RegExp(`^${_primarySportName}$`, "i") },
           isActive: true,
         }).lean();
 
@@ -581,12 +669,12 @@ exports.createTournament = async (req, res) => {
     // --- SANITIZE overrides by sport type (strip irrelevant fields) ---
     let sanitizedOverrides = null;
     if (parsedMatchFormatOverrides) {
-      sanitizedOverrides = sanitizeBySportType(sportsType, parsedMatchFormatOverrides);
+      sanitizedOverrides = sanitizeBySportType(_primarySportName, parsedMatchFormatOverrides);
     }
 
     // --- VALIDATE custom rules for unranked tournaments ---
     if (isUnranked && sanitizedOverrides) {
-      const validation = validateCustomRules(sportsType, sanitizedOverrides);
+      const validation = validateCustomRules(_primarySportName, sanitizedOverrides);
       if (!validation.valid) {
         return res.status(400).json({
           message: "Custom rules validation failed",
@@ -596,21 +684,28 @@ exports.createTournament = async (req, res) => {
     }
 
     // --- NORMALIZE matchFormat (all derived fields computed server-side) ---
+    // Used internally for the per-sport sports[0].matchFormat assignment
+    // below; root tournament.matchFormat write removed in 17c.
     const computedMatchFormat = normalizeMatchFormat(
-      sportsType,
+      _primarySportName,
       sanitizedOverrides,
       sportRulesData?.format
     );
 
-    const computedSetFormat = computedMatchFormat.totalSets || 3;
-
+    // STEP 17c — root scalar writes removed. Tournament.sports[] is the
+    // canonical source. Only tournament-level metadata stays at root:
+    // title, dates, manager, organizer, location, etc. Per-sport config
+    // (type, sportsType, matchFormat, category, formats, qualifyPerGroup,
+    // drawSize, sportRules, currentStage, stageConfig) is built into
+    // tournamentData.sports below.
     const tournamentData = {
       title,
-      type,
-      sportsType,
-      tournamentLevel: level,
-      isCustomRules: isUnranked,
-      sportRules: isUnranked ? null : sportRulesData,
+      // Root tournamentLevel kept for legacy MTournamentsList edit modal
+      // and any consumers that read t.tournamentLevel. The canonical
+      // per-sport value lives on each sports[i].tournamentLevel.
+      tournamentLevel: _sportZeroLevel,
+      // isCustomRules removed — was written every create but never read.
+      // Derive on demand from sports.some(s => s.tournamentLevel === "unranked").
       description: description || "",
       selectedTime: parsedSelectedTime,
       startDate,
@@ -619,18 +714,61 @@ exports.createTournament = async (req, res) => {
       cancellationPolicy,
       eventLocation: eventLocation || "",
       managerId: parsedManagerId,
-      category: parsedCategory,
       termsAndConditions: termsAndConditions || "",
       registrationDeadline: registrationDeadline ? new Date(registrationDeadline) : null,
-      matchFormat: computedMatchFormat,
-      setFormat: computedSetFormat,
-      groupStageFormat: type.includes("group stage") ? groupStageFormat : undefined,
-      knockoutFormat: type.includes("knockout") ? knockoutFormat : undefined,
-      davisCupFormatId: davisCupFormatId || null,
-      drawSize: drawSize ? parseInt(drawSize) : null,
-      qualifyPerGroup: qualifyPerGroup ? parseInt(qualifyPerGroup) : 2,
       isPrivate: isPrivate === "true" || isPrivate === true,
     };
+
+    // --- Multi-sport: resolve each track's sportId and attach sports[] to
+    // the tournamentData. Root scalars above were derived (by the frontend)
+    // from sports[0] for legacy backward compat. Sport resolution: direct
+    // lookup → fuzzy regex → placeholder Sport doc (mirrors the migration
+    // script's behaviour so unresolved sport names don't block creation).
+    {
+      const SportModel = require("../Modal/Sport");
+      const slugify = (s) => String(s || "").toLowerCase().replace(/\s+/g, "_");
+      const escapeRegex = (s) => String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      const resolvedTracks = [];
+      for (const s of parsedSports) {
+        let sportDoc = await SportModel.findOne({ name: s.sportName }).lean();
+        if (!sportDoc) {
+          sportDoc = await SportModel.findOne({
+            name: { $regex: new RegExp("^" + escapeRegex(s.sportName) + "$", "i") },
+          }).lean();
+        }
+        if (!sportDoc) {
+          const created = await SportModel.create({
+            name: s.sportName,
+            slug: slugify(s.sportName),
+            category: "Custom",
+            scoringType: s.matchFormat?.scoringType || "sets",
+          });
+          sportDoc = created.toObject ? created.toObject() : created;
+        }
+        const perSportLevel = s.tournamentLevel || tournamentLevel || "district";
+        resolvedTracks.push({
+          sportId: sportDoc._id,
+          sportName: s.sportName,
+          sportSlug: sportDoc.slug || slugify(s.sportName),
+          tournamentLevel: perSportLevel,
+          type: s.type || null,
+          categories: s.categories.map((c) => ({ name: c.name, fee: Number(c.fee || 0) })),
+          groupStageFormat: s.groupStageFormat || null,
+          knockoutFormat: s.knockoutFormat || null,
+          davisCupFormatId: s.davisCupFormatId || null,
+          qualifyPerGroup: Number(s.qualifyPerGroup ?? 2),
+          drawSize: s.drawSize ? Number(s.drawSize) : null,
+          matchFormat: s.matchFormat || null,
+          // Frozen rule-book copy resolved per-sport at attach time above.
+          // Falls back to client-supplied s.sportRules for backward compat.
+          sportRules: sportRulesBySportName[s.sportName] || s.sportRules || null,
+          currentStage: "registration",
+          stageConfig: {},
+        });
+      }
+      tournamentData.sports = resolvedTracks;
+    }
 
     // Generate or assign clientId for private tournaments
     if (tournamentData.isPrivate) {
@@ -638,7 +776,7 @@ exports.createTournament = async (req, res) => {
         tournamentData.clientId = clientId.trim().toUpperCase();
       } else {
         // Auto-generate: CK-{sport initials}-{random 6 chars}
-        const sportPrefix = (sportsType || "SP").substring(0, 3).toUpperCase();
+        const sportPrefix = (_primarySportName || "SP").substring(0, 3).toUpperCase();
         const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
         tournamentData.clientId = `CK-${sportPrefix}-${rand}`;
       }
@@ -655,6 +793,9 @@ exports.createTournament = async (req, res) => {
     const newTournament = new Tournament(tournamentData);
     await newTournament.save();
 
+    // STEP 16b — single-sport synthesis block removed; sports[] is now
+    // built from `parsedSports` above and is always populated by save time.
+
     // --- Notify all players about new tournament ---
     try {
       const { notifyPlayers } = require("../utils/playerNotify");
@@ -667,7 +808,7 @@ exports.createTournament = async (req, res) => {
         notifyPlayers(req.app, playerIds, {
           type: "tournament_new",
           title: `New Tournament — ${title}`,
-          message: `${sportsType} tournament "${title}" is now open! ${eventLocation ? `📍 ${eventLocation}` : ""}`,
+          message: `${_primarySportName} tournament "${title}" is now open! ${eventLocation ? `📍 ${eventLocation}` : ""}`,
           data: {
             tournamentId: newTournament._id.toString(),
             tournamentName: title,
@@ -923,24 +1064,37 @@ exports.editTournament = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    // ═══ BLOCK RULE EDITS AFTER TOURNAMENT STARTS ═══
-    // Only block if the value actually CHANGES (not just if the field is present in request)
-    const LOCKED_FIELDS = ["matchFormatOverrides", "groupStageFormat", "knockoutFormat", "sportsType", "type", "davisCupFormatId", "drawSize"];
-    const hasStarted = tournament.currentStage !== "registration";
+    // ═══ LOCKED FIELDS AFTER TOURNAMENT STARTS ═══
+    // After registration ends, format-shape fields cannot be modified
+    // (they would break already-generated matches, brackets, groups).
+    //
+    // STEP 17c — the 6 deprecated root scalars (sportsType, type,
+    // groupStageFormat, knockoutFormat, davisCupFormatId, drawSize)
+    // were removed from this list — controller stops writing them
+    // entirely below, so the strip is moot. matchFormatOverrides stays
+    // because it's still a transient form field that drives
+    // sports[i].matchFormat normalization on edit.
+    //
+    // sports[]-level format changes are guarded separately by the 409
+    // downstream-data check inside the isMultiSportEdit block.
+    const LOCKED_FIELDS = ["matchFormatOverrides"];
+    // STEP 17c — read currentStage off sports[0] (root scalar gone).
+    const { getCurrentStage } = require("../utils/sportTrackUtils");
+    const hasStarted = getCurrentStage(tournament) !== "registration"
+      && getCurrentStage(tournament) !== null;
 
     if (hasStarted) {
-      const changedLockedFields = LOCKED_FIELDS.filter((f) => {
-        if (req.body[f] === undefined) return false;
-        const incoming = String(req.body[f] ?? "").trim();
-        const current = String(tournament[f] ?? "").trim();
-        return incoming !== current;
-      });
-      if (changedLockedFields.length > 0) {
-        return res.status(400).json({
-          message: `Cannot modify ${changedLockedFields.join(", ")} after tournament has started. Only title, description, dates, location, and categories can be edited.`,
-          lockedFields: changedLockedFields,
-          currentStage: tournament.currentStage,
-        });
+      const strippedFields = [];
+      for (const f of LOCKED_FIELDS) {
+        if (req.body[f] !== undefined) {
+          delete req.body[f];
+          strippedFields.push(f);
+        }
+      }
+      if (strippedFields.length > 0) {
+        console.warn(
+          `[editTournament] Tournament ${id} (stage=${getCurrentStage(tournament)}) — ignored locked fields: ${strippedFields.join(", ")}`
+        );
       }
     }
 
@@ -961,18 +1115,9 @@ exports.editTournament = async (req, res) => {
       }
     }
 
-    // Parse category
-    let categories = tournament.category;
-    if (req.body.category) {
-      try {
-        categories = JSON.parse(req.body.category);
-        if (!Array.isArray(categories)) {
-          return res.status(400).json({ message: "Invalid category format" });
-        }
-      } catch (err) {
-        return res.status(400).json({ message: "Invalid category format" });
-      }
-    }
+    // STEP 17c — root `category` parsing removed. Per-sport categories
+    // are part of req.body.sports[i].categories, validated by
+    // assertNonEmptySports inside the sports[] block below.
 
     // Parse terms and conditions
     let termsAndConditions = req.body.termsAndConditions || tournament.termsAndConditions;
@@ -997,7 +1142,8 @@ exports.editTournament = async (req, res) => {
       tournament.tournamentLogo = relativePath;
     }
 
-    // Update SAFE fields (allowed at any stage)
+    // Update SAFE fields (allowed at any stage). Tournament-level metadata
+    // only — per-sport config is updated via the sports[] block below.
     tournament.title = req.body.title || tournament.title;
     tournament.description = req.body.description || tournament.description;
     tournament.selectedTime = parsedSelectedTime;
@@ -1007,36 +1153,199 @@ exports.editTournament = async (req, res) => {
     tournament.cancellationPolicy = req.body.cancellationPolicy || tournament.cancellationPolicy;
     tournament.eventLocation = req.body.eventLocation || tournament.eventLocation;
     tournament.managerId = managerIds;
-    tournament.category = categories;
     tournament.termsAndConditions = termsAndConditions;
     if (req.body.registrationDeadline) tournament.registrationDeadline = new Date(req.body.registrationDeadline);
 
-    // Update LOCKED fields ONLY if tournament hasn't started
-    if (!hasStarted) {
-      if (req.body.type) tournament.type = req.body.type;
-      if (req.body.sportsType) tournament.sportsType = req.body.sportsType;
-      if (req.body.groupStageFormat) tournament.groupStageFormat = req.body.groupStageFormat;
-      if (req.body.knockoutFormat) tournament.knockoutFormat = req.body.knockoutFormat;
-      if (req.body.davisCupFormatId) tournament.davisCupFormatId = req.body.davisCupFormatId;
-      if (req.body.drawSize) tournament.drawSize = parseInt(req.body.drawSize);
-      if (req.body.qualifyPerGroup) tournament.qualifyPerGroup = parseInt(req.body.qualifyPerGroup);
+    // Privacy + clientId. multipart/form-data sends booleans as strings —
+    // accept both "true"/"false" and real booleans. When toggling to private,
+    // honor a client-supplied clientId; auto-generate one if absent and the
+    // tournament didn't already have one. When toggling to public, leave
+    // the existing clientId in place (sparse-unique index allows it to
+    // remain attached to a public tournament harmlessly, and preserves
+    // history if the manager flips back).
+    if (req.body.isPrivate !== undefined) {
+      const wantsPrivate = req.body.isPrivate === "true" || req.body.isPrivate === true;
+      tournament.isPrivate = wantsPrivate;
+      if (wantsPrivate) {
+        if (req.body.clientId && req.body.clientId.trim()) {
+          tournament.clientId = req.body.clientId.trim().toUpperCase();
+        } else if (!tournament.clientId) {
+          const sportPrefix = (tournament.sports?.[0]?.sportName || "SP")
+            .substring(0, 3).toUpperCase();
+          const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+          tournament.clientId = `CK-${sportPrefix}-${rand}`;
+        }
+      }
     }
 
-    // Handle setFormat update (mapping from setsFormat string)
-    if (req.body.setsFormat) {
-      tournament.setFormat =
-        req.body.setsFormat === 'bestOf3' ? 3 :
-          req.body.setsFormat === 'bestOf5' ? 5 :
-            req.body.setsFormat === 'bestOf7' ? 7 :
-              tournament.setFormat;
+    // STEP 17c — root scalar writes removed. The fields type, sportsType,
+    // groupStageFormat, knockoutFormat, davisCupFormatId, drawSize,
+    // qualifyPerGroup, category, setFormat, matchFormat are now per-sport
+    // and updated via the sports[] block below. Frontend may still send
+    // these as FormData (forward-compat) — they're silently ignored.
 
-      // Also update default matchFormat if setFormat changed
-      if (!tournament.matchFormat) tournament.matchFormat = {};
-      tournament.matchFormat.totalSets = tournament.setFormat;
-      tournament.matchFormat.setsToWin = Math.ceil(tournament.setFormat / 2);
+    // STEP 11d — Multi-sport edit: when req.body.sports is provided as a
+    // non-empty array, full-replace tournament.sports (with a 409
+    // downstream-data guard for removed sports). Per approval fix #2 the
+    // sports[] replace happens BEFORE we mirror sports[0] back to root, so
+    // root scalars reflect the NEW sports[0] (not a removed one).
+    // STEP 16b — when sports[] is present in the request body, validate
+    // it via the shared helper. If absent (legitimate title/date-only
+    // edit), leave existing tournament.sports untouched. Empty arrays
+    // are rejected — mid-flight tournaments must keep at least one
+    // sport (the 409 downstream-data guard further below also enforces
+    // that removed sports have no live data).
+    let isMultiSportEdit = false;
+    let parsedSportsForEdit = [];
+    if (req.body.sports !== undefined && req.body.sports !== null && req.body.sports !== "") {
+      try {
+        parsedSportsForEdit = assertNonEmptySports(req.body);
+        isMultiSportEdit = true;
+      } catch (err) {
+        if (handleSportContextError(err, res)) return;
+        throw err;
+      }
     }
 
-    await tournament.save();
+    if (isMultiSportEdit) {
+      const SportModelMS = require("../Modal/Sport");
+      const slugifyMS = (s) => String(s || "").toLowerCase().replace(/\s+/g, "_");
+      const escapeRegexMS = (s) => String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      // Resolve sportId for each new entry (cache → fuzzy → placeholder).
+      const resolvedTracks = [];
+      for (const s of parsedSportsForEdit) {
+        let sportDoc = await SportModelMS.findOne({ name: s.sportName }).lean();
+        if (!sportDoc) {
+          sportDoc = await SportModelMS.findOne({
+            name: { $regex: new RegExp("^" + escapeRegexMS(s.sportName) + "$", "i") },
+          }).lean();
+        }
+        if (!sportDoc) {
+          const created = await SportModelMS.create({
+            name: s.sportName,
+            slug: slugifyMS(s.sportName),
+            category: "Custom",
+            scoringType: s.matchFormat?.scoringType || "sets",
+          });
+          sportDoc = created.toObject ? created.toObject() : created;
+        }
+        // Per-sport tournamentLevel — falls back to legacy root for clients
+        // that haven't migrated. On edit-load of a legacy tournament, the
+        // root field carries the previous level forward to each sport entry.
+        const perSportLevel = s.tournamentLevel || tournament.tournamentLevel || "district";
+
+        // Per-sport rule book attach for edit (mirror of create-time logic).
+        let editSportRules = s.sportRules || null;
+        if (perSportLevel !== "unranked" && s.sportName) {
+          try {
+            const rb = await SportRuleBook.findOne({
+              sportName: { $regex: new RegExp(`^${s.sportName}$`, "i") },
+              level: perSportLevel,
+            }).lean();
+            if (rb) {
+              editSportRules = {
+                ruleBookId: rb._id,
+                sportName: rb.sportName,
+                level: rb.level,
+                format: rb.format,
+                rules: rb.rules,
+                equipment: rb.equipment,
+                isLocked: true,
+              };
+            }
+          } catch (ruleErr) {
+            console.log(`Edit rule book lookup skipped for ${s.sportName} @ ${perSportLevel}:`, ruleErr.message);
+          }
+        }
+
+        resolvedTracks.push({
+          sportId: sportDoc._id,
+          sportName: s.sportName,
+          sportSlug: sportDoc.slug || slugifyMS(s.sportName),
+          tournamentLevel: perSportLevel,
+          type: s.type || null,
+          categories: s.categories.map((c) => ({ name: c.name, fee: Number(c.fee || 0) })),
+          groupStageFormat: s.groupStageFormat || null,
+          knockoutFormat: s.knockoutFormat || null,
+          davisCupFormatId: s.davisCupFormatId || null,
+          qualifyPerGroup: Number(s.qualifyPerGroup ?? 2),
+          drawSize: s.drawSize ? Number(s.drawSize) : null,
+          matchFormat: s.matchFormat || null,
+          sportRules: editSportRules,
+          currentStage: s.currentStage || "registration",
+          stageConfig: s.stageConfig || {},
+        });
+      }
+
+      // 409 downstream-data check — runs across Match / KnockoutMatch /
+      // SuperMatch / DirectKnockoutMatch / BookingGroup / TopPlayers per
+      // STEP 11d approval fix #3. Returns immediately on first conflict
+      // with detailed counts.
+      const existingSportIds = (tournament.sports || [])
+        .map((s) => String(s.sportId || ""))
+        .filter(Boolean);
+      const newSportIds = new Set(resolvedTracks.map((t) => String(t.sportId)));
+      const removedSportIds = existingSportIds.filter((id) => !newSportIds.has(id));
+
+      if (removedSportIds.length > 0) {
+        const MatchM = require("../Modal/Tournnamentmatch");
+        const KnockoutMatchM = require("../Modal/KnockoutMatch");
+        const SuperMatchM = require("../Modal/SuperMatch");
+        const DirectKnockoutMatchM = require("../Modal/DirectKnockoutMatch");
+        const BookingGroupM = require("../Modal/bookinggroup");
+
+        for (const removedId of removedSportIds) {
+          const [matches, kos, superMs, dks, bgs, tps] = await Promise.all([
+            MatchM.countDocuments({ tournamentId: id, sportId: removedId }),
+            KnockoutMatchM.countDocuments({ tournamentId: id, sportId: removedId }),
+            SuperMatchM.countDocuments({ tournamentId: id, sportId: removedId }),
+            DirectKnockoutMatchM.countDocuments({ tournamentId: id, sportId: removedId }),
+            // BookingGroup uses include-null per STEP 11a pattern.
+            BookingGroupM.countDocuments({
+              tournamentId: id,
+              $or: [{ sportId: removedId }, { sportId: null }],
+            }),
+            TopPlayers.countDocuments({ tournamentId: id, sportId: removedId }),
+          ]);
+          const total = matches + kos + superMs + dks + bgs + tps;
+          if (total > 0) {
+            const removedSportName = (tournament.sports || [])
+              .find((t) => String(t.sportId) === String(removedId))?.sportName || "this sport";
+            return res.status(409).json({
+              success: false,
+              message: `Cannot remove "${removedSportName}" — it has downstream data (${matches} matches, ${kos} knockout matches, ${superMs} super matches, ${dks} direct-KO matches, ${bgs} groups, ${tps} top players). Reset Round 2 for this sport first.`,
+              conflicts: {
+                sportId: removedId,
+                sportName: removedSportName,
+                matches,
+                knockoutMatches: kos,
+                superMatches: superMs,
+                directKnockoutMatches: dks,
+                bookingGroups: bgs,
+                topPlayers: tps,
+              },
+            });
+          }
+        }
+      }
+
+      // STEP 17c — replace sports[]; root scalar mirror REMOVED.
+      // sports[i] is the canonical source. Frontend reads via per-sport
+      // helpers post-17b — no consumer of root sportsType/type/etc.
+      tournament.sports = resolvedTracks;
+      tournament.markModified("sports");
+    }
+
+    // STEP 17c — single-sport sync fallback REMOVED. Edits that don't
+    // include req.body.sports skip the sports[] write entirely (only
+    // tournament-level metadata like title/dates updates). Use the
+    // multi-sport edit payload to update per-sport config.
+
+    // validateModifiedOnly: only re-validate fields this request actually changed.
+    // Protects against existing legacy/out-of-enum values on untouched fields (e.g.,
+    // a tournament stored with currentStage="qualifier_knockout" from older code paths).
+    await tournament.save({ validateModifiedOnly: true });
 
     res.status(200).json({
       message: "Tournament updated successfully",
@@ -1592,6 +1901,30 @@ exports.saveTopPlayers = async (req, res) => {
     // Generate group name if not provided
     const finalGroupName = groupName || `Seeded Players - ${groupId}`;
 
+    // STEP 16e — derive sportId from the BookingGroup when groupId is
+    // a real ObjectId. groupId may also be a synthetic string like
+    // "seeded_<sportSlug>_<categorySlug>" — for those, require
+    // explicit req.body.sportId since there's no parent group to
+    // inherit from.
+    const _tournament = await Tournament.findById(tournamentId).lean();
+    let _sportId;
+    let _maybeGroup = null;
+    if (mongoose.Types.ObjectId.isValid(groupId)) {
+      _maybeGroup = await BookingGroup.findById(groupId).lean();
+    }
+    try {
+      if (_maybeGroup) {
+        _sportId = assertGroupHasSport(_maybeGroup);
+      } else {
+        // Synthetic / non-ObjectId groupId — fall back to explicit body.
+        assertSportInTournament(req.body.sportId, _tournament);
+        _sportId = req.body.sportId;
+      }
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
+
     // Find if a record already exists for this group
     let topPlayersDoc = await TopPlayers.findOne({ tournamentId, groupId });
 
@@ -1600,12 +1933,13 @@ exports.saveTopPlayers = async (req, res) => {
       if (formattedTopPlayers.length > 0) {
         topPlayersDoc = new TopPlayers({
           tournamentId,
+          sportId: _sportId,
           groupId,
           groupName: finalGroupName,
           topPlayers: formattedTopPlayers,
           players: formattedTopPlayers
         });
-        await topPlayersDoc.save();
+        await topPlayersDoc.save({ validateModifiedOnly: true });
         console.log(`Created new top player group "${finalGroupName}" with ${formattedTopPlayers.length} players`);
       }
     } else {
@@ -1635,7 +1969,7 @@ exports.saveTopPlayers = async (req, res) => {
           topPlayersDoc.topPlayers.push(...newPlayersToAppend);
           topPlayersDoc.players.push(...newPlayersToAppend);
           topPlayersDoc.groupName = finalGroupName; // Update name
-          await topPlayersDoc.save();
+          await topPlayersDoc.save({ validateModifiedOnly: true });
           console.log(`Appended ${newPlayersToAppend.length} players to existing group "${finalGroupName}"`);
         } else {
           console.log(`No new players to append for group "${finalGroupName}" (all already exist)`);
@@ -1691,30 +2025,66 @@ exports.getTopPlayersByGroup = async (req, res) => {
   }
 };
 
-exports.getTopPlayersByTournament = async (req, res) => {
-  try {
-    const { tournamentId } = req.params;
+// Helper: fetch TopPlayers for a tournament, join with GroupStandings to
+// attach `position` (group-stage rank) and `isSeeded` to each entry, and
+// return both a flat list and a position-bucketed view.
+//   flat       — augmented top-player entries (all the existing fields plus
+//                isSeeded + position).
+//   byPosition — { 1: [...], 2: [...], ..., seeded: [...], unranked: [...] }.
+//                Numeric keys are dynamic (driven by observed ranks).
+// Reused by getTopPlayersByTournament (mobile/manager UIs) and initiateRound2
+// (server-authoritative partition for the position-based Round 2 options).
+async function computeTopPlayersData(tournamentId, sportId = null) {
+  // Multi-sport: when sportId is provided, scope results to that sport.
+  // Strict match (no null fallback) — STEP 9d migration backfills sportId
+  // on every TopPlayers doc, so post-migration data is fully scoped.
+  const filter = sportId ? { tournamentId, sportId } : { tournamentId };
+  const docs = await TopPlayers.find(filter);
+  if (!docs || docs.length === 0) {
+    return { flat: [], byPosition: { seeded: [], unranked: [] } };
+  }
 
-    const topPlayers = await TopPlayers.find({ tournamentId });
+  // Seeded TopPlayers docs use a synthetic groupId like "seeded_open" — skip
+  // those when querying GroupStandings (no real BookingGroup behind them).
+  const GroupStandings = require("../Modal/GroupStandings");
+  const isSeededGroupId = (gid) => typeof gid === "string" && gid.startsWith("seeded_");
+  const realGroupIds = [
+    ...new Set(
+      docs
+        .map((g) => String(g.groupId || ""))
+        .filter((gid) => gid && !isSeededGroupId(gid))
+    ),
+  ];
 
-    if (!topPlayers || topPlayers.length === 0) {
-      return res.json({
-        success: false,
-        message: "No top players found for this tournament",
-        topPlayers: []
-      });
+  const rankByKey = new Map();
+  if (realGroupIds.length > 0) {
+    const standings = await GroupStandings.find({
+      tournamentId,
+      groupId: { $in: realGroupIds },
+    });
+    for (const doc of standings) {
+      const gid = String(doc.groupId);
+      for (const entry of doc.standings || []) {
+        if (!entry.playerId || !entry.rank) continue;
+        rankByKey.set(`${gid}|${String(entry.playerId)}`, entry.rank);
+      }
     }
+  }
 
-    // Flatten the top players from all groups for the frontend
-    const flattenedTopPlayers = topPlayers.flatMap(group => {
-      // Prefer the new 'players' array structure, fallback to legacy 'topPlayers'
-      const playersList = (group.players && group.players.length > 0) ? group.players : group.topPlayers;
+  const flat = docs.flatMap((group) => {
+    // Prefer the new 'players' array structure, fallback to legacy 'topPlayers'
+    const playersList = (group.players && group.players.length > 0) ? group.players : group.topPlayers;
+    const gid = String(group.groupId || "");
+    const seeded = isSeededGroupId(gid);
 
-      return playersList.map(player => ({
+    return (playersList || []).map((player) => {
+      const pid = String(player.playerId || player._id || "");
+      const position = seeded ? null : (rankByKey.get(`${gid}|${pid}`) || null);
+      return {
         _id: player._id,
-        playerId: player.playerId || player._id, // Use playerId from new structure, fallback to _id for legacy
-        playerName: player.playerName || player.userName, // New structure uses playerName
-        userName: player.userName || player.playerName,   // Legacy compatibility
+        playerId: player.playerId || player._id,
+        playerName: player.playerName || player.userName,
+        userName: player.userName || player.playerName,
         points: player.points,
         setsWon: player.setsWon,
         setsLost: player.setsLost,
@@ -1725,21 +2095,198 @@ exports.getTopPlayersByTournament = async (req, res) => {
         groupId: group.groupId,
         groupName: group.groupName,
         status: player.status || 'top_player',
-        sourceRound: player.sourceRound || 1
-      }));
+        sourceRound: player.sourceRound || 1,
+        isSeeded: seeded,
+        position,
+        skipRound2: !!player.skipRound2,
+      };
     });
+  });
+
+  const byPosition = { seeded: [], unranked: [] };
+  for (const p of flat) {
+    if (p.isSeeded) {
+      byPosition.seeded.push(p);
+    } else if (p.position == null) {
+      byPosition.unranked.push(p);
+    } else {
+      if (!byPosition[p.position]) byPosition[p.position] = [];
+      byPosition[p.position].push(p);
+    }
+  }
+
+  return { flat, byPosition };
+}
+
+exports.getTopPlayersByTournament = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const { sportId } = req.query;
+
+    const { flat, byPosition } = await computeTopPlayersData(tournamentId, sportId || null);
+
+    if (flat.length === 0) {
+      return res.json({
+        success: false,
+        message: "No top players found for this tournament",
+        topPlayers: [],
+        byPosition: { seeded: [], unranked: [] },
+      });
+    }
 
     // 📱 STANDARD RESPONSE
     res.json({
       success: true,
-      topPlayers: flattenedTopPlayers,
+      topPlayers: flat,
+      byPosition,
     });
   } catch (error) {
     console.error("Error fetching top players by tournament:", error);
     res.status(500).json({
       success: false,
       message: "Failed to fetch top players for the tournament",
-      topPlayers: []
+      topPlayers: [],
+      byPosition: { seeded: [], unranked: [] },
+    });
+  }
+};
+
+
+// Remove a single player from a TopPlayers group (used when manager un-stars a
+// previously seeded player). If removing the last player empties both arrays,
+// the TopPlayers document is deleted entirely so the group disappears.
+exports.removeTopPlayer = async (req, res) => {
+  try {
+    const { tournamentId, groupId, playerId } = req.params;
+    if (!tournamentId || !groupId || !playerId) {
+      return res.status(400).json({
+        success: false,
+        message: "tournamentId, groupId, and playerId are required",
+      });
+    }
+
+    const doc = await TopPlayers.findOne({ tournamentId, groupId });
+    if (!doc) {
+      return res.status(404).json({
+        success: false,
+        message: "Top players group not found",
+      });
+    }
+
+    const matches = (arr) =>
+      (arr || []).filter((p) => (p.playerId?.toString?.() || p.playerId) === playerId.toString());
+
+    const playersHits = matches(doc.players).length;
+    const topPlayersHits = matches(doc.topPlayers).length;
+    if (playersHits + topPlayersHits === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Player not found in this top players group",
+      });
+    }
+
+    doc.players = (doc.players || []).filter(
+      (p) => (p.playerId?.toString?.() || p.playerId) !== playerId.toString()
+    );
+    doc.topPlayers = (doc.topPlayers || []).filter(
+      (p) => (p.playerId?.toString?.() || p.playerId) !== playerId.toString()
+    );
+
+    const groupEmptied = doc.players.length === 0 && doc.topPlayers.length === 0;
+    if (groupEmptied) {
+      await TopPlayers.deleteOne({ _id: doc._id });
+    } else {
+      await doc.save();
+    }
+
+    return res.json({
+      success: true,
+      message: groupEmptied
+        ? "Player removed and empty group deleted"
+        : "Player removed from top players group",
+      removed: 1,
+      groupEmptied,
+    });
+  } catch (error) {
+    console.error("Error removing top player:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to remove player from top players group",
+      error: error.message,
+    });
+  }
+};
+
+
+// Toggle the `skipRound2` flag on a Top Player. When true, the player is
+// seeded for the final knockout (Round 3) and skips Round 2 entirely.
+// Body: { playerId: string, skip: boolean }
+// Searches across all the tournament's TopPlayers docs because a player can
+// appear in any one of them (real group, "seeded_*" R1-skip group, etc.).
+exports.toggleSkipRound2 = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const { playerId, skip } = req.body;
+
+    if (!tournamentId || !playerId || typeof skip !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: "tournamentId, playerId, and skip (boolean) are required",
+      });
+    }
+
+    const docs = await TopPlayers.find({ tournamentId });
+    if (!docs || docs.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No top players found for this tournament",
+      });
+    }
+
+    const pidStr = playerId.toString();
+    let updatedCount = 0;
+    let updatedDoc = null;
+
+    for (const doc of docs) {
+      let docTouched = false;
+      for (const arrName of ['players', 'topPlayers']) {
+        const arr = doc[arrName] || [];
+        for (const p of arr) {
+          const ppid = (p.playerId?.toString?.() || p.playerId || '').toString();
+          if (ppid === pidStr) {
+            p.skipRound2 = skip;
+            docTouched = true;
+            updatedCount++;
+          }
+        }
+      }
+      if (docTouched) {
+        await doc.save();
+        updatedDoc = doc;
+      }
+    }
+
+    if (updatedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Player not found in any TopPlayers entry for this tournament",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: skip
+        ? "Player seeded for the final knockout (will skip Round 2)"
+        : "Player un-seeded — they will play Round 2",
+      updatedCount,
+      skipRound2: skip,
+    });
+  } catch (error) {
+    console.error("Error toggling skipRound2:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to toggle skip-Round-2 flag",
+      error: error.message,
     });
   }
 };
@@ -1934,13 +2481,16 @@ exports.generateQualifierKnockout = async (req, res) => {
     console.log("Super players:", superPlayers);
 
     // Generate qualifier knockout bracket
+    const { resolveSportId: _resolveSportId_qk } = require("../utils/sportTrackUtils");
+    const _qkSportId = _resolveSportId_qk(tournament, req.body?.sportId || req.query?.sportId);
     const qualifierMatches = await generateKnockoutBracket(
       superPlayers,
       tournamentId,
       "qualifier_knockout",
       2,
       "Qualifier",
-      category || "Open"
+      category || "Open",
+      _qkSportId
     );
 
     // Update tournament stage
@@ -2017,13 +2567,16 @@ exports.generateMainKnockout = async (req, res) => {
     console.log("Main knockout players:", mainKnockoutPlayers.length);
 
     // Generate main knockout bracket
+    const { resolveSportId: _resolveSportId_mk } = require("../utils/sportTrackUtils");
+    const _mkSportId = _resolveSportId_mk(tournament, req.body?.sportId || req.query?.sportId);
     const mainKnockoutMatches = await generateKnockoutBracket(
       mainKnockoutPlayers,
       tournamentId,
       "main_knockout",
       3,
       "Main Knockout",
-      category || "Open"
+      category || "Open",
+      _mkSportId
     );
 
     // Update tournament stage
@@ -2052,7 +2605,9 @@ exports.generateMainKnockout = async (req, res) => {
 };
 
 // Bracket Generation Algorithm with Bye System
-const generateKnockoutBracket = async (players, tournamentId, matchType, round, roundName, category) => {
+// sportId is optional — when null, MatchFactory's _stamp falls back to
+// tournament.sports[0].sportId (or null for legacy single-sport).
+const generateKnockoutBracket = async (players, tournamentId, matchType, round, roundName, category, sportId = null) => {
   try {
     const totalPlayers = players.length;
 
@@ -2104,6 +2659,7 @@ const generateKnockoutBracket = async (players, tournamentId, matchType, round, 
       const matchDoc = createLegacyKnockoutMatch({
         tournament,
         tournamentId,
+        sportId, // multi-sport: explicit, factory falls back to sports[0].sportId
         matchType,
         round,
         roundName,
@@ -2128,7 +2684,7 @@ const generateKnockoutBracket = async (players, tournamentId, matchType, round, 
         winner,
       });
       const match = new KnockoutMatch(matchDoc);
-      await match.save();
+      await match.save({ validateModifiedOnly: true });
       matches.push(match);
       bracketPosition++;
     }
@@ -2171,9 +2727,13 @@ exports.getTournamentProgression = async (req, res) => {
       matchType: "main_knockout"
     });
 
+    // STEP 17b.iv — read currentStage / stageConfig per-sport (sports[0]).
+    const { getCurrentStage: _gcs, getStageConfig: _gsc } = require("../utils/sportTrackUtils");
+    const _stageForResp = _gcs(tournament);
+    const _stageConfigForResp = _gsc(tournament);
     const progression = {
-      currentStage: tournament.currentStage,
-      stageConfig: tournament.stageConfig,
+      currentStage: _stageForResp,
+      stageConfig: _stageConfigForResp,
       groupStage: {
         totalGroups: groupStageGroups.length,
         totalMatches: groupStageMatches.length,
@@ -2198,7 +2758,7 @@ exports.getTournamentProgression = async (req, res) => {
       tournament: {
         id: tournament._id,
         title: tournament.title,
-        currentStage: tournament.currentStage,
+        currentStage: _stageForResp,
         tournamentStatus: tournament.tournamentStatus
       }
     });
@@ -2254,85 +2814,28 @@ exports.getMatchFormatOptions = async (req, res) => {
   }
 };
 
-// Get Tournament Match Format Configuration
+// STEP 17b.iv — DEPRECATED. Per-tournament-level matchFormat endpoints
+// were never wired to a frontend caller (only the per-group variants
+// at /bookinggroups/:groupId/match-format are used). The tournament-
+// level endpoints would write to the deprecated root tournament.matchFormat
+// (silently stripped after 17e schema removal). Both return 410 Gone.
+// Use the regular tournament edit endpoint with sports[i].matchFormat
+// instead.
+
 exports.getTournamentMatchFormat = async (req, res) => {
-  try {
-    const { tournamentId } = req.params;
-
-    const tournament = await Tournament.findById(tournamentId).select('matchFormat title');
-    if (!tournament) {
-      return res.status(404).json({ message: "Tournament not found" });
-    }
-
-    res.status(200).json({
-      success: true,
-      tournamentId: tournament._id,
-      tournamentTitle: tournament.title,
-      matchFormat: tournament.matchFormat || {
-        // Sport-neutral defaults — actual values must come from tournament config
-        totalSets: 1,
-        setsToWin: 1,
-        totalGames: 1,
-        gamesToWin: 1,
-        pointsToWinGame: null,
-        marginToWin: null,
-        deuceRule: false,
-        maxPointsPerGame: null,
-        serviceRule: null
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching tournament match format:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch tournament match format",
-      error: error.message
-    });
-  }
+  return res.status(410).json({
+    success: false,
+    error: "ENDPOINT_DEPRECATED",
+    message: "GET /tournaments/:id/match-format is deprecated as of STEP 17b.iv. Read tournament.sports[i].matchFormat from the tournament-by-id endpoint instead.",
+  });
 };
 
-// Update Tournament Match Format Configuration
 exports.updateTournamentMatchFormat = async (req, res) => {
-  try {
-    const { tournamentId } = req.params;
-    const { matchFormat } = req.body;
-
-    // Validate match format structure
-    const validationErrors = validateMatchFormat(matchFormat);
-    if (validationErrors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid match format configuration",
-        errors: validationErrors
-      });
-    }
-
-    const tournament = await Tournament.findByIdAndUpdate(
-      tournamentId,
-      { matchFormat, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    );
-
-    if (!tournament) {
-      return res.status(404).json({
-        success: false,
-        message: "Tournament not found"
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Tournament match format updated successfully",
-      matchFormat: tournament.matchFormat
-    });
-  } catch (error) {
-    console.error("Error updating tournament match format:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update tournament match format",
-      error: error.message
-    });
-  }
+  return res.status(410).json({
+    success: false,
+    error: "ENDPOINT_DEPRECATED",
+    message: "PUT /tournaments/:id/match-format is deprecated as of STEP 17b.iv. Update sports[i].matchFormat via the regular tournament edit endpoint with a sports[] payload instead.",
+  });
 };
 
 // Get Specific Match Format Configuration
@@ -2860,7 +3363,9 @@ exports.saveSuperPlayers = async (req, res) => {
 
       if (newPlayers.length > 0) {
         superPlayersDoc.players.push(...newPlayers);
-        await superPlayersDoc.save();
+        // STEP 17f — UPDATE on existing SuperPlayers; validateModifiedOnly
+        // skips required:true on unmodified sportId path.
+        await superPlayersDoc.save({ validateModifiedOnly: true });
 
         console.log(`Added ${newPlayers.length} new Super Players to existing collection`);
 
@@ -2894,8 +3399,11 @@ exports.saveSuperPlayers = async (req, res) => {
           : player.playerId
       }));
 
+      const { resolveSportId: _resolveSportId_sSP } = require("../utils/sportTrackUtils");
+      const _tournamentForSP = await Tournament.findById(tournamentId).lean();
       const newSuperPlayersDoc = new SuperPlayers({
         tournamentId,
+        sportId: _resolveSportId_sSP(_tournamentForSP, req.body.sportId),
         players: processedPlayers
       });
 
@@ -2926,12 +3434,33 @@ exports.saveSuperPlayers = async (req, res) => {
 
 // Generate Knockout Matches for Super Players
 exports.generateKnockoutMatches = async (req, res) => {
+  const { tournamentId } = req.body || {};
+
+  // Lock per-tournament to prevent concurrent generate requests racing.
+  if (tournamentId && knockoutGenerationLocks.has(String(tournamentId))) {
+    return res.status(409).json({
+      success: false,
+      message: "Another bracket generation is already in progress for this tournament. Please wait for it to finish."
+    });
+  }
+  if (tournamentId) knockoutGenerationLocks.add(String(tournamentId));
+
   try {
-    const { tournamentId, courtNumber, matchStartTime, intervalMinutes } = req.body;
+    const {
+      courtNumber,
+      matchStartTime,
+      intervalMinutes,
+      // New optional params — when omitted, we keep legacy sequential pairing.
+      drawSize: requestedDrawSize,
+      numberOfSeeds: requestedNumberOfSeeds = 0,
+      // Optional explicit ordering of players (by playerId). When provided,
+      // the SuperPlayers array is reordered to match — so the preview shown
+      // in the UI and the generated bracket are byte-for-byte identical.
+      playerOrder,
+    } = req.body;
 
-    // Get Super Players for this tournament
+    // Get Super Players for this tournament (ordered by group-stage rank)
     const superPlayersDoc = await SuperPlayers.findOne({ tournamentId }).populate('players.playerId', 'name');
-
     if (!superPlayersDoc || !superPlayersDoc.players.length) {
       return res.status(404).json({
         success: false,
@@ -2939,95 +3468,143 @@ exports.generateKnockoutMatches = async (req, res) => {
       });
     }
 
-    const players = superPlayersDoc.players;
-    const playerCount = players.length;
-
-    // 🎯 GET TOURNAMENT MATCH FORMAT for SuperMatch inheritance!
-    const tournament = await Tournament.findById(tournamentId);
-    if (!tournament) {
-      return res.status(404).json({
-        success: false,
-        message: "Tournament not found"
+    // Apply explicit player ordering when the client sent one.
+    // Players not mentioned in playerOrder keep their original order and are
+    // appended after the ordered subset.
+    let players = superPlayersDoc.players;
+    if (Array.isArray(playerOrder) && playerOrder.length > 0) {
+      const orderIdx = new Map();
+      playerOrder.forEach((pid, i) => {
+        if (pid) orderIdx.set(String(pid), i);
+      });
+      const idOf = (p) => {
+        const raw = p.playerId?._id || p.playerId || p._id;
+        return raw ? String(raw) : "";
+      };
+      players = [...superPlayersDoc.players].sort((a, b) => {
+        const ai = orderIdx.has(idOf(a)) ? orderIdx.get(idOf(a)) : Number.POSITIVE_INFINITY;
+        const bi = orderIdx.has(idOf(b)) ? orderIdx.get(idOf(b)) : Number.POSITIVE_INFINITY;
+        return ai - bi;
       });
     }
+    const playerCount = players.length;
 
-    // Get tournament's match format — NO hardcoded TT defaults
-    if (!tournament.matchFormat) {
+    // Tournament + match format
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: "Tournament not found" });
+    }
+
+    // STEP 16d — sportId required at the boundary for knockout generate.
+    // Tournament-level (no group context); manager UI sends activeSportId.
+    try {
+      assertSportInTournament(req.body.sportId, tournament);
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
+    const _knockoutSportId = req.body.sportId;
+
+    // STEP 17b.iv — matchFormat read per-sport (after sportId validated).
+    const { getMatchFormat: _gmfKO } = require("../utils/sportTrackUtils");
+    if (!_gmfKO(tournament, _knockoutSportId)) {
       return res.status(400).json({
         success: false,
         message: "Tournament matchFormat is not configured. Please set match format before generating knockout matches."
       });
     }
-    const tournamentMatchFormat = tournament.matchFormat;
-    console.log("🎯 SuperMatch inheriting tournament match format:", tournamentMatchFormat);
+
+    // Validate draw size + number of seeds if provided.
+    const useExplicitDrawSize = requestedDrawSize != null;
+    if (useExplicitDrawSize) {
+      if (!VALID_KO_DRAW_SIZES.includes(requestedDrawSize)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid drawSize ${requestedDrawSize}. Valid: ${VALID_KO_DRAW_SIZES.join(", ")}`
+        });
+      }
+      if (playerCount > requestedDrawSize) {
+        return res.status(400).json({
+          success: false,
+          message: `Too many players (${playerCount}) for a ${requestedDrawSize}-draw. Reduce draw size mismatch.`
+        });
+      }
+      if (requestedNumberOfSeeds < 0 || requestedNumberOfSeeds > requestedDrawSize) {
+        return res.status(400).json({
+          success: false,
+          message: `numberOfSeeds ${requestedNumberOfSeeds} out of range for drawSize ${requestedDrawSize}.`
+        });
+      }
+    }
 
     // Delete existing knockout matches for this tournament
     await SuperMatch.deleteMany({ tournamentId });
 
-    // Generate bracket based on player count
-    const bracket = generateBracketStructure(playerCount);
+    // Decide bracket: use explicit drawSize when provided, else infer from player count.
+    // The legacy generateBracketStructure helper returns { rounds: [{name, abbreviation, roundNumber, matchCount}] }
+    // which we need to preserve for time scheduling + match naming.
+    const bracket = useExplicitDrawSize
+      ? buildBracketFromDrawSize(requestedDrawSize)
+      : generateBracketStructure(playerCount);
+    const bracketSize = useExplicitDrawSize
+      ? requestedDrawSize
+      : Math.max(...bracket.rounds.map(r => r.matchCount)) * 2;
+
+    // Build R1 slot assignment.
+    // - Priority BYE placement via shared buildR1SlotAssignment helper when
+    //   numberOfSeeds > 0 (seeded at Mirror & Flip slots, BYEs on top-seed
+    //   opponent lines, extras random, rest shuffled into unseeded slots).
+    // - Otherwise: sequential pairing (legacy behavior preserved).
+    let r1Slots;
+    const applyMirrorFlip = useExplicitDrawSize && requestedNumberOfSeeds > 0;
+
+    if (applyMirrorFlip) {
+      // Helper returns full slot assignment with priority BYE logic built in.
+      // `players` is already in rank order (seeded first, then Round 1
+      // qualifiers, per the playerOrder the client sent).
+      const { slots } = buildR1SlotAssignment({
+        drawSize: bracketSize,
+        numberOfSeeds: requestedNumberOfSeeds,
+        players: players.map((p) => ({
+          playerId: p.playerId,
+          playerName: p.playerName,
+        })),
+      });
+      r1Slots = slots;
+    } else {
+      // Legacy sequential pairing: players 0..playerCount-1 occupy slots in order.
+      r1Slots = new Array(bracketSize).fill(null);
+      for (let i = 0; i < bracketSize; i++) {
+        if (i < playerCount) {
+          r1Slots[i] = {
+            playerId: players[i].playerId,
+            playerName: players[i].playerName,
+            seed: i + 1,
+          };
+        }
+      }
+    }
 
     const matches = [];
-    let matchIdCounter = 1;
     let currentTime = new Date(matchStartTime);
 
-    // Generate matches for each round
     for (const round of bracket.rounds) {
-
       for (let i = 0; i < round.matchCount; i++) {
         const matchId = `${tournamentId}_${round.abbreviation}_${i + 1}`;
 
-        // For first round, assign actual players; for later rounds, TBD
         let player1, player2;
-
         if (round.roundNumber === 1) {
-          // First round - assign actual players
-          const player1Index = i * 2;
-          const player2Index = i * 2 + 1;
-
-          if (player1Index < players.length && player2Index < players.length) {
-            player1 = {
-              playerId: players[player1Index].playerId,
-              playerName: players[player1Index].playerName,
-              seed: player1Index + 1
-            };
-            player2 = {
-              playerId: players[player2Index].playerId,
-              playerName: players[player2Index].playerName,
-              seed: player2Index + 1
-            };
-          } else {
-            // Handle bye (odd number of players)
-            player1 = {
-              playerId: players[player1Index].playerId,
-              playerName: players[player1Index].playerName,
-              seed: player1Index + 1
-            };
-            player2 = {
-              playerId: null,
-              playerName: "BYE",
-              seed: null
-            };
-          }
+          // Pull from our slot assignment. R1 null slot → BYE.
+          player1 = r1Slots[i * 2]     || { playerId: null, playerName: "BYE", seed: null };
+          player2 = r1Slots[i * 2 + 1] || { playerId: null, playerName: "BYE", seed: null };
         } else {
-          // Later rounds - TBD players
-          player1 = {
-            playerId: null,
-            playerName: "TBD",
-            seed: null
-          };
-          player2 = {
-            playerId: null,
-            playerName: "TBD",
-            seed: null
-          };
+          player1 = { playerId: null, playerName: "TBD", seed: null };
+          player2 = { playerId: null, playerName: "TBD", seed: null };
         }
 
-        // Calculate nextMatchId for bracket progression
         let nextMatchId = null;
         if (round.roundNumber < bracket.rounds.length) {
-          // Not the final round - calculate next match
-          const nextRound = bracket.rounds[round.roundNumber]; // Next round (0-indexed)
+          const nextRound = bracket.rounds[round.roundNumber];
           const nextMatchNumber = Math.floor(i / 2) + 1;
           nextMatchId = `${tournamentId}_${nextRound.abbreviation}_${nextMatchNumber}`;
         }
@@ -3035,6 +3612,7 @@ exports.generateKnockoutMatches = async (req, res) => {
         const matchDoc = createSuperMatch({
           tournament,
           tournamentId,
+          sportId: _knockoutSportId,
           matchId,
           round: round.name,
           roundNumber: round.roundNumber,
@@ -3047,20 +3625,66 @@ exports.generateKnockoutMatches = async (req, res) => {
         });
 
         matches.push(matchDoc);
-
-        // Increment time for next match
         currentTime = new Date(currentTime.getTime() + intervalMinutes * 60000);
       }
     }
 
-    // Save all matches
+    // Persist
     await SuperMatch.insertMany(matches);
+
+    // Auto-BYE: advance real players from R1 BYE matches to their R2 slot.
+    let byeCount = 0;
+    const safeSave = async (doc) => {
+      try { await doc.save(); }
+      catch (err) {
+        if (err && err.name === "DocumentNotFoundError") {
+          console.warn(`[KO BYE] Skipped save for missing doc _id=${doc._id} (likely concurrent delete).`);
+          return;
+        }
+        throw err;
+      }
+    };
+    const isRealPlayer = (p) => {
+      const name = p?.playerName;
+      return !!name && name !== "TBD" && name !== "BYE";
+    };
+    const r1Matches = await SuperMatch.find({ tournamentId, roundNumber: 1 });
+    for (const match of r1Matches) {
+      const p1Real = isRealPlayer(match.player1);
+      const p2Real = isRealPlayer(match.player2);
+      if (p1Real === p2Real) continue; // either both real (playable) or both missing (no-op)
+
+      const realPlayer = p1Real ? match.player1 : match.player2;
+      match.status = "COMPLETED";
+      match.winner = {
+        playerId: realPlayer.playerId,
+        playerName: realPlayer.playerName,
+      };
+      match.notes = `BYE — ${realPlayer.playerName} advances automatically (no opponent).`;
+
+      if (match.nextMatchId) {
+        const nextMatch = await SuperMatch.findOne({ matchId: match.nextMatchId });
+        if (nextMatch) {
+          const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
+          nextMatch[slot] = {
+            playerId: realPlayer.playerId,
+            playerName: realPlayer.playerName,
+            seed: realPlayer.seed ?? null,
+          };
+          await safeSave(nextMatch);
+        }
+      }
+      await safeSave(match);
+      byeCount++;
+    }
 
     res.json({
       success: true,
-      message: `Generated ${matches.length} knockout matches`,
+      message: `Generated ${matches.length} knockout matches${byeCount ? ` (${byeCount} auto-BYEs)` : ""}`,
       matchesCreated: matches.length,
       bracket: bracket,
+      bracketSize,
+      byeCount,
       matches: matches.map(m => ({
         matchId: m.matchId,
         round: m.round,
@@ -3077,8 +3701,31 @@ exports.generateKnockoutMatches = async (req, res) => {
       message: "Failed to generate knockout matches",
       error: error.message
     });
+  } finally {
+    if (tournamentId) knockoutGenerationLocks.delete(String(tournamentId));
   }
 };
+
+// Helper: build a bracket-rounds structure from an explicit power-of-2 draw size.
+// Mirrors the shape returned by generateBracketStructure(playerCount) below
+// so the scheduling + match-naming loop can treat both paths identically.
+function buildBracketFromDrawSize(drawSize) {
+  const rounds = [];
+  let roundNumber = 1;
+  let matchCount = drawSize / 2;
+  // drawSize 2 → final only; else we have multiple rounds.
+  while (matchCount >= 1) {
+    let name, abbreviation;
+    if (matchCount === 1)       { name = "final";          abbreviation = "F";   }
+    else if (matchCount === 2)  { name = "semi-final";     abbreviation = "SF";  }
+    else if (matchCount === 4)  { name = "quarter-final";  abbreviation = "QF";  }
+    else                        { name = `round-of-${matchCount * 2}`; abbreviation = `R${matchCount * 2}`; }
+    rounds.push({ name, abbreviation, roundNumber: roundNumber++, matchCount });
+    if (matchCount === 1) break;
+    matchCount = matchCount / 2;
+  }
+  return { rounds };
+}
 
 // Helper function to generate bracket structure based on player count
 function generateBracketStructure(playerCount) {
@@ -3181,9 +3828,31 @@ function generateBracketStructure(playerCount) {
 exports.deleteAllKnockoutMatches = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    // Knockout matches can live in any of three collections depending on the
+    // tournament's flow (group->KO via SuperMatch, standalone DirectKnockout,
+    // or legacy qualifier_knockout KnockoutMatch). Clear all three so the
+    // Knockout tab is actually empty afterward.
     const SuperMatch = require("../Modal/SuperMatch");
-    const result = await SuperMatch.deleteMany({ tournamentId });
-    res.json({ success: true, message: `Deleted ${result.deletedCount} knockout matches`, deletedCount: result.deletedCount });
+    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+    const KnockoutMatch = require("../Modal/KnockoutMatch");
+
+    const [sm, dk, km] = await Promise.all([
+      SuperMatch.deleteMany({ tournamentId }),
+      DirectKnockoutMatch.deleteMany({ tournamentId }),
+      KnockoutMatch.deleteMany({ tournamentId }),
+    ]);
+    const deletedCount = (sm.deletedCount || 0) + (dk.deletedCount || 0) + (km.deletedCount || 0);
+
+    res.json({
+      success: true,
+      message: `Deleted ${deletedCount} knockout matches`,
+      deletedCount,
+      breakdown: {
+        superMatch: sm.deletedCount || 0,
+        directKnockout: dk.deletedCount || 0,
+        legacyKnockout: km.deletedCount || 0,
+      },
+    });
   } catch (error) {
     console.error("Error deleting knockout matches:", error);
     res.status(500).json({ success: false, message: "Failed to delete knockout matches" });
@@ -3194,16 +3863,50 @@ exports.deleteAllKnockoutMatches = async (req, res) => {
 exports.getKnockoutMatches = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    const { sportId } = req.query;
 
-    const matches = await SuperMatch.find({ tournamentId })
+    // Multi-sport: strict sportId match on SuperMatch.
+    const matchFilter = sportId ? { tournamentId, sportId } : { tournamentId };
+    const matches = await SuperMatch.find(matchFilter)
       .populate('player1.playerId', 'name profileImage')
       .populate('player2.playerId', 'name profileImage')
       .populate('winner.playerId', 'name profileImage')
       .sort({ roundNumber: 1, matchNumber: 1 });
 
+    // Enrich each match with a category derived from the originating BookingGroup.
+    // SuperMatch doesn't carry category itself; resolve via player → group → category.
+    // BookingGroup query includes sportId-null docs (pre-migration safety).
+    const groupFilter = sportId
+      ? { tournamentId, $or: [{ sportId }, { sportId: null }] }
+      : { tournamentId };
+    const groups = await BookingGroup.find(groupFilter).select("groupName category players").lean();
+    const playerIdToCategory = {};
+    const playerNameToCategory = {};
+    groups.forEach((g) => {
+      if (!g.category) return;
+      (g.players || []).forEach((p) => {
+        if (p.playerId) playerIdToCategory[p.playerId.toString()] = g.category;
+        if (p.userName) playerNameToCategory[p.userName] = g.category;
+      });
+    });
+
+    const enriched = matches.map((m) => {
+      const obj = m.toObject();
+      const p1Id = obj.player1?.playerId?._id?.toString?.() || obj.player1?.playerId?.toString?.();
+      const p2Id = obj.player2?.playerId?._id?.toString?.() || obj.player2?.playerId?.toString?.();
+      const cat =
+        playerIdToCategory[p1Id] ||
+        playerIdToCategory[p2Id] ||
+        playerNameToCategory[obj.player1?.playerName] ||
+        playerNameToCategory[obj.player2?.playerName] ||
+        null;
+      if (cat) obj.category = cat;
+      return obj;
+    });
+
     // Group matches by round
     const matchesByRound = {};
-    matches.forEach(match => {
+    enriched.forEach((match) => {
       if (!matchesByRound[match.round]) {
         matchesByRound[match.round] = [];
       }
@@ -3212,9 +3915,9 @@ exports.getKnockoutMatches = async (req, res) => {
 
     res.json({
       success: true,
-      totalMatches: matches.length,
-      matches: matches,
-      matchesByRound: matchesByRound
+      totalMatches: enriched.length,
+      matches: enriched,
+      matchesByRound: matchesByRound,
     });
 
   } catch (error) {
@@ -3295,7 +3998,7 @@ exports.updateKnockoutMatchResult = async (req, res) => {
       match.statistics = statistics;
     }
 
-    await match.save();
+    await match.save({ validateModifiedOnly: true });
 
     console.log(`SuperMatch ${matchId} updated: Status=${match.status}, Winner=${winnerName}`);
 
@@ -3396,7 +4099,7 @@ async function progressWinnerToNextRound(completedMatch, session = null) {
   if (session) {
     await nextMatch.save({ session });
   } else {
-    await nextMatch.save();
+    await nextMatch.save({ validateModifiedOnly: true });
   }
 
   console.log(`Winner ${winnerData.playerName} advanced from ${completedMatch.matchId} to ${nextMatch.matchId}`);
@@ -3956,8 +4659,11 @@ exports.createDirectKnockoutMatches = async (req, res) => {
 exports.getDirectKnockoutMatches = async (req, res) => {
   try {
     const { tournamentId } = req.params;
+    const { sportId } = req.query;
 
-    const matches = await DirectKnockoutMatch.find({ tournamentId })
+    // Multi-sport: strict sportId match.
+    const filter = sportId ? { tournamentId, sportId } : { tournamentId };
+    const matches = await DirectKnockoutMatch.find(filter)
       .populate('player1.playerId', 'name profileImage')
       .populate('player2.playerId', 'name profileImage')
       .sort({ roundNumber: 1, matchNumber: 1 });

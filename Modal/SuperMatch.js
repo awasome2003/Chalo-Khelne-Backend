@@ -158,6 +158,14 @@ const SuperMatchSchema = new mongoose.Schema({
   // Sport identification
   sportName: { type: String, default: null },
 
+  // STEP 17f — sportId required. Collection currently empty (0 docs);
+  // boundary validators ensure new creates always have it.
+  sportId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Sport",
+    required: true,
+  },
+
   // Multi-sport scoring type
   scoringType: {
     type: String,
@@ -287,5 +295,7 @@ addFactoryEnforcement(SuperMatchSchema);
 SuperMatchSchema.index({ tournamentId: 1, round: 1, matchNumber: 1 });
 SuperMatchSchema.index({ tournamentId: 1, status: 1 });
 SuperMatchSchema.index({ matchId: 1 });
+// Multi-sport scoping index. Non-unique — STEP 9a additive.
+SuperMatchSchema.index({ tournamentId: 1, sportId: 1 });
 
 module.exports = mongoose.model("SuperMatch", SuperMatchSchema);

@@ -101,10 +101,15 @@ exports.notifyNewTournament = async (tournament) => {
 
     const playerIds = players.map((player) => player._id);
 
+    // STEP 17b.i — read tournament type via sport-track helper. No
+    // sportId context here (tournament-level notification); use sports[0].
+    const { getTournamentType } = require("../utils/sportTrackUtils");
+    const tournamentType = getTournamentType(tournament) || "Tournament";
+
     // Create notification data
     const notificationData = {
       title: "New Tournament Available",
-      message: `New ${tournament.type} tournament "${tournament.title}" is now available in ${tournament.eventLocation}`,
+      message: `New ${tournamentType} tournament "${tournament.title}" is now available in ${tournament.eventLocation}`,
       type: "event",
       relatedId: tournament._id,
     };

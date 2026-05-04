@@ -95,15 +95,22 @@ const BookingSchema = new mongoose.Schema(
       }],
       teamSize: Number, // Expected team size for this sport
     },
-    selectedCategories: [
-      {
-        id: String,
-        name: String,
-        price: Number,
-        gender: String,
-        ageCategory: String,
-      },
-    ],
+    // STEP 17e — `selectedCategories` field declaration removed.
+    // sportSelections is the canonical shape; legacy values on existing
+    // docs persist until 17g $unset.
+    //
+    // (sport, category) pairs the player signed up for. Each pair is a
+    // separate fee entry.
+    sportSelections: [{
+      sportId:      { type: mongoose.Schema.Types.ObjectId, ref: "Sport", required: true },
+      sportName:    { type: String },
+      categoryName: { type: String },
+      fee:          { type: Number, default: 0 },
+    }],
+    // Total across all sportSelections (plus any other charges). Set by
+    // the booking controller; falls back to paymentAmount for legacy
+    // bookings.
+    totalFee: { type: Number, default: 0 },
     employeeId: {
       type: String,
     },
