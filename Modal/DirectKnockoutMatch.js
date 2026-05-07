@@ -95,6 +95,11 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
     required: true
   },
 
+  matchEndTime: {
+    type: Date,
+    default: null,
+  },
+
   estimatedDuration: {
     type: Number,
     default: 45 // minutes

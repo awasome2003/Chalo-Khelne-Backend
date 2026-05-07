@@ -63,6 +63,10 @@ const teamKnockoutSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  matchEndTime: {
+    type: String,
+    default: null,
+  },
   matchInterval: {
     type: String,
     default: "0",

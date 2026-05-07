@@ -191,6 +191,7 @@ function createGroupStageMatch(opts) {
   const {
     tournament, tournamentId, groupId, matchNumber,
     player1, player2, referee, courtNumber, startTime,
+    matchEndTime,
     matchFormatOverride,
     sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
@@ -209,6 +210,7 @@ function createGroupStageMatch(opts) {
     referee: referee || null,
     courtNumber: courtNumber || null,
     startTime: startTime ? new Date(startTime) : null,
+    matchEndTime: matchEndTime ? new Date(matchEndTime) : null,
     matchFormat,
     scoringType: matchFormat.scoringType || null,
     matchResult: null,
@@ -242,12 +244,23 @@ function createGroupStageMatch(opts) {
 function createKnockoutMatch(opts) {
   const {
     tournament, tournamentId, matchId, round, roundNumber, matchNumber,
-    player1, player2, courtNumber, matchStartTime, nextMatchId,
+    player1, player2, courtNumber, matchStartTime, matchEndTime, nextMatchId,
     bracketPosition, mode,
+    matchFormatOverride, // partial { totalSets, setsToWin, ... } merged onto resolved format
     sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
 
-  const matchFormat = resolveMatchFormat(tournament, sportId);
+  // Per-round bestOf support: resolve the tournament base format, then patch
+  // any override fields (e.g. totalSets/setsToWin from a Bo5 round). scoringType
+  // is sport-determined and never overridden — the merge below preserves it.
+  let matchFormat = resolveMatchFormat(tournament, sportId);
+  if (matchFormatOverride && typeof matchFormatOverride === "object") {
+    matchFormat = freezeMatchFormat({
+      ...matchFormat,
+      ...matchFormatOverride,
+      scoringType: matchFormat.scoringType,
+    });
+  }
 
   return _stamp({
     tournamentId: tournamentId || tournament._id,
@@ -261,6 +274,7 @@ function createKnockoutMatch(opts) {
     player2: player2 || { playerId: null, playerName: "TBD" },
     courtNumber: courtNumber || null,
     matchStartTime: matchStartTime || null,
+    matchEndTime: matchEndTime || null,
     nextMatchId: nextMatchId || null,
     bracketPosition: bracketPosition || null,
     status: "SCHEDULED",
@@ -295,11 +309,20 @@ function createKnockoutMatch(opts) {
 function createSuperMatch(opts) {
   const {
     tournament, tournamentId, matchId, round, roundNumber, matchNumber,
-    player1, player2, courtNumber, matchStartTime, nextMatchId,
+    player1, player2, courtNumber, matchStartTime, matchEndTime, nextMatchId,
+    matchFormatOverride, // partial { totalSets, setsToWin, ... } merged onto resolved format
     sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
 
-  const matchFormat = resolveMatchFormat(tournament, sportId);
+  // Per-round bestOf support — see createKnockoutMatch for the merge contract.
+  let matchFormat = resolveMatchFormat(tournament, sportId);
+  if (matchFormatOverride && typeof matchFormatOverride === "object") {
+    matchFormat = freezeMatchFormat({
+      ...matchFormat,
+      ...matchFormatOverride,
+      scoringType: matchFormat.scoringType,
+    });
+  }
 
   return _stamp({
     tournamentId: tournamentId || tournament._id,
@@ -312,6 +335,7 @@ function createSuperMatch(opts) {
     player2: player2 || { playerId: null, playerName: "TBD" },
     courtNumber: courtNumber || null,
     matchStartTime: matchStartTime || null,
+    matchEndTime: matchEndTime || null,
     nextMatchId: nextMatchId || null,
     status: "SCHEDULED",
     scoringType: matchFormat.scoringType || null,

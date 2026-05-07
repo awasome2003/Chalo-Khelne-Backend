@@ -279,7 +279,12 @@ const deleteGroupMatches = async (req, res) => {
 //
 // The status code is the same one the HTTP handler would have returned.
 const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
-  const { courtNumber, startTime, intervalMinutes } = opts;
+  const {
+    courtNumber,
+    startTime,
+    slotDurationMinutes,
+    matchDurationMinutes,
+  } = opts;
   const tournamentId = tournament._id;
 
   let _generatedSportId;
@@ -317,8 +322,52 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
   const matchDocuments = [];
   let matchCount = 0;
   const baseTime = startTime ? new Date(startTime) : new Date();
-  const interval = parseInt(intervalMinutes) || 30;
+  // Slot model: stride = slotDurationMinutes; play = matchDurationMinutes.
+  // matchEndTime = matchStartTime + matchDurationMinutes; gap = slot − match.
+  let _slot = parseInt(slotDurationMinutes, 10);
+  let _match = parseInt(matchDurationMinutes, 10);
+  if (!Number.isFinite(_slot) || _slot <= 0) _slot = 30;
+  if (!Number.isFinite(_match) || _match <= 0) _match = _slot;
+  if (_match > _slot) _match = _slot;
+  const slotMs = _slot * 60000;
+  const matchMs = _match * 60000;
   const groupId = group._id;
+
+  // ── Court auto-assignment ──────────────────────────────────────────────
+  // When the tournament has an active courts catalog (Sub-step 1 + 2), use it
+  // to round-robin-assign courts and run per-court parallel time sequences.
+  // When the catalog is empty (or no court applies to this sport), fall back
+  // to the legacy single-court-number behavior — required for backward compat
+  // on tournaments that haven't set up a catalog.
+  //
+  // Per-sport filter: in v1 every court has sportId === null (tournament-wide
+  // pool), so the second clause is a no-op. v2 will populate sportId and the
+  // filter will start mattering.
+  const courtPool = (tournament.courts || [])
+    .filter((c) => c.isActive !== false)
+    .filter((c) => !c.sportId || String(c.sportId) === String(_generatedSportId))
+    .map((c) => c.name);
+  const useCourtPool = courtPool.length > 0;
+
+  // computeSlot — given a 0-based match index, return { courtNumber, startTime, endTime }.
+  // Algorithm with N courts: courtIdx = i % N, position = floor(i / N).
+  // All N courts kick off at baseTime simultaneously; each runs its own
+  // slot-spaced sequence after that. endTime = startTime + matchDurationMinutes.
+  const computeSlot = (idx0) => {
+    let startTime;
+    let courtName;
+    if (useCourtPool) {
+      const N = courtPool.length;
+      courtName = courtPool[idx0 % N];
+      startTime = new Date(baseTime.getTime() + Math.floor(idx0 / N) * slotMs);
+    } else {
+      // Legacy fallback: single court, linear time. Identical to pre-Sub-step-3.
+      courtName = courtNumber || "1";
+      startTime = new Date(baseTime.getTime() + idx0 * slotMs);
+    }
+    const endTime = new Date(startTime.getTime() + matchMs);
+    return { courtNumber: courtName, startTime, endTime };
+  };
 
   if (isDoubles) {
     if (players.length % 2 !== 0) {
@@ -334,6 +383,7 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
     for (let i = 0; i < pairs.length; i++) {
       for (let j = i + 1; j < pairs.length; j++) {
         matchCount++;
+        const slot = computeSlot(matchCount - 1);
         const doc = createGroupStageMatch({
           tournament,
           tournamentId,
@@ -356,8 +406,9 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
               userName: pairs[j].partner.userName,
             },
           },
-          courtNumber: courtNumber || "1",
-          startTime: new Date(baseTime.getTime() + (matchCount - 1) * interval * 60000),
+          courtNumber: slot.courtNumber,
+          startTime: slot.startTime,
+          matchEndTime: slot.endTime,
           matchFormatOverride: matchFormatOverride2,
         });
         doc.matchType = "doubles";
@@ -368,6 +419,7 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
     for (let i = 0; i < players.length; i++) {
       for (let j = i + 1; j < players.length; j++) {
         matchCount++;
+        const slot = computeSlot(matchCount - 1);
         const doc = createGroupStageMatch({
           tournament,
           tournamentId,
@@ -382,8 +434,9 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
             playerId: players[j].playerId,
             userName: players[j].userName,
           },
-          courtNumber: courtNumber || "1",
-          startTime: new Date(baseTime.getTime() + (matchCount - 1) * interval * 60000),
+          courtNumber: slot.courtNumber,
+          startTime: slot.startTime,
+          matchEndTime: slot.endTime,
           matchFormatOverride: matchFormatOverride2,
         });
         doc.matchType = "singles";
@@ -417,7 +470,10 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
 // HTTP handler — single group. Wraps the helper into the previous response shape.
 const generateGroupMatches = async (req, res) => {
   try {
-    const { tournamentId, groupId, courtNumber, startTime, intervalMinutes } = req.body;
+    const {
+      tournamentId, groupId, courtNumber, startTime,
+      slotDurationMinutes, matchDurationMinutes,
+    } = req.body;
 
     if (!tournamentId || !groupId) {
       return res.status(400).json({
@@ -437,7 +493,8 @@ const generateGroupMatches = async (req, res) => {
     }
 
     const result = await _runGenerateMatchesForGroup(tournament, group, {
-      courtNumber, startTime, intervalMinutes,
+      courtNumber, startTime,
+      slotDurationMinutes, matchDurationMinutes,
     });
 
     if (!result.ok) {
@@ -466,12 +523,16 @@ const generateGroupMatches = async (req, res) => {
 };
 
 // HTTP handler — bulk generation across multiple groups in one shot.
-// Body: { tournamentId, groupIds: [], courtNumber?, startTime?, intervalMinutes? }
+// Body: { tournamentId, groupIds: [], courtNumber?, startTime?,
+//         slotDurationMinutes?, matchDurationMinutes? }
 // Returns 200 with a per-group breakdown so the UI can toast a summary
 // (e.g. "Generated 18 matches across 5 groups; skipped 1 group").
 const generateBulkGroupMatches = async (req, res) => {
   try {
-    const { tournamentId, groupIds, courtNumber, startTime, intervalMinutes } = req.body;
+    const {
+      tournamentId, groupIds, courtNumber, startTime,
+      slotDurationMinutes, matchDurationMinutes,
+    } = req.body;
 
     if (!tournamentId || !Array.isArray(groupIds) || groupIds.length === 0) {
       return res.status(400).json({
@@ -498,7 +559,8 @@ const generateBulkGroupMatches = async (req, res) => {
       }
 
       const r = await _runGenerateMatchesForGroup(tournament, group, {
-        courtNumber, startTime, intervalMinutes,
+        courtNumber, startTime,
+        slotDurationMinutes, matchDurationMinutes,
       });
 
       if (r.ok) {
@@ -654,6 +716,78 @@ const transitionToKnockout = async (req, res) => {
   }
 };
 
+// Sub-step 5 — multi-collection court reassignment for ANY match doc.
+// Tries each match collection in turn (Match → SuperMatch → DirectKnockoutMatch
+// → KnockoutMatch → TeamKnockoutMatches). First hit wins. Mirrors the proven
+// fallback pattern used by groupStageScoreboardController.getLiveMatchState.
+//
+// Validation is soft on purpose — the manager-facing UI (`<CourtPicker>`)
+// only offers names from the catalog, but the endpoint itself accepts any
+// non-empty trimmed string. Existing match docs already carry free-text
+// strings, so server-side enforcement against tournament.courts would be
+// over-strict and break legacy matches.
+const updateMatchCourt = async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { courtNumber } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(matchId)) {
+      return res.status(400).json({ success: false, message: "Invalid matchId" });
+    }
+    if (!courtNumber || !String(courtNumber).trim()) {
+      return res.status(400).json({ success: false, message: "courtNumber is required" });
+    }
+    const trimmed = String(courtNumber).trim();
+
+    // Lazy-require — the cycle of imports between controllers can produce
+    // undefined references at module load time when match models are re-
+    // imported across siblings. require() on demand avoids the issue.
+    const SuperMatch = require("../Modal/SuperMatch");
+    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+    const KnockoutMatch = require("../Modal/KnockoutMatch");
+    const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
+
+    const collections = [
+      { Model: Match,                label: "Match" },
+      { Model: SuperMatch,           label: "SuperMatch" },
+      { Model: DirectKnockoutMatch,  label: "DirectKnockoutMatch" },
+      { Model: KnockoutMatch,        label: "KnockoutMatch" },
+      { Model: TeamKnockoutMatches,  label: "TeamKnockoutMatches" },
+    ];
+
+    for (const { Model, label } of collections) {
+      // findByIdAndUpdate returns null when not found — perfect for the
+      // multi-collection cascade. validateModifiedOnly skips required:true
+      // checks on unchanged paths (e.g. SuperMatch's required round enum).
+      const updated = await Model.findByIdAndUpdate(
+        matchId,
+        { courtNumber: trimmed },
+        { new: true, runValidators: false }
+      );
+      if (updated) {
+        return res.status(200).json({
+          success: true,
+          message: `Court updated to "${trimmed}"`,
+          match: updated,
+          collection: label,
+        });
+      }
+    }
+
+    return res.status(404).json({
+      success: false,
+      message: "Match not found in any collection",
+    });
+  } catch (error) {
+    console.error("[UPDATE_MATCH_COURT] Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update match court",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createMatches,
   generateGroupMatches,
@@ -663,4 +797,5 @@ module.exports = {
   updateMatch,
   deleteMatch,
   deleteGroupMatches,
+  updateMatchCourt,
 };

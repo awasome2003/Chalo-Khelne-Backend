@@ -2253,8 +2253,10 @@ const bulkUploadScores = async (req, res) => {
           continue;
         }
 
-        // Already-completed matches: skip the re-score, but for DirectKnockoutMatch
-        // still attempt progression in case a prior run never advanced the winner.
+        // Already-completed matches: skip the re-score, but attempt progression
+        // in case a prior run never advanced the winner. Covers both
+        // DirectKnockoutMatch (singles) and SuperMatch (group + knockout) so
+        // managers can recover stale R2 TBDs by re-uploading the same scores.
         if (match.status === "COMPLETED") {
           if (matchKind === "direct" && match.nextMatchId) {
             const existingWinnerId =
@@ -2271,6 +2273,16 @@ const bulkUploadScores = async (req, res) => {
               }
               continue;
             }
+          }
+          if (matchKind === "super" && match.nextMatchId && match.winner?.playerId) {
+            try {
+              const { progressWinnerToNextRound } = require("./tournamentController");
+              await progressWinnerToNextRound(match);
+              results.push({ matchId, status: "progression-only" });
+            } catch (progErr) {
+              errors.push({ matchId, error: `SuperMatch progression retry failed: ${progErr.message}` });
+            }
+            continue;
           }
           errors.push({ matchId, error: "Match already completed" });
           continue;
@@ -2448,13 +2460,24 @@ const bulkUploadScores = async (req, res) => {
           }
         }
 
-        // Advance the winner to the next bracket match for DirectKnockoutMatch.
+        // Advance the winner to the next bracket match.
+        // SuperMatch (group + knockout flow) and DirectKnockoutMatch use
+        // different progression helpers; pick the right one by matchKind.
+        // Without this, R1 winners stay in R1 and R2 cards keep showing TBD
+        // even after every R1 result has been bulk-uploaded.
         if (matchKind === "direct" && match.nextMatchId && winnerPlayerId) {
           try {
             const { processDirectKnockoutProgression } = require("./directKnockoutController");
             await processDirectKnockoutProgression(match, winnerPlayerId);
           } catch (progErr) {
             console.error(`[BULK_SCORE] Progression error for match ${matchId}:`, progErr.message);
+          }
+        } else if (matchKind === "super" && match.nextMatchId) {
+          try {
+            const { progressWinnerToNextRound } = require("./tournamentController");
+            await progressWinnerToNextRound(match);
+          } catch (progErr) {
+            console.error(`[BULK_SCORE] SuperMatch progression error for match ${matchId}:`, progErr.message);
           }
         }
 

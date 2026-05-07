@@ -101,6 +101,7 @@ const teamKnockoutMatchesSchema = new mongoose.Schema(
 
     isBye: { type: Boolean, default: false },
     matchDate: { type: Date, required: true },
+    matchEndTime: { type: Date, default: null },
     courtNumber: { type: String, default: "TBD" },
 
     liveState: {

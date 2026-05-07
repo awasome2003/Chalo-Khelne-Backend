@@ -10,6 +10,7 @@ const matchController = require("../controllers/matchController");
 const knockoutController = require("../controllers/knockoutController");
 const groupStageScoreboardController = require("../controllers/groupStageScoreboardController");
 const directKnockoutController = require("../controllers/directKnockoutController");
+const courtController = require("../controllers/courtController");
 const { uploadMiddleware } = require("../middleware/uploads");
 
 const {
@@ -52,6 +53,7 @@ router.post("/cleanup/aggressive-superplayers/:tournamentId", tournamentControll
 router.post("/knockout/generate", tournamentController.generateKnockoutMatches);
 router.delete("/knockout/:tournamentId/all", tournamentController.deleteAllKnockoutMatches);
 router.get("/knockout/matches/:tournamentId", tournamentController.getKnockoutMatches);
+router.post("/knockout/redistribute-courts/:tournamentId", tournamentController.redistributeKnockoutCourts);
 router.put("/knockout/match/:matchId/result", tournamentController.updateKnockoutMatchResult);
 router.get("/knockout/leaderboard/:tournamentId", tournamentController.getTournamentLeaderboard);
 router.get("/comprehensive-stats/:tournamentId", tournamentController.getComprehensiveTournamentStats);
@@ -158,6 +160,17 @@ router.post(
   bookingGroupController.deleteBulkBookingGroups
 );
 
+// 🚀 Court / table catalog (Sub-step 1 of court management).
+// v1: tournament-wide pool (sportId nullable on each entry). Soft-delete only.
+router.get   ("/:tournamentId/courts",          courtController.listCourts);
+router.post  ("/:tournamentId/courts",          courtController.createCourt);
+// Static-segment routes MUST be registered before /:courtId so that
+// "bulk" / "utilization" don't get matched as a courtId parameter.
+router.post  ("/:tournamentId/courts/bulk",     courtController.bulkCreateCourts);
+router.get   ("/:tournamentId/courts/utilization", courtController.getCourtUtilization);
+router.put   ("/:tournamentId/courts/:courtId", courtController.updateCourt);
+router.delete("/:tournamentId/courts/:courtId", courtController.deleteCourt);
+
 // 🚀 Group-specific match format routes
 router.get(
   "/bookinggroups/:groupId/match-format",
@@ -259,6 +272,10 @@ router.get(
   matchController.getMatchesByGroup
 );
 router.put("/matches/:matchId", matchController.updateMatch);
+// Sub-step 5 — inline court reassignment. Multi-collection: looks up the
+// match across Match / SuperMatch / DirectKnockoutMatch / KnockoutMatch /
+// TeamKnockoutMatches and updates whichever holds the id.
+router.patch("/matches/:matchId/court", matchController.updateMatchCourt);
 router.delete("/matches/:matchId", matchController.deleteMatch);
 router.delete("/matches/:tournamentId/:groupId/all", matchController.deleteGroupMatches);
 

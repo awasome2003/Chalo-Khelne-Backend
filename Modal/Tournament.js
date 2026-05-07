@@ -203,6 +203,26 @@ const tournamentSchema = new mongoose.Schema(
     // Timestamp when rules were locked (after first match generated)
     rulesLockedAt: { type: Date, default: null },
 
+    // Court / table catalog. Manager-defined free-text names — clubs label
+    // their venues differently ("Court 1", "Table A", "South Lawn"). When
+    // empty, match-generation flows fall back to the legacy single-court
+    // input (backward compat). When populated, generation auto-distributes
+    // matches round-robin across the active courts.
+    //
+    // sportId is null in v1 (tournament-wide pool serving every sport).
+    // Schema already supports per-sport scoping for v2 — managers will be
+    // able to assign a court to a specific sport without a migration.
+    //
+    // isActive=false soft-deletes a court — past match assignments still
+    // display the name, but new generations skip it. No hard-delete in v1.
+    courts: [{
+      name:    { type: String, required: true, trim: true },
+      type:    { type: String, default: null },                       // free-form: "indoor" | "outdoor" | "table" | null
+      sportId: { type: mongoose.Schema.Types.ObjectId, ref: "Sport", default: null },
+      isActive:{ type: Boolean, default: true },
+      createdAt:{ type: Date, default: Date.now },
+    }],
+
     description: String,
     selectedTime: {
       startTime: String,

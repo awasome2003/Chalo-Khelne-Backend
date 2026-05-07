@@ -323,13 +323,61 @@ const createDirectKnockoutMatches = async (req, res) => {
       console.log(`[DK] Cleared ${existingCount} existing matches for tournament ${tournamentId}`);
     }
 
+    // Parse base date/time ONCE (Q5 cleanup — was inline inside the inner
+    // loop, recomputed per match even though inputs never changed).
+    let baseDateTime;
+    if (schedule.startDate && schedule.startTime && !schedule.startTime.includes("T")) {
+      baseDateTime = new Date(`${schedule.startDate}T${schedule.startTime}`);
+    } else if (schedule.startTime) {
+      baseDateTime = new Date(schedule.startTime);
+    } else {
+      baseDateTime = new Date();
+    }
+    if (isNaN(baseDateTime.getTime())) baseDateTime = new Date();
+
+    // ── Court + time scheduling (Sub-step 4) ──────────────────────────────
+    // Pull the active court pool for the active sport and feed the shared
+    // round-aware scheduling util. Empty pool → legacy single-court fallback
+    // which produces continuous linear scheduling (the pre-Sub-step-4 path).
+    const courtPool = (tournament.courts || [])
+      .filter((c) => c.isActive !== false)
+      .filter((c) => !c.sportId || String(c.sportId) === String(_dkSportId))
+      .map((c) => c.name);
+
+    // Normalize the local bracket shape ([{ roundNumber, matches: [...] }]) into
+    // the util's expected shape ({ rounds: [{ roundNumber, matchCount }] }).
+    const normalizedBracket = {
+      rounds: bracket.map((r) => ({
+        roundNumber: r.roundNumber,
+        matchCount: r.matches.length,
+      })),
+    };
+
+    const { assignKnockoutSlots, bestOfToSetFormat } = require("../utils/courtScheduling");
+    // Per-round bestOf override (Step 3 of flexible bestOf). Set-based sports
+    // get matchFormat patched per round; other scoringTypes ignore bestOf.
+    const _activeSportFormat = require("../utils/sportTrackUtils").getMatchFormat(tournament, _dkSportId) || {};
+    const _isSetBased = (_activeSportFormat.scoringType || "").toLowerCase() === "sets";
+    const slots = assignKnockoutSlots({
+      bracket: normalizedBracket,
+      courtPool,
+      legacyCourtNumber: schedule.courtNumber,
+      baseTime: baseDateTime,
+      rounds: schedule.rounds,
+      slotDurationMinutes: schedule.slotDurationMinutes,
+      matchDurationMinutes: schedule.matchDurationMinutes,
+      breakBetweenRoundsMinutes: schedule.breakBetweenRoundsMinutes,
+    });
+
     const roundOffset = 0;
     let allMatchDocs = [];
+    let slotIdx = 0;
 
     // First pass: Create all match objects with IDs
     for (const round of bracket) {
       for (let i = 0; i < round.matches.length; i++) {
         const match = round.matches[i];
+        const slot = slots[slotIdx++];
         const dbRoundNumber = round.roundNumber + roundOffset;
         const matchId = `DK-${tournamentId}-R${dbRoundNumber}-M${match.matchNumber}`;
 
@@ -340,27 +388,6 @@ const createDirectKnockoutMatches = async (req, res) => {
           const nextMatchNum = Math.ceil(match.matchNumber / 2);
           nextMatchId = `DK-${tournamentId}-R${nextRound}-M${nextMatchNum}`;
         }
-
-        // Parse schedule time (Base time)
-        // Adjust time for rounds? Or all same day? 
-        // Simple logic: Round 1 matches spread by interval. Round 2 matches later?
-        // Current logic spreads matches linearly
-
-        // We'll calculate time index cumulatively across rounds
-        const matchesBefore = allMatchDocs.length;
-
-        // Date parsing
-        let baseDateTime;
-        if (schedule.startDate && schedule.startTime && !schedule.startTime.includes('T')) {
-          baseDateTime = new Date(`${schedule.startDate}T${schedule.startTime}`);
-        } else if (schedule.startTime) {
-          baseDateTime = new Date(schedule.startTime);
-        } else {
-          baseDateTime = new Date();
-        }
-        if (isNaN(baseDateTime.getTime())) baseDateTime = new Date();
-
-        const matchStartTime = new Date(baseDateTime.getTime() + (matchesBefore * schedule.intervalMinutes * 60000));
 
         // Round 1 null slots are BYEs (no opponent). Later-round null slots
         // are TBD (to be determined by the round's winners). Label them
@@ -373,6 +400,7 @@ const createDirectKnockoutMatches = async (req, res) => {
             : null; // factory default → "TBD"
         };
 
+        const _override = _isSetBased ? bestOfToSetFormat(slot.bestOf) : null;
         allMatchDocs.push(createKnockoutMatch({
           tournament,
           tournamentId,
@@ -383,8 +411,10 @@ const createDirectKnockoutMatches = async (req, res) => {
           matchNumber: match.matchNumber,
           player1: resolveSlot(match.player1),
           player2: resolveSlot(match.player2),
-          courtNumber: schedule.courtNumber || 1,
-          matchStartTime,
+          courtNumber: slot.courtNumber,
+          matchStartTime: slot.matchStartTime,
+          matchEndTime: slot.matchEndTime,
+          matchFormatOverride: _override,
           nextMatchId,
           bracketPosition: match.bracketPosition,
         }));
@@ -912,13 +942,43 @@ const createStandaloneKnockout = async (req, res) => {
       baseDateTime = new Date();
     }
     if (isNaN(baseDateTime.getTime())) baseDateTime = new Date();
-    const interval = sched.intervalMinutes || 30;
-    const court = sched.courtNumber || "1";
+
+    // ── Court + time scheduling (Sub-step 4) ──────────────────────────────
+    // Same shared util as generateKnockoutMatches and createDirectKnockoutMatches.
+    // Empty pool → legacy single-court fallback.
+    const courtPool = (tournament.courts || [])
+      .filter((c) => c.isActive !== false)
+      .filter((c) => !c.sportId || String(c.sportId) === String(_standaloneSportId))
+      .map((c) => c.name);
+
+    const normalizedBracket = {
+      rounds: bracket.map((r) => ({
+        roundNumber: r.roundNumber,
+        matchCount: r.matches.length,
+      })),
+    };
+
+    const { assignKnockoutSlots, bestOfToSetFormat } = require("../utils/courtScheduling");
+    // Per-round bestOf override (Step 3 of flexible bestOf).
+    const _activeSportFormat = require("../utils/sportTrackUtils").getMatchFormat(tournament, _standaloneSportId) || {};
+    const _isSetBased = (_activeSportFormat.scoringType || "").toLowerCase() === "sets";
+    const slots = assignKnockoutSlots({
+      bracket: normalizedBracket,
+      courtPool,
+      legacyCourtNumber: sched.courtNumber,
+      baseTime: baseDateTime,
+      rounds: sched.rounds,
+      slotDurationMinutes: sched.slotDurationMinutes,
+      matchDurationMinutes: sched.matchDurationMinutes,
+      breakBetweenRoundsMinutes: sched.breakBetweenRoundsMinutes,
+    });
 
     const allMatchDocs = [];
+    let slotIdx = 0;
 
     for (const round of bracket) {
       for (const match of round.matches) {
+        const slot = slots[slotIdx++];
         const matchId = `DK-${tournamentId}-R${round.roundNumber}-M${match.matchNumber}`;
 
         let nextMatchId = null;
@@ -927,8 +987,7 @@ const createStandaloneKnockout = async (req, res) => {
           nextMatchId = `DK-${tournamentId}-R${round.roundNumber + 1}-M${nextMatchNum}`;
         }
 
-        const matchStartTime = new Date(baseDateTime.getTime() + allMatchDocs.length * interval * 60000);
-
+        const _override = _isSetBased ? bestOfToSetFormat(slot.bestOf) : null;
         allMatchDocs.push(createKnockoutMatch({
           tournament,
           tournamentId,
@@ -943,8 +1002,10 @@ const createStandaloneKnockout = async (req, res) => {
           player2: match.player2
             ? { playerId: match.player2.playerId || null, playerName: match.player2.userName || "TBD" }
             : null,
-          courtNumber: court,
-          matchStartTime,
+          courtNumber: slot.courtNumber,
+          matchStartTime: slot.matchStartTime,
+          matchEndTime: slot.matchEndTime,
+          matchFormatOverride: _override,
           nextMatchId,
           bracketPosition: match.bracketPosition,
           mode: "direct-knockout",

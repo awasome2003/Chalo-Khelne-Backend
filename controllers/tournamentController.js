@@ -1837,15 +1837,47 @@ exports.saveTopPlayers = async (req, res) => {
       // ALLOW empty list to clear the group choice!
     }
 
-    // 🚀 DUPLICATE PLAYER VALIDATION
-    // Check if any of these players are already in the top players list for this tournament
-    // in OTHER groups.
+    // STEP 16e — derive sportId from the BookingGroup when groupId is
+    // a real ObjectId. groupId may also be a synthetic string like
+    // "seeded_<sportSlug>_<categorySlug>" — for those, require
+    // explicit req.body.sportId since there's no parent group to
+    // inherit from.
+    //
+    // Order matters: this MUST run before the duplicate-player check below
+    // so that check can scope to (tournamentId, sportId). A player is allowed
+    // to be a top player in multiple sports (one entry per sport) — only
+    // within-sport duplicates are an error.
+    const _tournament = await Tournament.findById(tournamentId).lean();
+    let _sportId;
+    let _maybeGroup = null;
+    if (mongoose.Types.ObjectId.isValid(groupId)) {
+      _maybeGroup = await BookingGroup.findById(groupId).lean();
+    }
+    try {
+      if (_maybeGroup) {
+        _sportId = assertGroupHasSport(_maybeGroup);
+      } else {
+        // Synthetic / non-ObjectId groupId — fall back to explicit body.
+        assertSportInTournament(req.body.sportId, _tournament);
+        _sportId = req.body.sportId;
+      }
+    } catch (err) {
+      if (handleSportContextError(err, res)) return;
+      throw err;
+    }
+
+    // 🚀 DUPLICATE PLAYER VALIDATION (sport-scoped)
+    // A player can only be a Top Player in ONE group per sport. Cross-sport
+    // overlap is allowed — same person can compete in Badminton and Table
+    // Tennis brackets independently. Scoping by sportId here means we only
+    // block within-sport duplicates.
     const existingTopPlayersInTournament = await TopPlayers.find({
       tournamentId,
+      sportId: _sportId,
       groupId: { $ne: groupId } // Exclude current group
     });
 
-    // Flatten all existing players from other groups
+    // Flatten all existing players from other groups (within the same sport)
     const existingPlayerIds = new Set();
     const existingPlayerNames = new Map(); // Map playerId -> { name, groupName }
 
@@ -1893,37 +1925,13 @@ exports.saveTopPlayers = async (req, res) => {
       console.log("❌ Duplicate players detected:", duplicateList);
       return res.status(400).json({
         success: false,
-        message: `Cannot add players: The following players are already in the top players list: ${duplicateList}`,
+        message: `Cannot add players: The following players are already in the top players list for this sport: ${duplicateList}`,
         duplicatePlayers: duplicatePlayers,
       });
     }
 
     // Generate group name if not provided
     const finalGroupName = groupName || `Seeded Players - ${groupId}`;
-
-    // STEP 16e — derive sportId from the BookingGroup when groupId is
-    // a real ObjectId. groupId may also be a synthetic string like
-    // "seeded_<sportSlug>_<categorySlug>" — for those, require
-    // explicit req.body.sportId since there's no parent group to
-    // inherit from.
-    const _tournament = await Tournament.findById(tournamentId).lean();
-    let _sportId;
-    let _maybeGroup = null;
-    if (mongoose.Types.ObjectId.isValid(groupId)) {
-      _maybeGroup = await BookingGroup.findById(groupId).lean();
-    }
-    try {
-      if (_maybeGroup) {
-        _sportId = assertGroupHasSport(_maybeGroup);
-      } else {
-        // Synthetic / non-ObjectId groupId — fall back to explicit body.
-        assertSportInTournament(req.body.sportId, _tournament);
-        _sportId = req.body.sportId;
-      }
-    } catch (err) {
-      if (handleSportContextError(err, res)) return;
-      throw err;
-    }
 
     // Find if a record already exists for this group
     let topPlayersDoc = await TopPlayers.findOne({ tournamentId, groupId });
@@ -3320,14 +3328,6 @@ exports.saveSuperPlayers = async (req, res) => {
   try {
     const { tournamentId, groupId, groupName, round, roundType, players } = req.body;
 
-    console.log("=== SAVING SUPER PLAYERS ===");
-    console.log("Tournament ID:", tournamentId);
-    console.log("Group ID:", groupId);
-    console.log("Round:", round);
-    console.log("Round Type:", roundType);
-    console.log("Players count:", players.length);
-    console.log("Players data:", JSON.stringify(players, null, 2));
-
     if (!tournamentId || !players || players.length === 0) {
       return res.status(400).json({
         success: false,
@@ -3335,15 +3335,23 @@ exports.saveSuperPlayers = async (req, res) => {
       });
     }
 
-    // Check if Super Players document already exists for this tournament
+    // Multi-sport: scope the upsert to the per-sport SuperPlayers doc.
+    // Without this, calling /superplayers/save for sport B on a multi-sport
+    // tournament would APPEND sport B's players into sport A's existing
+    // doc (mixing rosters across sports). Sport context is required —
+    // resolve via the same path the rest of the controller uses.
+    const { resolveSportId: _resolveSportId_save } = require("../utils/sportTrackUtils");
+    const _tournamentForSPSave = await Tournament.findById(tournamentId).lean();
+    const _saveSPSportId = _resolveSportId_save(_tournamentForSPSave, req.body.sportId);
+
+    // Check if Super Players document already exists for THIS SPORT.
     let superPlayersDoc = await SuperPlayers.findOne({
-      tournamentId
+      tournamentId,
+      sportId: _saveSPSportId,
     });
 
     if (superPlayersDoc) {
-      // Append to existing Super Players document
-      console.log("Found existing Super Players document, appending new players...");
-
+      // Append to existing Super Players document.
       // Get existing player IDs to avoid duplicates
       const existingPlayerIds = new Set(
         superPlayersDoc.players.map(p => p.playerId?.toString() || p.playerId)
@@ -3367,8 +3375,6 @@ exports.saveSuperPlayers = async (req, res) => {
         // skips required:true on unmodified sportId path.
         await superPlayersDoc.save({ validateModifiedOnly: true });
 
-        console.log(`Added ${newPlayers.length} new Super Players to existing collection`);
-
         return res.json({
           success: true,
           message: `Added ${newPlayers.length} new Super Players`,
@@ -3377,8 +3383,6 @@ exports.saveSuperPlayers = async (req, res) => {
           totalSuperPlayers: superPlayersDoc.players.length
         });
       } else {
-        console.log("No new players to add (all were duplicates)");
-
         return res.json({
           success: true,
           message: "All players were already in Super Players collection",
@@ -3388,9 +3392,7 @@ exports.saveSuperPlayers = async (req, res) => {
         });
       }
     } else {
-      // Create new Super Players document
-      console.log("Creating new Super Players document...");
-
+      // Create new Super Players document.
       // Ensure playerId is properly converted to ObjectId
       const processedPlayers = players.map(player => ({
         ...player,
@@ -3399,17 +3401,14 @@ exports.saveSuperPlayers = async (req, res) => {
           : player.playerId
       }));
 
-      const { resolveSportId: _resolveSportId_sSP } = require("../utils/sportTrackUtils");
-      const _tournamentForSP = await Tournament.findById(tournamentId).lean();
+      // sportId already resolved at the top of the handler (_saveSPSportId).
       const newSuperPlayersDoc = new SuperPlayers({
         tournamentId,
-        sportId: _resolveSportId_sSP(_tournamentForSP, req.body.sportId),
+        sportId: _saveSPSportId,
         players: processedPlayers
       });
 
       await newSuperPlayersDoc.save();
-
-      console.log(`Created new Super Players document with ${players.length} players`);
 
       return res.json({
         success: true,
@@ -3449,7 +3448,16 @@ exports.generateKnockoutMatches = async (req, res) => {
     const {
       courtNumber,
       matchStartTime,
-      intervalMinutes,
+      // Per-round knockout config (Step 3 of flexible bestOf):
+      //   rounds: [{ roundNumber, bestOf, slotDurationMinutes, matchDurationMinutes }]
+      //   breakBetweenRoundsMinutes: optional wall-clock break between rounds
+      // Backward compat: when rounds[] is missing, the legacy single-value
+      // slotDurationMinutes/matchDurationMinutes are fanned to every round
+      // by assignKnockoutSlots; bestOf cascades from defaults.
+      rounds,
+      breakBetweenRoundsMinutes,
+      slotDurationMinutes,
+      matchDurationMinutes,
       // New optional params — when omitted, we keep legacy sequential pairing.
       drawSize: requestedDrawSize,
       numberOfSeeds: requestedNumberOfSeeds = 0,
@@ -3459,37 +3467,9 @@ exports.generateKnockoutMatches = async (req, res) => {
       playerOrder,
     } = req.body;
 
-    // Get Super Players for this tournament (ordered by group-stage rank)
-    const superPlayersDoc = await SuperPlayers.findOne({ tournamentId }).populate('players.playerId', 'name');
-    if (!superPlayersDoc || !superPlayersDoc.players.length) {
-      return res.status(404).json({
-        success: false,
-        message: "No Super Players found for this tournament"
-      });
-    }
-
-    // Apply explicit player ordering when the client sent one.
-    // Players not mentioned in playerOrder keep their original order and are
-    // appended after the ordered subset.
-    let players = superPlayersDoc.players;
-    if (Array.isArray(playerOrder) && playerOrder.length > 0) {
-      const orderIdx = new Map();
-      playerOrder.forEach((pid, i) => {
-        if (pid) orderIdx.set(String(pid), i);
-      });
-      const idOf = (p) => {
-        const raw = p.playerId?._id || p.playerId || p._id;
-        return raw ? String(raw) : "";
-      };
-      players = [...superPlayersDoc.players].sort((a, b) => {
-        const ai = orderIdx.has(idOf(a)) ? orderIdx.get(idOf(a)) : Number.POSITIVE_INFINITY;
-        const bi = orderIdx.has(idOf(b)) ? orderIdx.get(idOf(b)) : Number.POSITIVE_INFINITY;
-        return ai - bi;
-      });
-    }
-    const playerCount = players.length;
-
-    // Tournament + match format
+    // Tournament + match format. Loaded BEFORE the SuperPlayers fetch so
+    // sportId can be validated and used to scope the SuperPlayers query
+    // (multi-sport tournaments must not bleed players across sports).
     const tournament = await Tournament.findById(tournamentId);
     if (!tournament) {
       return res.status(404).json({ success: false, message: "Tournament not found" });
@@ -3504,6 +3484,54 @@ exports.generateKnockoutMatches = async (req, res) => {
       throw err;
     }
     const _knockoutSportId = req.body.sportId;
+
+    // Get Super Players for this tournament + sport (ordered by group-stage rank).
+    // Sport-scoped — without this, multi-sport tournaments mix rosters.
+    const superPlayersDoc = await SuperPlayers.findOne({
+      tournamentId,
+      sportId: _knockoutSportId,
+    }).populate('players.playerId', 'name');
+    if (!superPlayersDoc || !superPlayersDoc.players.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No Super Players found for this tournament/sport"
+      });
+    }
+
+    // Apply explicit player ordering when the client sent one.
+    //
+    // playerOrder is AUTHORITATIVE — it's what the manager confirmed in the
+    // preview modal. The server filters SuperPlayers down to exactly those
+    // IDs in the requested order. SuperPlayers not in playerOrder are
+    // intentionally excluded so the resulting bracket matches the preview
+    // (e.g. 19 players → 13 BYEs in a 32-draw, not the full SuperPlayers
+    // count silently filling slots).
+    let players = superPlayersDoc.players;
+    if (Array.isArray(playerOrder) && playerOrder.length > 0) {
+      const orderIdx = new Map();
+      playerOrder.forEach((pid, i) => {
+        if (pid) orderIdx.set(String(pid), i);
+      });
+      const idOf = (p) => {
+        const raw = p.playerId?._id || p.playerId || p._id;
+        return raw ? String(raw) : "";
+      };
+      // Filter to only players in playerOrder, then sort by their position
+      // in playerOrder. Unmatched IDs in playerOrder are silently dropped
+      // (logged so the cause is investigable if it ever happens).
+      players = superPlayersDoc.players
+        .filter((p) => orderIdx.has(idOf(p)))
+        .sort((a, b) => orderIdx.get(idOf(a)) - orderIdx.get(idOf(b)));
+
+      const matched = new Set(players.map(idOf));
+      const unmatchedIds = playerOrder.filter((pid) => pid && !matched.has(String(pid)));
+      if (unmatchedIds.length > 0) {
+        console.warn(
+          `[KO] playerOrder contained ${unmatchedIds.length} ID(s) not in SuperPlayers; ignored: ${unmatchedIds.join(", ")}`
+        );
+      }
+    }
+    const playerCount = players.length;
 
     // STEP 17b.iv — matchFormat read per-sport (after sportId validated).
     const { getMatchFormat: _gmfKO } = require("../utils/sportTrackUtils");
@@ -3537,8 +3565,10 @@ exports.generateKnockoutMatches = async (req, res) => {
       }
     }
 
-    // Delete existing knockout matches for this tournament
-    await SuperMatch.deleteMany({ tournamentId });
+    // Delete existing knockout matches for this tournament + sport.
+    // Sport-scoped — without this, generating a knockout for sport B on a
+    // multi-sport tournament would wipe sport A's already-generated bracket.
+    await SuperMatch.deleteMany({ tournamentId, sportId: _knockoutSportId });
 
     // Decide bracket: use explicit drawSize when provided, else infer from player count.
     // The legacy generateBracketStructure helper returns { rounds: [{name, abbreviation, roundNumber, matchCount}] }
@@ -3585,11 +3615,41 @@ exports.generateKnockoutMatches = async (req, res) => {
       }
     }
 
+    // ── Court + time scheduling (Sub-step 4) ──────────────────────────────
+    // Pull the active court pool for this sport. Filter rules:
+    //   - isActive !== false (skip retired courts)
+    //   - sportId is null (tournament-wide) OR matches the active sport
+    // Empty pool → legacy single-court fallback (`courtNumber || "1"`),
+    // which produces continuous linear scheduling (the pre-Sub-step-4 path).
+    const courtPool = (tournament.courts || [])
+      .filter((c) => c.isActive !== false)
+      .filter((c) => !c.sportId || String(c.sportId) === String(_knockoutSportId))
+      .map((c) => c.name);
+
+    const { assignKnockoutSlots, bestOfToSetFormat } = require("../utils/courtScheduling");
+    // Set-based sports get per-round bestOf overrides applied to each match's
+    // matchFormat. Other scoring types (time/innings/single) ignore bestOf —
+    // bestOfToSetFormat returns null for them and the factory falls back to
+    // the resolved tournament format unchanged.
+    const _activeSportFormat = require("../utils/sportTrackUtils").getMatchFormat(tournament, _knockoutSportId) || {};
+    const _isSetBased = (_activeSportFormat.scoringType || "").toLowerCase() === "sets";
+    const slots = assignKnockoutSlots({
+      bracket,
+      courtPool,
+      legacyCourtNumber: courtNumber,
+      baseTime: new Date(matchStartTime),
+      rounds,
+      slotDurationMinutes,
+      matchDurationMinutes,
+      breakBetweenRoundsMinutes,
+    });
+
     const matches = [];
-    let currentTime = new Date(matchStartTime);
+    let slotIdx = 0;
 
     for (const round of bracket.rounds) {
       for (let i = 0; i < round.matchCount; i++) {
+        const slot = slots[slotIdx++];
         const matchId = `${tournamentId}_${round.abbreviation}_${i + 1}`;
 
         let player1, player2;
@@ -3609,6 +3669,7 @@ exports.generateKnockoutMatches = async (req, res) => {
           nextMatchId = `${tournamentId}_${nextRound.abbreviation}_${nextMatchNumber}`;
         }
 
+        const _override = _isSetBased ? bestOfToSetFormat(slot.bestOf) : null;
         const matchDoc = createSuperMatch({
           tournament,
           tournamentId,
@@ -3619,13 +3680,14 @@ exports.generateKnockoutMatches = async (req, res) => {
           matchNumber: i + 1,
           player1,
           player2,
-          courtNumber,
-          matchStartTime: new Date(currentTime),
+          courtNumber: slot.courtNumber,
+          matchStartTime: slot.matchStartTime,
+          matchEndTime: slot.matchEndTime,
+          matchFormatOverride: _override,
           nextMatchId,
         });
 
         matches.push(matchDoc);
-        currentTime = new Date(currentTime.getTime() + intervalMinutes * 60000);
       }
     }
 
@@ -3648,7 +3710,10 @@ exports.generateKnockoutMatches = async (req, res) => {
       const name = p?.playerName;
       return !!name && name !== "TBD" && name !== "BYE";
     };
-    const r1Matches = await SuperMatch.find({ tournamentId, roundNumber: 1 });
+    // Sport-scoped — auto-BYE pass must only see this sport's R1 matches,
+    // otherwise a multi-sport tournament's BYE pass would scan and possibly
+    // mutate the other sport's bracket.
+    const r1Matches = await SuperMatch.find({ tournamentId, sportId: _knockoutSportId, roundNumber: 1 });
     for (const match of r1Matches) {
       const p1Real = isRealPlayer(match.player1);
       const p2Real = isRealPlayer(match.player2);
@@ -3860,6 +3925,159 @@ exports.deleteAllKnockoutMatches = async (req, res) => {
 };
 
 // Get Knockout Matches for a tournament
+// POST /api/tournaments/:tournamentId/knockout/redistribute-courts
+//   Body: { sportId?, rounds?, breakBetweenRoundsMinutes?, slotDurationMinutes?, matchDurationMinutes? }
+//
+// Recomputes courtNumber + matchStartTime + matchEndTime against the existing
+// SuperMatch bracket. matchFormat (totalSets / setsToWin) is NOT rewritten —
+// per-round bestOf changes apply to fresh generations only. If the manager
+// wants to retroactively change a round's bestOf, they must regenerate.
+//
+// Re-runs round-robin court assignment + round-aware scheduling against the
+// existing SuperMatch knockout bracket WITHOUT regenerating it. Player
+// assignments, seeding, scores, and winners are preserved — only courtNumber
+// and matchStartTime are rewritten.
+//
+// Use case: catalog had only one court when bracket was generated, manager
+// added more courts later and wants matches spread across them. Avoids the
+// "Delete All + Generate" round-trip that would clobber any in-progress
+// scoring or completed-match results.
+//
+// Skips matches whose status is "completed" or "in-progress" — we don't
+// rewrite history or interrupt live scoring.
+exports.redistributeKnockoutCourts = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const {
+      sportId = null,
+      rounds,
+      breakBetweenRoundsMinutes,
+      slotDurationMinutes,
+      matchDurationMinutes,
+    } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(tournamentId)) {
+      return res.status(400).json({ success: false, message: "Invalid tournamentId" });
+    }
+
+    const tournament = await Tournament.findById(tournamentId).select("courts sports").lean();
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: "Tournament not found" });
+    }
+
+    const _sportId = sportId || tournament.sports?.[0]?.sportId || null;
+
+    const courtPool = (tournament.courts || [])
+      .filter((c) => c.isActive !== false)
+      .filter((c) => !c.sportId || String(c.sportId) === String(_sportId))
+      .map((c) => c.name);
+
+    if (courtPool.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No active courts in catalog. Add courts first."
+      });
+    }
+
+    const matchFilter = _sportId
+      ? { tournamentId, sportId: _sportId }
+      : { tournamentId };
+    const matches = await SuperMatch.find(matchFilter)
+      .sort({ roundNumber: 1, matchNumber: 1 })
+      .lean();
+
+    if (matches.length === 0) {
+      return res.status(404).json({ success: false, message: "No knockout matches found" });
+    }
+
+    // Group matches by roundNumber; the scheduler needs a bracket shape.
+    const byRound = {};
+    matches.forEach((m) => {
+      const r = m.roundNumber || 1;
+      if (!byRound[r]) byRound[r] = [];
+      byRound[r].push(m);
+    });
+    const roundNumbers = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+    const bracket = {
+      rounds: roundNumbers.map((rn) => ({
+        roundNumber: rn,
+        matchCount: byRound[rn].length,
+      })),
+    };
+
+    // Derive baseTime from the earliest existing matchStartTime so the new
+    // schedule starts at the same wall-clock as before.
+    const earliest = matches.reduce((acc, m) => {
+      const t = m.matchStartTime ? new Date(m.matchStartTime) : null;
+      if (!t) return acc;
+      return acc == null || t < acc ? t : acc;
+    }, null) || new Date();
+
+    const { assignKnockoutSlots } = require("../utils/courtScheduling");
+    const slots = assignKnockoutSlots({
+      bracket,
+      courtPool,
+      legacyCourtNumber: courtPool[0],
+      baseTime: earliest,
+      rounds,
+      slotDurationMinutes,
+      matchDurationMinutes,
+      breakBetweenRoundsMinutes,
+    });
+
+    // Walk slots in the same nested-loop order used to build the bracket
+    // shape and pair each slot with its corresponding existing match.
+    const ops = [];
+    let skipped = 0;
+    let updated = 0;
+    let slotIdx = 0;
+    for (const rn of roundNumbers) {
+      for (const m of byRound[rn]) {
+        const slot = slots[slotIdx++];
+        if (!slot) continue;
+        const status = String(m.status || "").toLowerCase();
+        if (status === "completed" || status === "in-progress" || status === "in_progress") {
+          skipped++;
+          continue;
+        }
+        ops.push({
+          updateOne: {
+            filter: { _id: m._id },
+            update: {
+              $set: {
+                courtNumber: slot.courtNumber,
+                matchStartTime: slot.matchStartTime,
+                matchEndTime: slot.matchEndTime,
+              },
+            },
+          },
+        });
+        updated++;
+      }
+    }
+
+    if (ops.length > 0) {
+      await SuperMatch.bulkWrite(ops, { ordered: false });
+    }
+
+    return res.status(200).json({
+      success: true,
+      updated,
+      skipped,
+      courtPool,
+      message: `Redistributed ${updated} match${updated === 1 ? "" : "es"} across ${courtPool.length} courts${
+        skipped > 0 ? ` (${skipped} live or completed match${skipped === 1 ? "" : "es"} skipped)` : ""
+      }.`,
+    });
+  } catch (err) {
+    console.error("Error redistributing knockout courts:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to redistribute courts",
+      error: err.message,
+    });
+  }
+};
+
 exports.getKnockoutMatches = async (req, res) => {
   try {
     const { tournamentId } = req.params;
@@ -3867,19 +4085,28 @@ exports.getKnockoutMatches = async (req, res) => {
 
     // Multi-sport: strict sportId match on SuperMatch.
     const matchFilter = sportId ? { tournamentId, sportId } : { tournamentId };
-    const matches = await SuperMatch.find(matchFilter)
-      .populate('player1.playerId', 'name profileImage')
-      .populate('player2.playerId', 'name profileImage')
-      .populate('winner.playerId', 'name profileImage')
-      .sort({ roundNumber: 1, matchNumber: 1 });
 
-    // Enrich each match with a category derived from the originating BookingGroup.
-    // SuperMatch doesn't carry category itself; resolve via player → group → category.
     // BookingGroup query includes sportId-null docs (pre-migration safety).
     const groupFilter = sportId
       ? { tournamentId, $or: [{ sportId }, { sportId: null }] }
       : { tournamentId };
-    const groups = await BookingGroup.find(groupFilter).select("groupName category players").lean();
+
+    // Run both queries in parallel; .lean() skips Mongoose document
+    // hydration (~5-10x faster on populated lists). The per-match
+    // .toObject() mapping below is no longer needed since lean docs
+    // are already plain objects.
+    const [matches, groups] = await Promise.all([
+      SuperMatch.find(matchFilter)
+        .populate('player1.playerId', 'name profileImage')
+        .populate('player2.playerId', 'name profileImage')
+        .populate('winner.playerId', 'name profileImage')
+        .sort({ roundNumber: 1, matchNumber: 1 })
+        .lean(),
+      BookingGroup.find(groupFilter).select("groupName category players").lean(),
+    ]);
+
+    // Enrich each match with a category derived from the originating BookingGroup.
+    // SuperMatch doesn't carry category itself; resolve via player → group → category.
     const playerIdToCategory = {};
     const playerNameToCategory = {};
     groups.forEach((g) => {
@@ -3891,17 +4118,16 @@ exports.getKnockoutMatches = async (req, res) => {
     });
 
     const enriched = matches.map((m) => {
-      const obj = m.toObject();
-      const p1Id = obj.player1?.playerId?._id?.toString?.() || obj.player1?.playerId?.toString?.();
-      const p2Id = obj.player2?.playerId?._id?.toString?.() || obj.player2?.playerId?.toString?.();
+      const p1Id = m.player1?.playerId?._id?.toString?.() || m.player1?.playerId?.toString?.();
+      const p2Id = m.player2?.playerId?._id?.toString?.() || m.player2?.playerId?.toString?.();
       const cat =
         playerIdToCategory[p1Id] ||
         playerIdToCategory[p2Id] ||
-        playerNameToCategory[obj.player1?.playerName] ||
-        playerNameToCategory[obj.player2?.playerName] ||
+        playerNameToCategory[m.player1?.playerName] ||
+        playerNameToCategory[m.player2?.playerName] ||
         null;
-      if (cat) obj.category = cat;
-      return obj;
+      if (cat) m.category = cat;
+      return m;
     });
 
     // Group matches by round

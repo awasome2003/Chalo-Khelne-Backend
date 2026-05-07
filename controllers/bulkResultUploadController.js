@@ -300,6 +300,23 @@ async function processPlayerMatch(matchId, scoreData, rowIndex) {
   // fields are validated.
   await match.save({ validateModifiedOnly: true });
 
+  // Advance the winner to the next round of the bracket. Without this,
+  // R2 cards keep showing TBD even after every R1 result has been
+  // uploaded via CSV. SuperMatch progression is the only path here —
+  // processPlayerMatch only handles SuperMatch (DirectKnockoutMatch
+  // bulk uploads route through directKnockoutController.bulkUploadScores).
+  if (match.nextMatchId) {
+    try {
+      const { progressWinnerToNextRound } = require("./tournamentController");
+      await progressWinnerToNextRound(match);
+    } catch (progErr) {
+      console.error(`[BULK_CSV] SuperMatch progression error for match ${matchId}:`, progErr.message);
+      // Don't fail the upload — the match itself was saved. Progression
+      // can be retried by re-running the bulk upload (the controller's
+      // already-completed branch in groupStageScoreboardController retries).
+    }
+  }
+
   return {
     row: rowIndex,
     matchId: matchId.toString(),

@@ -64,6 +64,7 @@ const matchSchema = new mongoose.Schema({
   },
   courtNumber: { type: String, required: true },
   startTime: { type: Date, required: true },
+  matchEndTime: { type: Date, default: null },
 
   // Match Format Configuration (inherits from tournament, allows overrides)
   matchFormat: {

@@ -26,7 +26,22 @@ const SuperMatchSchema = new mongoose.Schema({
 
   round: {
     type: String,
-    enum: ["pre-quarter", "quarter-final", "semi-final", "final"],
+    // Bracket builder produces "round-of-{N}" for any first round larger
+    // than 8. Originally the enum only listed quarters/semis/final because
+    // the production "Round-2 mini-group-stage → Super Players" path always
+    // narrowed players down to ≤8 before generating SuperMatch records.
+    // The "skip Round 2 → straight to knockout" shortcut feeds 16/32/64/128
+    // directly, so those round names are now valid here too.
+    enum: [
+      "pre-quarter",     // legacy (kept for backward compat)
+      "round-of-128",
+      "round-of-64",
+      "round-of-32",
+      "round-of-16",
+      "quarter-final",
+      "semi-final",
+      "final",
+    ],
     required: true
   },
 
@@ -69,13 +84,18 @@ const SuperMatchSchema = new mongoose.Schema({
 
   // Match Scheduling
   courtNumber: {
-    type: Number,
+    type: String,
     required: true
   },
 
   matchStartTime: {
     type: Date,
     required: true
+  },
+
+  matchEndTime: {
+    type: Date,
+    default: null,
   },
 
   estimatedDuration: {
