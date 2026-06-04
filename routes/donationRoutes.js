@@ -2,11 +2,17 @@ const express = require("express");
 const router = express.Router();
 const donationController = require("../controllers/donationController");
 const { authenticate } = require("../middleware/authMiddleware");
+const { uploadMiddleware } = require("../middleware/uploads");
 
 // Authenticated routes (static paths first)
 router.get("/my-listings", authenticate, donationController.getMyListings);
 router.get("/my-claims", authenticate, donationController.getMyClaims);
-router.post("/list", authenticate, donationController.createListing);
+router.post(
+  "/list",
+  authenticate,
+  uploadMiddleware.array("equipmentImages", 5),
+  donationController.createListing
+);
 router.put("/list/:id", authenticate, donationController.updateListing);
 router.delete("/list/:id", authenticate, donationController.withdrawListing);
 router.post("/claim/:id", authenticate, donationController.claimItem);

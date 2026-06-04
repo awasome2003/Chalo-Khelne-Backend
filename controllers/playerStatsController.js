@@ -7,7 +7,10 @@
 
 const Match = require("../Modal/Tournnamentmatch");
 const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+const KnockoutMatch = require("../Modal/KnockoutMatch");
 const SuperMatch = require("../Modal/SuperMatch");
+const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
+const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
 const Booking = require("../Modal/BookingModel");
 const Tournament = require("../Modal/Tournament");
 const GroupStandings = require("../Modal/GroupStandings");
@@ -125,6 +128,53 @@ exports.getPlayerCareerStats = async (req, res) => {
           else if (winnerId === playerIdStr) { tWins++; }
           else { tLosses++; }
         }
+
+        // KnockoutMatch (separate from DirectKnockoutMatch — used for bracket-style knockouts)
+        const koMatches = await KnockoutMatch.find({
+          tournamentId: t._id,
+          status: "COMPLETED",
+          $or: [
+            { "player1.playerId": userId },
+            { "player2.playerId": userId },
+          ],
+        }).lean();
+
+        for (const m of koMatches) {
+          tMatches++;
+          const winnerId =
+            m.winner?.playerId?.toString() ||
+            m.result?.winner?.playerId?.toString();
+          if (!winnerId) { tDraws++; }
+          else if (winnerId === playerIdStr) { tWins++; }
+          else { tLosses++; }
+        }
+
+        // Team knockout matches — dereference team roster to find player's wins/losses
+        const userTeams = await TeamKnockoutTeams.find({
+          tournamentId: t._id,
+          "roster.userId": userId,
+        }).select("_id").lean();
+        const teamIds = userTeams.map((tm) => tm._id);
+
+        if (teamIds.length > 0) {
+          const teamMatches = await TeamKnockoutMatches.find({
+            tournamentId: t._id,
+            status: "COMPLETED",
+            $or: [
+              { team1Id: { $in: teamIds } },
+              { team2Id: { $in: teamIds } },
+            ],
+          }).lean();
+
+          const teamIdStrs = teamIds.map((id) => id.toString());
+          for (const m of teamMatches) {
+            tMatches++;
+            const winnerId = m.winnerId?.toString();
+            if (!winnerId) { tDraws++; }
+            else if (teamIdStrs.includes(winnerId)) { tWins++; }
+            else { tLosses++; }
+          }
+        }
       }
 
       // Accumulate totals
@@ -180,11 +230,40 @@ exports.getPlayerCareerStats = async (req, res) => {
 
     const winRate = totalMatches > 0 ? Math.round((totalWins / totalMatches) * 100) : 0;
 
+    // Count DISTINCT tournaments (a player may have several bookings for the
+    // same tournament across categories) and how many are still upcoming.
+    const parseTourneyDate = (s) => {
+      if (!s) return null;
+      if (String(s).includes("/")) {
+        const [d, m, y] = String(s).split("/").map(Number);
+        return new Date(y, m - 1, d);
+      }
+      const dt = new Date(s);
+      return isNaN(dt.getTime()) ? null : dt;
+    };
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const uniqTournaments = new Map();
+    for (const b of bookings) {
+      const t = b.tournamentId;
+      if (t && t._id) uniqTournaments.set(String(t._id), t);
+    }
+    const totalTournaments = uniqTournaments.size;
+    let totalUpcoming = 0;
+    for (const t of uniqTournaments.values()) {
+      const sd = parseTourneyDate(t.startDate);
+      if (sd) {
+        sd.setHours(0, 0, 0, 0);
+        if (sd >= startOfToday) totalUpcoming++;
+      }
+    }
+
     res.json({
       success: true,
       player: { _id: userId, name: user.name, profileImage: user.profileImage },
       career: {
-        totalTournaments: bookings.length,
+        totalTournaments,
+        totalUpcoming,
         totalMatches,
         totalWins,
         totalLosses,
@@ -213,11 +292,31 @@ exports.getPlayerCareerStats = async (req, res) => {
 exports.getGlobalRankings = async (req, res) => {
   try {
     const { sport } = req.params;
-    const { limit: queryLimit } = req.query;
+    const { limit: queryLimit, season, from, to } = req.query;
     const maxResults = parseInt(queryLimit) || 50;
 
-    // Get all users who have bookings
-    const bookings = await Booking.find({ status: { $ne: "cancelled" } })
+    // Seasonal window: explicit ?from/to wins; else ?season=YYYY covers that
+    // calendar year. Filters bookings by createdAt. Unfiltered when none set.
+    let dateFilter = null;
+    if (from || to) {
+      dateFilter = {};
+      if (from) dateFilter.$gte = new Date(from);
+      if (to) dateFilter.$lte = new Date(to);
+    } else if (season) {
+      const y = parseInt(season);
+      if (Number.isInteger(y)) {
+        dateFilter = {
+          $gte: new Date(`${y}-01-01T00:00:00Z`),
+          $lt: new Date(`${y + 1}-01-01T00:00:00Z`),
+        };
+      }
+    }
+
+    const bookingFilter = { status: { $ne: "cancelled" } };
+    if (dateFilter) bookingFilter.createdAt = dateFilter;
+
+    // Get all users who have bookings (optionally within the date window)
+    const bookings = await Booking.find(bookingFilter)
       .populate("tournamentId", "sportsType")
       .select("userId tournamentId")
       .lean();
@@ -284,11 +383,93 @@ exports.getGlobalRankings = async (req, res) => {
     res.json({
       success: true,
       sport: sport || "all",
+      window: dateFilter ? { season: season || null, from: from || null, to: to || null } : null,
       total: rankings.length,
       rankings: rankings.slice(0, maxResults),
     });
   } catch (err) {
     console.error("[GLOBAL_RANKINGS] Error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * GET /player-stats/ranking/clubs
+ * Club rankings — MVP: sorted by tournaments hosted, then players engaged, then
+ * managers count. Optional date window via ?season=YYYY or ?from=&to=.
+ * (N+1 over clubs; small N in practice. TODO: convert to an aggregation
+ * pipeline if clubs scale into the hundreds.)
+ */
+exports.getClubRankings = async (req, res) => {
+  try {
+    const { limit: queryLimit, season, from, to } = req.query;
+    const maxResults = parseInt(queryLimit) || 50;
+
+    let dateFilter = null;
+    if (from || to) {
+      dateFilter = {};
+      if (from) dateFilter.$gte = new Date(from);
+      if (to) dateFilter.$lte = new Date(to);
+    } else if (season) {
+      const y = parseInt(season);
+      if (Number.isInteger(y)) {
+        dateFilter = {
+          $gte: new Date(`${y}-01-01T00:00:00Z`),
+          $lt: new Date(`${y + 1}-01-01T00:00:00Z`),
+        };
+      }
+    }
+
+    const Manager = require("../Modal/ClubManager").Manager;
+    const Tournament = require("../Modal/Tournament");
+
+    const clubs = await User.find({ role: "ClubAdmin" })
+      .select("name clubName profileImage")
+      .lean();
+
+    const rankings = [];
+    for (const club of clubs) {
+      const managers = await Manager.find({ clubId: club._id }).select("_id").lean();
+      const managerIds = managers.map((m) => m._id);
+      let tournamentCount = 0;
+      let players = 0;
+      if (managerIds.length > 0) {
+        const tFilter = { managerId: { $in: managerIds } };
+        if (dateFilter) tFilter.createdAt = dateFilter;
+        const tournaments = await Tournament.find(tFilter).select("_id").lean();
+        tournamentCount = tournaments.length;
+        if (tournamentCount > 0) {
+          players = await Booking.countDocuments({
+            tournamentId: { $in: tournaments.map((t) => t._id) },
+            status: { $ne: "cancelled" },
+          });
+        }
+      }
+      rankings.push({
+        clubId: club._id,
+        clubName: club.clubName || club.name,
+        profileImage: club.profileImage,
+        managers: managerIds.length,
+        tournaments: tournamentCount,
+        players,
+      });
+    }
+
+    rankings.sort((a, b) => {
+      if (b.tournaments !== a.tournaments) return b.tournaments - a.tournaments;
+      if (b.players !== a.players) return b.players - a.players;
+      return b.managers - a.managers;
+    });
+    rankings.forEach((r, i) => { r.rank = i + 1; });
+
+    res.json({
+      success: true,
+      window: dateFilter ? { season: season || null, from: from || null, to: to || null } : null,
+      total: rankings.length,
+      rankings: rankings.slice(0, maxResults),
+    });
+  } catch (err) {
+    console.error("[CLUB_RANKINGS] Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

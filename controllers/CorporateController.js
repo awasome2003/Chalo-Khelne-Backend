@@ -10,8 +10,8 @@ const transporter = nodemailer.createTransport({
     port: 465,
     secure: true,
     auth: {
-        user: "notmumbai@gmail.com",
-        pass: "djbz wrcn uwtt woob",
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
     },
 });
 
@@ -170,10 +170,10 @@ exports.addManager = async (req, res) => {
         await newManager.save();
 
         // Send Email with Credentials to the new Manager
-        const loginLink = `http://localhost:5173/login`;
+        const loginLink = `${process.env.FRONTEND_URL || "https://chalokhelne.com"}/login`;
 
         const mailOptions = {
-            from: "notmumbai@gmail.com",
+            from: process.env.EMAIL_USER,
             to: email,
             subject: "Welcome to Sportszz - Manager Credentials",
             text: `Hello ${name},\n\nYou have been added as a Manager for your organization's sports activities.\n\nHere are your login credentials:\nEmail: ${email}\nPassword: ${password}\n\nPlease login here: ${loginLink}\n\nBest Regards,\nSportszz Team`,
@@ -259,7 +259,7 @@ exports.onboardCorporateAdmin = async (req, res) => {
         const loginLink = `https://your-app-url.com/login`; // Replace with actual URL
 
         const mailOptions = {
-            from: "notmumbai@gmail.com",
+            from: process.env.EMAIL_USER,
             to: email,
             subject: "Welcome to Sportszz - Corporate Admin Credentials",
             text: `Hello ${name},\n\nYour Corporate Admin account has been created successfully.\n\nHere are your login credentials:\nEmail: ${email}\nPassword: ${generatedPassword}\n\nPlease login here: ${loginLink}\n\nBest Regards,\nSportszz Team`,

@@ -5,6 +5,8 @@ const { Manager } = require("../Modal/ClubManager");
 const { ActivityLog } = require("../Modal/activityLog");
 const TurfBooking = require("../Modal/TurfBooking");
 const ClubApplication = require("../Modal/TrainerClubApplication");
+const { managerAuth, requireSuperAdmin, allowUserOrManager } = require("../middleware/authMiddleware");
+const { requireSelf, requireTurfBookingOwner } = require("../middleware/authz");
 const router = express.Router();
 
 const transporter = nodemailer.createTransport({
@@ -12,14 +14,35 @@ const transporter = nodemailer.createTransport({
   port: 465,
   secure: true,
   auth: {
-    user: "aakash7536@gmail.com",
-    pass: "tmcj fbnn lffr cspa",
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
   },
 });
 
+// Resolve the club a manager-admin request applies to, scoped to the caller:
+//   ClubAdmin      → their own user id (what Manager.clubId references)
+//   corporate_admin→ their own user id (Corporate manages its own staff via
+//                    the same Manager collection, scoped by clubId === userId)
+//   Manager        → their own clubId
+//   SuperAdmin     → may target any club via ?clubId=
+// Returns { clubId } or { error, status }.
+function resolveClubScope(req) {
+  if (req.userRole === "SuperAdmin") {
+    const clubId = req.query.clubId;
+    return clubId ? { clubId } : { error: "Club ID is required", status: 400 };
+  }
+  if (req.user && (req.user.role === "ClubAdmin" || req.user.role === "corporate_admin")) {
+    return { clubId: String(req.user._id) };
+  }
+  if (req.userRole === "Manager" && req.user && req.user.clubId) {
+    return { clubId: String(req.user.clubId) };
+  }
+  return { error: "Forbidden: club admin, corporate admin, or manager access required", status: 403 };
+}
+
 // Route to create a new manager
-router.post("/managers", async (req, res) => {
-  const { name, email, password, clubId } = req.body;
+router.post("/managers", allowUserOrManager, async (req, res) => {
+  const { name, email, password } = req.body;
 
   // Validate input
   if (!name || !email || !password) {
@@ -28,8 +51,21 @@ router.post("/managers", async (req, res) => {
       .json({ error: "Name, email, and password are required." });
   }
 
-  if (!clubId) {
-    return res.status(400).json({ error: "Club ID is required." });
+  // Scope the club: a ClubAdmin or CorporateAdmin creates managers under their
+  // OWN org; a SuperAdmin may target any club via body.clubId. Anyone else is
+  // forbidden.
+  let clubId;
+  if (req.userRole === "SuperAdmin") {
+    clubId = req.body.clubId;
+    if (!clubId) {
+      return res.status(400).json({ error: "Club ID is required." });
+    }
+  } else if (req.user && (req.user.role === "ClubAdmin" || req.user.role === "corporate_admin")) {
+    clubId = String(req.user._id);
+  } else {
+    return res
+      .status(403)
+      .json({ error: "Forbidden: only a club admin, corporate admin, or superadmin can add managers." });
   }
 
   try {
@@ -39,10 +75,11 @@ router.post("/managers", async (req, res) => {
       return res.status(400).json({ error: "Email is already in use." });
     }
 
-    // Verify that the clubId exists (optional but recommended)
+    // Verify that the clubId exists. Either a ClubAdmin or corporate_admin
+    // user is a valid org owner for Manager.clubId.
     const User = require("../Modal/User"); // Import User model
     const clubAdmin = await User.findById(clubId);
-    if (!clubAdmin || clubAdmin.role !== "ClubAdmin") {
+    if (!clubAdmin || (clubAdmin.role !== "ClubAdmin" && clubAdmin.role !== "corporate_admin")) {
       return res.status(400).json({ error: "Invalid club ID." });
     }
 
@@ -57,15 +94,15 @@ router.post("/managers", async (req, res) => {
 
     await newManager.save();
 
-    // Update login link for development environment
-    const loginLink = `exp://192.168.0.147:8082/--/manager-login`;
+    const loginLink = `${process.env.FRONTEND_URL || "https://chalokhelne.com"}/login`;
 
-    // Send email with credentials
+    // Send email with login info — never include the password in plaintext.
+    // The new manager sets their own password via the Forgot Password flow.
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
-      subject: "Your Manager Login Link and Credentials",
-      text: `Hello ${name},\n\nYour account has been created as a manager for ${clubAdmin.clubName}. You can log in using the following credentials:\n\nEmail: ${email}\nPassword: ${password}\n\nClick the link below to log in:\n${loginLink}\n\nThank you,\nSportszz Team`,
+      subject: "Your Manager Account",
+      text: `Hello ${name},\n\nYour manager account for ${clubAdmin.clubName || clubAdmin.companyName || "your organisation"} has been created.\n\nTo set your password, open the login page and use "Forgot Password" with this email:\n${email}\n\nLogin link:\n${loginLink}\n\nThank you,\nSportszz Team`,
     };
 
     await transporter.sendMail(mailOptions);
@@ -82,10 +119,11 @@ router.post("/managers", async (req, res) => {
   }
 });
 
-router.get("/managers/me", async (req, res) => {
+router.get("/managers/me", managerAuth, async (req, res) => {
   try {
-    // Get the manager ID from the request headers
-    const managerId = req.headers["manager-id"]; // Expecting manager ID in headers
+    // Manager id comes from the authenticated token (managerAuth), not a
+    // client-supplied "manager-id" header that anyone could spoof.
+    const managerId = req.user.id;
 
     // Check if managerId is provided
     if (!managerId) {
@@ -115,7 +153,7 @@ router.get("/managers/me", async (req, res) => {
 });
 
 // Get manager profile by ID
-router.get("/managers/:id/profile", async (req, res) => {
+router.get("/managers/:id/profile", managerAuth, async (req, res) => {
   try {
     const manager = await Manager.findById(req.params.id).select("-password").lean();
     if (!manager) return res.status(404).json({ success: false, message: "Manager not found" });
@@ -126,7 +164,7 @@ router.get("/managers/:id/profile", async (req, res) => {
 });
 
 // Update manager profile
-router.put("/managers/:id/profile", async (req, res) => {
+router.put("/managers/:id/profile", managerAuth, requireSelf("id"), async (req, res) => {
   try {
     const { name, email } = req.body;
     const manager = await Manager.findById(req.params.id);
@@ -146,7 +184,7 @@ router.put("/managers/:id/profile", async (req, res) => {
 });
 
 // Change manager password
-router.put("/managers/:id/change-password", async (req, res) => {
+router.put("/managers/:id/change-password", managerAuth, requireSelf("id"), async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) return res.status(400).json({ success: false, message: "Both passwords required" });
@@ -168,13 +206,11 @@ router.put("/managers/:id/change-password", async (req, res) => {
 });
 
 // Fetching managers clubwise
-router.get("/club-admin/managers", async (req, res) => {
+router.get("/club-admin/managers", allowUserOrManager, async (req, res) => {
   try {
-    const { clubId } = req.query; // Get clubId from query params
-
-    if (!clubId) {
-      return res.status(400).json({ message: "Club ID is required" });
-    }
+    const scope = resolveClubScope(req);
+    if (scope.error) return res.status(scope.status).json({ message: scope.error });
+    const { clubId } = scope;
 
     const managers = await Manager.find({ clubId: clubId });
     res.status(200).json(managers);
@@ -185,13 +221,21 @@ router.get("/club-admin/managers", async (req, res) => {
 });
 
 // Activate or Deactivate Manager
-router.put("/managers/:id/activate", async (req, res) => {
+router.put("/managers/:id/activate", allowUserOrManager, async (req, res) => {
   const { isActive } = req.body;
 
   try {
     const manager = await Manager.findById(req.params.id);
     if (!manager) {
       return res.status(404).json({ error: "Manager not found" });
+    }
+
+    // Scope: SuperAdmin, or the ClubAdmin/CorporateAdmin who owns this manager's club.
+    if (req.userRole !== "SuperAdmin") {
+      const isOwnerRole = req.user && (req.user.role === "ClubAdmin" || req.user.role === "corporate_admin");
+      if (!isOwnerRole || String(manager.clubId) !== String(req.user._id)) {
+        return res.status(403).json({ error: "Forbidden: not your club's manager" });
+      }
     }
 
     manager.isActive = isActive;
@@ -207,17 +251,24 @@ router.put("/managers/:id/activate", async (req, res) => {
 });
 
 // Delete Manager Endpoint
-router.delete("/managers/:id", async (req, res) => {
+router.delete("/managers/:id", allowUserOrManager, async (req, res) => {
   try {
     const managerId = req.params.id;
 
-    // Find the manager by ID and delete it
-    const deletedManager = await Manager.findByIdAndDelete(managerId);
-
-    // Check if the manager was found and deleted
-    if (!deletedManager) {
+    const manager = await Manager.findById(managerId);
+    if (!manager) {
       return res.status(404).json({ message: "Manager not found" });
     }
+
+    // Scope: SuperAdmin, or the ClubAdmin/CorporateAdmin who owns this manager's club.
+    if (req.userRole !== "SuperAdmin") {
+      const isOwnerRole = req.user && (req.user.role === "ClubAdmin" || req.user.role === "corporate_admin");
+      if (!isOwnerRole || String(manager.clubId) !== String(req.user._id)) {
+        return res.status(403).json({ message: "Forbidden: not your club's manager" });
+      }
+    }
+
+    await Manager.findByIdAndDelete(managerId);
 
     // Return a success message
     res.status(200).json({ message: "Manager deleted successfully" });
@@ -230,13 +281,11 @@ router.delete("/managers/:id", async (req, res) => {
 });
 
 // Get manager statistics
-router.get("/analytics/manager-stats", async (req, res) => {
+router.get("/analytics/manager-stats", allowUserOrManager, async (req, res) => {
   try {
-    const { clubId } = req.query;
-
-    if (!clubId) {
-      return res.status(400).json({ message: "Club ID is required" });
-    }
+    const scope = resolveClubScope(req);
+    if (scope.error) return res.status(scope.status).json({ message: scope.error });
+    const { clubId } = scope;
 
     const managers = await Manager.find({ clubId: clubId });
 
@@ -267,8 +316,12 @@ router.get("/analytics/manager-stats", async (req, res) => {
 });
 
 // Get recent activity log
-router.get("/activity-log", async (req, res) => {
+router.get("/activity-log", allowUserOrManager, async (req, res) => {
   try {
+    const scope = resolveClubScope(req);
+    if (scope.error) return res.status(scope.status).json({ message: scope.error });
+    const clubManagerIds = await Manager.find({ clubId: scope.clubId }).distinct("_id");
+
     const { timeRange = "week", page = 1, limit = 10 } = req.query;
 
     // Determine the date range
@@ -290,11 +343,13 @@ router.get("/activity-log", async (req, res) => {
     // Get total count for pagination
     const totalCount = await ActivityLog.countDocuments({
       createdAt: dateFilter,
+      managerId: { $in: clubManagerIds },
     });
 
     // Get activity logs with pagination
     const activities = await ActivityLog.find({
       createdAt: dateFilter,
+      managerId: { $in: clubManagerIds },
     })
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -329,7 +384,7 @@ router.get("/activity-log", async (req, res) => {
 });
 
 // Clear activity logs
-router.delete("/activity-log", async (req, res) => {
+router.delete("/activity-log", requireSuperAdmin, async (req, res) => {
   try {
     const { timeRange = "week" } = req.query;
 
@@ -368,7 +423,7 @@ router.delete("/activity-log", async (req, res) => {
 });
 
 // Log a new activity
-router.post("/activity-log", async (req, res) => {
+router.post("/activity-log", managerAuth, async (req, res) => {
   try {
     const { managerId, type, description, metadata } = req.body;
 
@@ -392,8 +447,12 @@ router.post("/activity-log", async (req, res) => {
 });
 
 // Get manager status trend over time
-router.get("/analytics/manager-status-trend", async (req, res) => {
+router.get("/analytics/manager-status-trend", allowUserOrManager, async (req, res) => {
   try {
+    const scope = resolveClubScope(req);
+    if (scope.error) return res.status(scope.status).json({ message: scope.error });
+    const clubManagerIds = await Manager.find({ clubId: scope.clubId }).distinct("_id");
+
     // Get time period from query params (default to last 6 months)
     const { months = 6 } = req.query;
     const monthsAgo = new Date();
@@ -405,6 +464,7 @@ router.get("/analytics/manager-status-trend", async (req, res) => {
         $match: {
           type: "status",
           createdAt: { $gte: monthsAgo },
+          managerId: { $in: clubManagerIds },
         },
       },
       {
@@ -434,6 +494,7 @@ router.get("/analytics/manager-status-trend", async (req, res) => {
     const initialManagerStates = await Manager.aggregate([
       {
         $match: {
+          _id: { $in: clubManagerIds },
           createdAt: { $lt: monthsAgo },
         },
       },
@@ -483,6 +544,7 @@ router.get("/analytics/manager-status-trend", async (req, res) => {
       const newManagers = await Manager.aggregate([
         {
           $match: {
+            _id: { $in: clubManagerIds },
             createdAt: {
               $gte: new Date(year, month - 1, 1),
               $lt: new Date(year, month, 0),
@@ -524,7 +586,7 @@ router.get("/analytics/manager-status-trend", async (req, res) => {
 });
 
 // Update payment status of the turf
-router.put("/turf-bookings/:bookingId/payment-status", async (req, res) => {
+router.put("/turf-bookings/:bookingId/payment-status", managerAuth, requireTurfBookingOwner({ idParam: "bookingId" }), async (req, res) => {
   try {
     const { bookingId } = req.params;
     const { paymentStatus, paymentMethod } = req.body;
@@ -598,7 +660,7 @@ router.put("/turf-bookings/:bookingId/payment-status", async (req, res) => {
 });
 
 // Get trainer applications for a manager - WITH DEBUGGING
-router.get("/trainer-applications", async (req, res) => {
+router.get("/trainer-applications", managerAuth, async (req, res) => {
   try {
     const { managerId, status = "pending" } = req.query;
 
@@ -725,7 +787,7 @@ router.get("/trainer-applications", async (req, res) => {
 });
 
 // Approve/Reject trainer application - WITH DEBUGGING
-router.put("/trainer-applications/:id/:action", async (req, res) => {
+router.put("/trainer-applications/:id/:action", managerAuth, async (req, res) => {
   try {
     const { id, action } = req.params;
     const { rejectionReason } = req.body;

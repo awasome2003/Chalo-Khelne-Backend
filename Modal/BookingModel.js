@@ -27,6 +27,17 @@ const BookingSchema = new mongoose.Schema(
       ref: "Tournament",
       required: true,
     },
+    // ── Tenant key (Phase 1.1 multi-tenancy) ──
+    // Owning club = ClubAdmin/corporate_admin User _id. Derived from the
+    // booking's tournament (Tournament.clubId) via the backfill script and
+    // stamped on create from the request tenant context. Scoping runs in SHADOW
+    // MODE (enforce:false) until backfilled + verified.
+    clubId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
     tournamentName: {
       type: String,
       required: true,
@@ -129,5 +140,40 @@ const BookingSchema = new mongoose.Schema(
 BookingSchema.index({ userId: 1 });
 BookingSchema.index({ tournamentId: 1 });
 BookingSchema.index({ status: 1 });
+
+// Prevent double-registration for real (logged-in) users at the DB level —
+// the app-level findOne check can't stop two concurrent requests. Partial
+// filter so GUEST bookings (userId === null, created via manager bulk upload)
+// are exempt: many null-userId guests can share one tournament without
+// colliding. A racing duplicate now fails with a clean E11000 (handled as 409).
+// NOTE: if the collection already contains duplicate (userId, tournamentId)
+// pairs, this index will fail to build until they are de-duplicated.
+BookingSchema.index(
+  { userId: 1, tournamentId: 1 },
+  { unique: true, partialFilterExpression: { userId: { $type: "objectId" } } }
+);
+
+// Tenant-aware compound index for club dashboards (bookings by club + status).
+BookingSchema.index({ clubId: 1, status: 1, createdAt: -1 });
+
+// Multi-tenant scoping (Phase 1.1) — ENFORCED (2026-06-02).
+// Backfill: 1016 of 1347 bookings stamped. The remaining 331 are legacy orphans
+// of 47 DELETED tournaments (verified via diagnoseOrphanBookings.js) — they have
+// no clubId and are therefore invisible to club-scoped queries (no leak) while
+// their owning players still see them via userId (no tenant context). Verify
+// (verifyBookingTenancy.js) proved scoping correct. To revert, set enforce:false.
+// NOTE: .aggregate() pipelines are NOT yet scoped by this plugin.
+const tenantScope = require("../utils/tenantScope");
+BookingSchema.plugin(tenantScope, {
+  field: "clubId",
+  enforce: true,
+  // Bookings are usually created by players (cross-tenant, no club context),
+  // so derive the tenant from the tournament when context can't supply it.
+  derive: async (doc) => {
+    if (!doc.tournamentId) return null;
+    const t = await mongoose.model("Tournament").findById(doc.tournamentId).select("clubId").lean();
+    return t ? t.clubId : null;
+  },
+});
 
 module.exports = mongoose.model("Booking", BookingSchema);

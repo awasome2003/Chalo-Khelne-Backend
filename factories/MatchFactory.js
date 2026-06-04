@@ -507,8 +507,31 @@ function createSuperGroupMatch(opts) {
 
   // STEP 17b.i — per-sport scoringType.
   const { getMatchFormat: _getMF2, getSportName: _getSN2 } = require("../utils/sportTrackUtils");
-  const scoringType = (tournament && _getMF2(tournament, sportId)?.scoringType)
+  const tf = _getMF2(tournament, sportId) || {};
+  const scoringType = tf.scoringType
     || (tournament ? getScoringType(_getSN2(tournament, sportId)) : null);
+
+  // Translate the tournament's matchFormat into the field shape SuperMatch
+  // expects (maxSets / maxGames / serviceRule.*). Without this, Mongoose
+  // applies the schema defaults at SuperMatch.js (setsToWin: 3, maxSets: 5,
+  // maxGames: 5) and a best-of-3 tournament gets best-of-5 match docs —
+  // which then fails bulk score upload with "Need 3 sets to win".
+  const totalSets = tf.totalSets || 1;
+  const totalGames = tf.totalGames || 1;
+  const matchFormat = {
+    setsToWin: tf.setsToWin || Math.ceil(totalSets / 2),
+    maxSets: totalSets,
+    gamesToWin: tf.gamesToWin || Math.ceil(totalGames / 2),
+    maxGames: totalGames,
+    pointsToWinGame: tf.pointsToWinGame ?? null,
+    marginToWin: tf.marginToWin ?? null,
+    deuceRule: tf.deuceRule ?? false,
+    maxPointsPerGame: tf.maxPointsCap ?? null,
+    serviceRule: {
+      pointsPerService: tf.serviceAlternate ?? 2,
+      deuceServicePoints: 1,
+    },
+  };
 
   return _stamp({
     tournamentId,
@@ -528,6 +551,7 @@ function createSuperGroupMatch(opts) {
     winner: null,
     scoringType: scoringType || null,
     matchResult: null,
+    matchFormat,
     reminder: { isEnabled: true, reminderTime: matchDate },
   }, tournament);
 }

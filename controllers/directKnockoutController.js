@@ -1173,6 +1173,77 @@ const completeGame = async (req, res) => {
     // Sport-aware shape detection.
     // Nested-game sports (Tennis): a set contains multiple games \u2014 tally them.
     // Flat-set sports (TT, Badminton): a set is atomic \u2014 one game IS the set.
+    // ═══ Sport-aware scoring ═══
+    // scoringType lives at the top level of the match (set at creation). Non-set
+    // sports (time/innings/single) submit the FINAL match totals in a single
+    // call — the higher score wins and completes the match outright. No sets.
+    const scoringType = (match.scoringType || fmt.scoringType || "sets").toLowerCase();
+    const isNonSetSport =
+      scoringType === "time" || scoringType === "innings" || scoringType === "single";
+
+    if (isNonSetSport) {
+      const matchWinner = player1Score > player2Score ? match.player1 : match.player2;
+
+      // Record one completed "set/game" so the stored shape stays consistent
+      // with set-based matches (audit + UI), but the decisive values are the
+      // real totals (goals / runs / points).
+      match.sets = [{
+        setNumber: 1,
+        status: "COMPLETED",
+        winner: { playerId: matchWinner.playerId, playerName: matchWinner.playerName },
+        games: [{
+          gameNumber: 1,
+          status: "COMPLETED",
+          finalScore: { player1: player1Score, player2: player2Score },
+          winner: { playerId: matchWinner.playerId, playerName: matchWinner.playerName },
+          startTime: new Date(),
+          endTime: new Date(),
+        }],
+      }];
+      match.liveScore = { player1Points: player1Score, player2Points: player2Score };
+      match.status = "COMPLETED";
+      // finalScore holds the actual decisive totals (what the results export
+      // displays, e.g. "3-1"). matchResult is the normalized source of truth
+      // carrying the real scoringType.
+      match.result = {
+        winner: { playerId: matchWinner.playerId, playerName: matchWinner.playerName },
+        finalScore: { player1Sets: player1Score, player2Sets: player2Score },
+        completedAt: new Date(),
+      };
+      match.matchResult = {
+        scoringType,
+        player1Score,
+        player2Score,
+        winner: { playerId: matchWinner.playerId, playerName: matchWinner.playerName },
+        completedAt: new Date(),
+      };
+
+      // Auto-progress winner to next match (same slot logic as the set path).
+      if (match.nextMatchId) {
+        const nextMatch = await DirectKnockoutMatch.findOne({ matchId: match.nextMatchId });
+        if (nextMatch) {
+          const isOdd = match.matchNumber % 2 !== 0;
+          const slot = isOdd ? "player1" : "player2";
+          nextMatch[slot] = { playerId: matchWinner.playerId, playerName: matchWinner.playerName };
+          await nextMatch.save({ validateModifiedOnly: true });
+        }
+      }
+
+      await match.save({ validateModifiedOnly: true });
+      return res.json({
+        success: true,
+        message: "Match completed!",
+        match: {
+          matchId: match.matchId,
+          status: match.status,
+          sets: match.sets,
+          result: match.result,
+          matchResult: match.matchResult,
+        },
+      });
+    }
+
+    // ═══ SET-BASED sports (badminton, tennis, table tennis, squash) ═══
     const { hasNestedGames } = require("../factories/MatchFactory");
     const nested = hasNestedGames(fmt);
 
@@ -1315,8 +1386,12 @@ const bulkUploadScores = async (req, res) => {
     for (const entry of scores) {
       const { matchId, sets: setScores } = entry;
 
-      if (!matchId || !Array.isArray(setScores) || setScores.length === 0) {
-        errors.push({ matchId, error: "matchId and sets required" });
+      // Set-based sports send a `sets` array; non-set sports may send a single
+      // final score as { player1Score, player2Score } (or a one-row `sets`).
+      const hasSets = Array.isArray(setScores) && setScores.length > 0;
+      const hasFinal = entry.player1Score != null && entry.player2Score != null;
+      if (!matchId || (!hasSets && !hasFinal)) {
+        errors.push({ matchId, error: "matchId and sets (or final score) required" });
         continue;
       }
 
@@ -1330,6 +1405,78 @@ const bulkUploadScores = async (req, res) => {
         if (match.status === "COMPLETED") { errors.push({ matchId, error: "Already completed" }); continue; }
 
         const byeFmt = readMatchFormat(match);
+        const bulkScoringType = (match.scoringType || byeFmt.scoringType || "sets").toLowerCase();
+        const bulkIsNonSet =
+          bulkScoringType === "time" || bulkScoringType === "innings" || bulkScoringType === "single";
+
+        // ═══ Non-set sports: a single decisive final score completes the match ═══
+        if (bulkIsNonSet) {
+          const fin = hasFinal
+            ? { player1Score: entry.player1Score, player2Score: entry.player2Score }
+            : setScores[0];
+          if (!fin || fin.player1Score == null || fin.player2Score == null) {
+            errors.push({ matchId, error: "Final score required" });
+            continue;
+          }
+          if (fin.player1Score === fin.player2Score) {
+            errors.push({ matchId, error: "Scores cannot be tied" });
+            continue;
+          }
+          const winnerData = fin.player1Score > fin.player2Score ? match.player1 : match.player2;
+
+          match.sets = [{
+            setNumber: 1,
+            status: "COMPLETED",
+            winner: { playerId: winnerData.playerId, playerName: winnerData.playerName },
+            games: [{
+              gameNumber: 1,
+              status: "COMPLETED",
+              finalScore: { player1: fin.player1Score, player2: fin.player2Score },
+              winner: { playerId: winnerData.playerId, playerName: winnerData.playerName },
+              startTime: new Date(),
+              endTime: new Date(),
+            }],
+          }];
+          match.status = "COMPLETED";
+          match.result = {
+            winner: { playerId: winnerData.playerId, playerName: winnerData.playerName },
+            finalScore: { player1Sets: fin.player1Score, player2Sets: fin.player2Score },
+            completedAt: new Date(),
+          };
+          match.matchResult = {
+            scoringType: bulkScoringType,
+            player1Score: fin.player1Score,
+            player2Score: fin.player2Score,
+            winner: { playerId: winnerData.playerId, playerName: winnerData.playerName },
+            completedAt: new Date(),
+          };
+
+          if (match.nextMatchId) {
+            const nextMatch = await DirectKnockoutMatch.findOne({ matchId: match.nextMatchId });
+            if (nextMatch) {
+              const isOdd = match.matchNumber % 2 !== 0;
+              const slot = isOdd ? "player1" : "player2";
+              nextMatch[slot] = { playerId: winnerData.playerId, playerName: winnerData.playerName };
+              await nextMatch.save({ validateModifiedOnly: true });
+            }
+          }
+
+          await match.save({ validateModifiedOnly: true });
+          results.push({
+            matchId: match.matchId,
+            player1: match.player1.playerName,
+            player2: match.player2.playerName,
+            winner: winnerData.playerName,
+            finalScore: `${fin.player1Score}-${fin.player2Score}`,
+          });
+          continue;
+        }
+
+        // ═══ SET-BASED sports ═══
+        if (!hasSets) {
+          errors.push({ matchId, error: "sets array required for this sport" });
+          continue;
+        }
         const setsToWin = byeFmt.setsToWin;
         let p1SetsWon = 0, p2SetsWon = 0;
         let matchDone = false;

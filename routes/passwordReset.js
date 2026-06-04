@@ -27,19 +27,24 @@ router.get("/reset-password-success", (req, res) => {
 });
 
 // Initiate password reset
+// Generic success response — never reveals whether the email exists (account
+// enumeration defense; matches the Phase-7 OTP hardening).
+const FORGOT_PASSWORD_OK = {
+  success: true,
+  message: "If an account exists for that email, a reset link has been sent.",
+};
+
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
     const user = await User.findOne({ email });
 
     if (!user) {
-      console.log(
-        `Password reset rejected: No account found for email ${email}`
-      );
-      return res.status(400).json({
-        success: false,
-        message: "No account found with this email address",
-      });
+      console.log(`Password reset requested for unknown email (no-op): ${email}`);
+      return res.status(200).json(FORGOT_PASSWORD_OK);
     }
 
     console.log(`Password reset initiated for user: ${user._id} (${email})`);
@@ -88,16 +93,11 @@ router.post("/forgot-password", async (req, res) => {
 
     await transporter.sendMail(mailOptions);
 
-    res.status(200).json({
-      success: true,
-      message: "Reset link has been sent to your email",
-    });
+    res.status(200).json(FORGOT_PASSWORD_OK);
   } catch (error) {
     console.error("Forgot password error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error processing your request. Please try again later.",
-    });
+    // Don't leak internal errors to the client either (avoids enum via 500 vs 200).
+    res.status(200).json(FORGOT_PASSWORD_OK);
   }
 });
 
@@ -109,7 +109,7 @@ router.post("/reset-password", async (req, res) => {
     // Verify the token
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_RESET_SECRET);
+      decoded = jwt.verify(token, process.env.JWT_RESET_SECRET, { algorithms: ["HS256"] });
     } catch (err) {
       return res.status(400).json({
         success: false,
@@ -124,6 +124,15 @@ router.post("/reset-password", async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "User not found.",
+      });
+    }
+
+    // Single-use: a token issued before the last password change has already
+    // been used (or is stale) — reject replays.
+    if (user.passwordChangedAt && decoded.iat && decoded.iat * 1000 < user.passwordChangedAt.getTime()) {
+      return res.status(400).json({
+        success: false,
+        message: "This reset link has already been used. Please request a new one.",
       });
     }
 
@@ -144,7 +153,7 @@ router.post("/reset-password", async (req, res) => {
     await User.updateOne(
       { _id: user._id },
       {
-        $set: { password: hashedPassword },
+        $set: { password: hashedPassword, passwordChangedAt: new Date() },
       }
     );
 

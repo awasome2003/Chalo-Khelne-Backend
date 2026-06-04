@@ -8,7 +8,7 @@ const SessionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["personal", "group", "intermediate"],
+    enum: ["personal", "group", "intermediate", "academy"],
     required: true,
   },
   startTime: {
@@ -108,6 +108,8 @@ SessionSchema.index({ startTime: 1, endTime: 1 });
 SessionSchema.index({ status: 1 });
 SessionSchema.index({ sportType: 1 });
 SessionSchema.index({ "feedback.rating": 1 });
+// Trainer dashboard/earnings: filter by trainer + status, newest first.
+SessionSchema.index({ trainerId: 1, status: 1, startTime: -1 });
 
 // Update the updatedAt timestamp before saving
 SessionSchema.pre("save", function (next) {
@@ -120,32 +122,24 @@ SessionSchema.post("save", async function (doc) {
   if (doc.feedback && doc.feedback.length > 0) {
     try {
       const Trainer = mongoose.model("Trainer");
-
-      // Get all sessions for this trainer with feedback
       const Session = mongoose.model("Session");
-      const sessions = await Session.find({
-        trainerId: doc.trainerId,
-        "feedback.0": { $exists: true },
-      });
 
-      // Calculate average rating
-      let totalRating = 0;
-      let totalFeedback = 0;
+      // Compute the average in the DB (was: load all sessions + sum in app
+      // memory, which lost-updates under concurrent feedback saves). Each
+      // recompute reads the latest committed state, so the result stays
+      // consistent instead of clobbering a stale in-memory tally.
+      const [agg] = await Session.aggregate([
+        { $match: { trainerId: doc.trainerId, "feedback.0": { $exists: true } } },
+        { $unwind: "$feedback" },
+        { $match: { "feedback.rating": { $gt: 0 } } },
+        { $group: { _id: null, avg: { $avg: "$feedback.rating" }, count: { $sum: 1 } } },
+      ]);
 
-      sessions.forEach((session) => {
-        session.feedback.forEach((item) => {
-          if (item.rating) {
-            totalRating += item.rating;
-            totalFeedback++;
-          }
-        });
-      });
+      const averageRating = agg ? agg.avg : 0;
+      const totalFeedback = agg ? agg.count : 0;
 
-      const averageRating = totalFeedback > 0 ? totalRating / totalFeedback : 0;
-
-      // Update trainer rating and reviewCount
       await Trainer.findByIdAndUpdate(doc.trainerId, {
-        rating: averageRating.toFixed(1),
+        rating: Number(averageRating).toFixed(1),
         reviewCount: totalFeedback,
       });
     } catch (error) {

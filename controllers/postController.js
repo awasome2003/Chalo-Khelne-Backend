@@ -1,4 +1,5 @@
 const Post = require('../Modal/Post');
+const escapeRegex = require('../utils/escapeRegex');
 const Tournament = require('../Modal/Tournament'); // Add Tournament model
 const User = require('../Modal/User'); // Add User model
 const { Manager } = require('../Modal/ClubManager'); // Add Manager model
@@ -38,8 +39,8 @@ exports.createPost = async (req, res) => {
     // 1. Check if tournament exists in DB - search by title or name (case-insensitive)
     const tournament = await Tournament.findOne({
       $or: [
-        { title: { $regex: new RegExp(`^${tournamentName.trim()}$`, 'i') } },
-        { name: { $regex: new RegExp(`^${tournamentName.trim()}$`, 'i') } }
+        { title: { $regex: new RegExp(`^${escapeRegex(tournamentName.trim())}$`, 'i') } },
+        { name: { $regex: new RegExp(`^${escapeRegex(tournamentName.trim())}$`, 'i') } }
       ]
     });
 
@@ -73,7 +74,10 @@ exports.createPost = async (req, res) => {
       link,
       linkPreview,
       user: req.user.id,
-      userModel: req.user.role === 'Manager' ? 'Manager' : 'User' // Set correct model if available in token
+      // allowUserOrManager sets req.userRole to 'Manager' | 'User' | 'SuperAdmin'.
+      // Manager schema has no `role` field, so req.user.role is undefined for
+      // Manager tokens — use req.userRole as the source of truth.
+      userModel: req.userRole === 'Manager' ? 'Manager' : 'User'
     });
 
     await post.save();
@@ -251,6 +255,41 @@ exports.addComment = async (req, res) => {
   } catch (error) {
     console.error("Error adding comment:", error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+exports.deleteComment = async (req, res) => {
+  try {
+    const { postId, commentId } = req.params;
+    const userId = req.user.id;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Post not found" });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: "Comment not found" });
+    }
+
+    // Only the comment author or the post owner can delete a comment
+    const isCommentAuthor = String(comment.user) === String(userId);
+    const isPostOwner = String(post.user) === String(userId);
+    if (!isCommentAuthor && !isPostOwner) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized to delete this comment" });
+    }
+
+    post.comments.pull({ _id: commentId });
+    await post.save();
+    await post.populate({ path: "comments.user", select: "name profileImage" });
+
+    return res.json({ success: true, comments: post.comments });
+  } catch (error) {
+    console.error("Error deleting comment:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

@@ -1,4 +1,4 @@
-const xlsx = require("xlsx");
+const { readSheetRows } = require("../utils/excelUtils");
 const csvtojson = require("csvtojson");
 const mongoose = require("mongoose");
 const path = require("path");
@@ -25,10 +25,10 @@ async function parseFile(filePath, originalName) {
   }
 
   if (ext === ".xlsx" || ext === ".xls") {
-    const workbook = xlsx.readFile(filePath);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
+    // blankValue:"" mirrors the previous sheet_to_json({ defval: "" }).
+    // Note: exceljs reads .xlsx only; a genuine legacy binary .xls will
+    // throw here and be surfaced to the caller as a 400.
+    const rows = await readSheetRows(filePath, { blankValue: "" });
     return rows.map(normalizeRow);
   }
 

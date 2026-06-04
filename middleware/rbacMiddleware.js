@@ -8,18 +8,6 @@ const Role = require("../Modal/Role");
 // UNIFIED AUTH — Resolves token → user/manager/superadmin + role
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * Unified authentication middleware.
- * Decodes JWT, finds the account across all models,
- * resolves the RBAC role, and attaches to req.
- *
- * After this middleware:
- *   req.account       — the user/manager/superadmin document
- *   req.accountType   — "User" | "Manager" | "SuperAdmin"
- *   req.accountId     — the account's _id (string)
- *   req.callerRole    — the Role document (with permissions populated)
- *   req.isSuperAdmin  — boolean shorthand
- */
 const unifiedAuth = async (req, res, next) => {
   const authHeader = req.header("Authorization");
   if (!authHeader) {
@@ -32,9 +20,8 @@ const unifiedAuth = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
 
-    // ── SuperAdmin (JWT has email + role:"superadmin", no id) ──
     if (decoded.role === "superadmin" && decoded.email) {
       const superadmin = await Superadminmodel.findOne({ email: decoded.email });
       if (!superadmin) {
@@ -44,52 +31,38 @@ const unifiedAuth = async (req, res, next) => {
       req.accountType = "SuperAdmin";
       req.accountId = superadmin._id.toString();
       req.isSuperAdmin = true;
-
-      // Resolve RBAC role (or create virtual one)
       const saRole = await Role.findOne({ slug: "super_admin" }).populate("permissions");
       req.callerRole = saRole || { slug: "super_admin", authorityLevel: 0, permissions: [] };
-
-      // Legacy compatibility
       req.user = { id: superadmin._id, email: decoded.email, role: "superadmin" };
       return next();
     }
 
-    // ── Resolve account ID from various JWT formats ──
     const accountId = decoded.id || decoded.userId;
     if (!accountId) {
       return res.status(401).json({ message: "Invalid token payload." });
     }
 
-    // ── Try User model first ──
     let user = await User.findById(accountId);
     if (user) {
       req.account = user;
       req.accountType = "User";
       req.accountId = user._id.toString();
       req.isSuperAdmin = false;
-
-      // Map legacy role string to RBAC role slug
       const roleSlug = mapLegacyRole(user.role);
       const rbacRole = await Role.findOne({ slug: roleSlug }).populate("permissions");
       req.callerRole = rbacRole || { slug: roleSlug, authorityLevel: 99, permissions: [] };
-
-      // Legacy compatibility
       req.user = { id: user._id, email: user.email, role: user.role };
       return next();
     }
 
-    // ── Try Manager model ──
     let manager = await Manager.findById(accountId);
     if (manager) {
       req.account = manager;
       req.accountType = "Manager";
       req.accountId = manager._id.toString();
       req.isSuperAdmin = false;
-
       const rbacRole = await Role.findOne({ slug: "manager" }).populate("permissions");
       req.callerRole = rbacRole || { slug: "manager", authorityLevel: 2, permissions: [] };
-
-      // Legacy compatibility
       req.user = { id: manager._id, email: manager.email, role: "Manager" };
       return next();
     }
@@ -104,133 +77,208 @@ const unifiedAuth = async (req, res, next) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// LAZY CALLER-ROLE RESOLVER
+// Bridges the legacy auth middlewares (authenticate, allowUserOrManager,
+// managerAuth) to the RBAC pipeline. If unifiedAuth already ran,
+// req.callerRole is set and we return it; otherwise we figure out the
+// caller's role from whatever the legacy middleware left on the request.
+// Returns the populated Role document, or null when unresolvable.
+// ═══════════════════════════════════════════════════════════════
+async function resolveCallerRole(req) {
+  if (req.callerRole) return req.callerRole;
+
+  let slug = null;
+
+  if (req.isSuperAdmin || req.userRole === "SuperAdmin") {
+    slug = "super_admin";
+  } else if (req.userRole === "Manager") {
+    slug = "manager";
+  } else if (req.userRole === "User" && req.user) {
+    // allowUserOrManager set req.user to the full User document.
+    slug = mapLegacyRole(req.user.role || "Player");
+  } else if (req.user) {
+    // authenticate/managerAuth set req.user to the decoded JWT payload.
+    const id = req.user.id || req.user._id || req.user.userId;
+    if (id) {
+      const user = await User.findById(id).select("role").lean();
+      if (user) {
+        slug = mapLegacyRole(user.role || "Player");
+      } else {
+        const manager = await Manager.findById(id).select("_id").lean();
+        if (manager) slug = "manager";
+      }
+    }
+    if (!slug && req.user.role) {
+      slug = mapLegacyRole(req.user.role);
+    }
+  }
+
+  if (!slug) return null;
+
+  const role = await Role.findOne({ slug }).populate("permissions");
+  req.callerRole = role;
+  return role;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PERMISSION CHECK — Verify caller has specific permission(s)
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * Creates middleware that checks if the caller has the required permission.
- * SuperAdmin always passes.
- *
- * Usage:
- *   router.post("/create", unifiedAuth, requirePermission("tournament:create"), handler)
- *   router.delete("/:id", unifiedAuth, requirePermission("tournament:delete"), handler)
- */
-const requirePermission = (...permissionKeys) => {
-  return (req, res, next) => {
-    // SuperAdmin bypasses all permission checks
-    if (req.isSuperAdmin) return next();
+const DENY = {
+  message: "Access denied. You don't have permission to perform this action.",
+};
 
-    const role = req.callerRole;
+// Re-check the caller's status doc — defends against an existing valid JWT
+// from a freshly-suspended account that the upstream legacy middleware didn't
+// gate (e.g. routes that mounted rbac directly without authenticate first).
+// SuperAdmin is never suspendable so we skip the lookup for them.
+async function rejectIfSuspended(req, res) {
+  if (req.isSuperAdmin || req.userRole === "SuperAdmin") return false;
+  // If req.user is already a full doc with status, use it.
+  if (req.user && typeof req.user.status === "string") {
+    if (req.user.status === "active") return false;
+    const code = req.user.status === "suspended" ? "ACCOUNT_SUSPENDED" : "ACCOUNT_REJECTED";
+    res.status(403).json({
+      success: false,
+      code,
+      message:
+        code === "ACCOUNT_SUSPENDED"
+          ? "Your account has been suspended. Contact support."
+          : "Your account has been rejected. Contact support.",
+      reason: req.user.suspensionReason || null,
+    });
+    return true;
+  }
+  // Otherwise do a defensive lookup by id.
+  const id = req.user?.id || req.user?._id || req.user?.userId || req.accountId;
+  if (!id) return false;
+  let doc = null;
+  if (req.accountType === "Manager" || req.userRole === "Manager") {
+    doc = await Manager.findById(id).select("status suspensionReason").lean();
+  } else {
+    doc = await User.findById(id).select("status suspensionReason").lean();
+    if (!doc) doc = await Manager.findById(id).select("status suspensionReason").lean();
+  }
+  if (!doc || !doc.status || doc.status === "active") return false;
+  const code = doc.status === "suspended" ? "ACCOUNT_SUSPENDED" : "ACCOUNT_REJECTED";
+  res.status(403).json({
+    success: false,
+    code,
+    message:
+      code === "ACCOUNT_SUSPENDED"
+        ? "Your account has been suspended. Contact support."
+        : "Your account has been rejected. Contact support.",
+    reason: doc.suspensionReason || null,
+  });
+  return true;
+}
+
+const requirePermission = (...permissionKeys) => {
+  return async (req, res, next) => {
+    // SuperAdmin always bypasses (set by unifiedAuth, allowUserOrManager,
+    // requireSuperAdmin, or any future SA-aware middleware).
+    if (req.isSuperAdmin || req.userRole === "SuperAdmin") return next();
+
+    // Suspension gate — between SA bypass and the permission check.
+    if (await rejectIfSuspended(req, res)) return;
+
+    let role;
+    try {
+      role = await resolveCallerRole(req);
+    } catch (err) {
+      return res.status(403).json(DENY);
+    }
+
     if (!role || !role.permissions) {
-      return res.status(403).json({
-        message: "Access denied. No role assigned.",
-      });
+      return res.status(403).json(DENY);
     }
 
     const grantedKeys = new Set(
       role.permissions
-        .filter((p) => p.isActive !== false)
+        .filter((p) => p && p.isActive !== false)
         .map((p) => (typeof p === "string" ? p : p.key))
     );
 
-    // Check if caller has ALL required permissions
     const missing = permissionKeys.filter((k) => !grantedKeys.has(k));
     if (missing.length > 0) {
-      return res.status(403).json({
-        message: "Access denied. Missing permissions.",
-        required: permissionKeys,
-        missing,
-      });
+      return res.status(403).json(DENY);
     }
 
     next();
   };
 };
 
-/**
- * Creates middleware that checks if caller has ANY of the listed permissions.
- *
- * Usage:
- *   router.get("/", unifiedAuth, requireAnyPermission("tournament:read", "tournament:manage"), handler)
- */
 const requireAnyPermission = (...permissionKeys) => {
-  return (req, res, next) => {
-    if (req.isSuperAdmin) return next();
+  return async (req, res, next) => {
+    if (req.isSuperAdmin || req.userRole === "SuperAdmin") return next();
 
-    const role = req.callerRole;
+    let role;
+    try {
+      role = await resolveCallerRole(req);
+    } catch (err) {
+      return res.status(403).json(DENY);
+    }
+
     if (!role || !role.permissions) {
-      return res.status(403).json({ message: "Access denied. No role assigned." });
+      return res.status(403).json(DENY);
     }
 
     const grantedKeys = new Set(
       role.permissions
-        .filter((p) => p.isActive !== false)
+        .filter((p) => p && p.isActive !== false)
         .map((p) => (typeof p === "string" ? p : p.key))
     );
 
     const hasAny = permissionKeys.some((k) => grantedKeys.has(k));
     if (!hasAny) {
-      return res.status(403).json({
-        message: "Access denied. Need at least one of the required permissions.",
-        required: permissionKeys,
-      });
+      return res.status(403).json(DENY);
     }
-
     next();
   };
 };
 
 // ═══════════════════════════════════════════════════════════════
-// ROLE CHECK — Verify caller has minimum authority level
+// AUTHORITY CHECK — Verify caller has minimum authority level
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * Checks if caller's role has authority level ≤ the required level.
- * Lower number = higher authority.
- *
- * Usage:
- *   router.post("/admin-only", unifiedAuth, requireAuthority(1), handler) // ClubAdmin+
- *   router.post("/manager-up", unifiedAuth, requireAuthority(2), handler)  // Manager+
- */
 const requireAuthority = (maxLevel) => {
-  return (req, res, next) => {
-    if (req.isSuperAdmin) return next();
+  return async (req, res, next) => {
+    if (req.isSuperAdmin || req.userRole === "SuperAdmin") return next();
 
-    const role = req.callerRole;
+    let role;
+    try {
+      role = await resolveCallerRole(req);
+    } catch (err) {
+      return res.status(403).json(DENY);
+    }
+
     if (!role || role.authorityLevel === undefined) {
-      return res.status(403).json({ message: "Access denied. No role assigned." });
+      return res.status(403).json(DENY);
     }
 
     if (role.authorityLevel > maxLevel) {
-      return res.status(403).json({
-        message: "Access denied. Insufficient authority level.",
-        required: maxLevel,
-        current: role.authorityLevel,
-      });
+      return res.status(403).json(DENY);
     }
 
     next();
   };
 };
 
-/**
- * Restricts access to specific role slugs.
- *
- * Usage:
- *   router.get("/sa-only", unifiedAuth, requireRole("super_admin"), handler)
- *   router.get("/admins", unifiedAuth, requireRole("super_admin", "club_admin"), handler)
- */
 const requireRole = (...roleSlugs) => {
-  return (req, res, next) => {
-    if (req.isSuperAdmin && roleSlugs.includes("super_admin")) return next();
+  return async (req, res, next) => {
+    // SuperAdmin bypasses all role gates — never lock SA out, even if the
+    // caller forgot to list "super_admin" in the allow-list.
+    if (req.isSuperAdmin || req.userRole === "SuperAdmin") return next();
 
-    const role = req.callerRole;
+    let role;
+    try {
+      role = await resolveCallerRole(req);
+    } catch (err) {
+      return res.status(403).json(DENY);
+    }
+
     if (!role || !roleSlugs.includes(role.slug)) {
-      return res.status(403).json({
-        message: "Access denied. Role not authorized.",
-        required: roleSlugs,
-        current: role?.slug || "none",
-      });
+      return res.status(403).json(DENY);
     }
 
     next();
@@ -247,6 +295,7 @@ function mapLegacyRole(legacyRole) {
     superadmin: "super_admin",
     ClubAdmin: "club_admin",
     clubadmin: "club_admin",
+    corporate_admin: "club_admin",
     Manager: "manager",
     manager: "manager",
     Trainer: "trainer",
@@ -263,6 +312,7 @@ function mapLegacyRole(legacyRole) {
 
 module.exports = {
   unifiedAuth,
+  resolveCallerRole,
   requirePermission,
   requireAnyPermission,
   requireAuthority,

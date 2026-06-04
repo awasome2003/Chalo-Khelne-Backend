@@ -48,13 +48,18 @@ const staffApplicationController = {
         return res.status(404).json({ success: false, message: "User not found" });
       }
 
-      // Check for existing application (unique constraint will also catch this)
-      const existing = await StaffApplication.findOne({ userId, tournamentId, role });
-      if (existing) {
+      // One role per tournament: reject if the user already has ANY active
+      // (non-withdrawn) application for this tournament, regardless of role.
+      const existingAny = await StaffApplication.findOne({
+        userId,
+        tournamentId,
+        status: { $ne: "withdrawn" },
+      });
+      if (existingAny) {
         return res.status(409).json({
           success: false,
-          message: `You've already applied as ${role} for this tournament`,
-          application: existing,
+          message: `You've already applied as ${existingAny.role} for this tournament. Only one role per tournament is allowed.`,
+          application: existingAny,
         });
       }
 
@@ -257,28 +262,34 @@ const staffApplicationController = {
       const { applicationId } = req.params;
       const { managerNote, managerId, stages } = req.body;
 
-      const application = await StaffApplication.findById(applicationId);
+      // Atomically claim the pending→accepted transition so two managers can't
+      // both accept the same application (race → double-accept + double notifications).
+      const application = await StaffApplication.findOneAndUpdate(
+        { _id: applicationId, status: "pending" },
+        {
+          $set: {
+            status: "accepted",
+            managerNote: managerNote || "",
+            respondedAt: new Date(),
+            respondedBy: managerId || null,
+          },
+        },
+        { new: true }
+      );
       if (!application) {
-        return res.status(404).json({ success: false, message: "Application not found" });
-      }
-      if (application.status !== "pending") {
-        return res.status(400).json({ success: false, message: `Already ${application.status}` });
+        const existing = await StaffApplication.findById(applicationId).select("status").lean();
+        if (!existing) {
+          return res.status(404).json({ success: false, message: "Application not found" });
+        }
+        return res.status(400).json({ success: false, message: `Already ${existing.status}` });
       }
 
-      application.status = "accepted";
-      application.managerNote = managerNote || "";
-      application.respondedAt = new Date();
-      application.respondedBy = managerId || null;
-
-      // Phase 4d: save stage grants for referee applications.
-      // Values must be a subset of ["group-stage", "knockout"].
-      // Empty array = "all stages allowed" (backward compat for clients that don't send stages).
+      // Phase 4d: save stage grants for referee applications (subset of group-stage/knockout).
       if (application.role === "referee" && Array.isArray(stages)) {
         const allowed = new Set(["group-stage", "knockout"]);
         application.stages = stages.filter((s) => allowed.has(s));
+        await application.save();
       }
-
-      await application.save();
 
       // Notify the applicant
       try {
@@ -312,19 +323,25 @@ const staffApplicationController = {
       const { applicationId } = req.params;
       const { managerNote, managerId } = req.body;
 
-      const application = await StaffApplication.findById(applicationId);
+      const application = await StaffApplication.findOneAndUpdate(
+        { _id: applicationId, status: "pending" },
+        {
+          $set: {
+            status: "rejected",
+            managerNote: managerNote || "",
+            respondedAt: new Date(),
+            respondedBy: managerId || null,
+          },
+        },
+        { new: true }
+      );
       if (!application) {
-        return res.status(404).json({ success: false, message: "Application not found" });
+        const existing = await StaffApplication.findById(applicationId).select("status").lean();
+        if (!existing) {
+          return res.status(404).json({ success: false, message: "Application not found" });
+        }
+        return res.status(400).json({ success: false, message: `Already ${existing.status}` });
       }
-      if (application.status !== "pending") {
-        return res.status(400).json({ success: false, message: `Already ${application.status}` });
-      }
-
-      application.status = "rejected";
-      application.managerNote = managerNote || "";
-      application.respondedAt = new Date();
-      application.respondedBy = managerId || null;
-      await application.save();
 
       // Notify the applicant
       try {

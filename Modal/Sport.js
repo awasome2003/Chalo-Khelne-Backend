@@ -82,14 +82,11 @@ const sportSchema = new mongoose.Schema(
     },
     scoringType: {
       type: String,
-      enum: [
-        "sets-games-points",
-        "innings-overs",
-        "halves-goals",
-        "quarters-points",
-        "single-score",
-        "custom",
-      ],
+      // Short forms — must match Config/sportPresets SCORING_TYPES, the scoring
+      // engine, matchFormatUtils.getScoringType, and the *Match models. The old
+      // long-form enum ("sets-games-points", …) rejected every preset/createSport
+      // write (Mongoose enum validation), which broke sport seeding/creation.
+      enum: ["sets", "innings", "time", "single", "custom"],
       required: true,
     },
     matchFormat: {
@@ -105,6 +102,13 @@ const sportSchema = new mongoose.Schema(
       default: true,
     },
     isPreset: {
+      type: Boolean,
+      default: false,
+    },
+    // Drives team-vs-individual booking flow (see project_booking_team_vs_individual
+    // memory). Backfill script: scripts/setIsTeamSport.js sets this true for
+    // sports with category="Team".
+    isTeamSport: {
       type: Boolean,
       default: false,
     },

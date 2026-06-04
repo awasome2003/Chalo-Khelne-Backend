@@ -1,10 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const clubAdminFinanceController = require("../controllers/clubAdminFinanceController");
-const { authenticate } = require("../middleware/authMiddleware");
+const { authenticate, requireRole } = require("../middleware/authMiddleware");
 
-// All routes require authentication (Club Admin is a User with role ClubAdmin)
+// All routes require authentication AND a finance-owning role.
+// authenticate proves who the caller is; requireRole restricts to club/corporate
+// admins (superadmin is always allowed by requireRole). Previously this route had
+// only authenticate — any logged-in user could hit the finance endpoints.
 router.use(authenticate);
+router.use(requireRole("ClubAdmin", "corporate_admin"));
 
 // Overview — all managers summary with revenue
 router.get("/overview", clubAdminFinanceController.getOverview);

@@ -7,6 +7,7 @@ const GroupChat = require("../Modal/GroupChat");
 const GroupChatMessage = require("../Modal/GroupChatMessage");
 const User = require("../Modal/User");
 const { Manager } = require("../Modal/ClubManager");
+const { allowUserOrManager } = require("../middleware/authMiddleware");
 
 // File upload
 const uploadsDir = path.join(__dirname, "../uploads/group-chat");
@@ -18,18 +19,45 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 // ════════════════════════════════════
-// OWNERSHIP CHECK HELPER
+// AUTH — every group-chat route requires a valid token (User/Manager/SuperAdmin)
+// ════════════════════════════════════
+router.use(allowUserOrManager);
+
+// ════════════════════════════════════
+// CALLER IDENTITY — derived from the verified token, NEVER from the request body.
+// allowUserOrManager sets req.user to the DB document (User or Manager) and
+// req.userRole to "User" | "Manager" | "SuperAdmin". This is the single source
+// of truth for who the caller is — clients can no longer spoof createdBy /
+// requesterId / senderId.
+// ════════════════════════════════════
+function caller(req) {
+  const id = String(req.user._id || req.user.id);
+  const name = req.user.name || req.user.fullName || "User";
+  const role =
+    req.userRole === "Manager"
+      ? "Manager"
+      : req.userRole === "SuperAdmin"
+      ? "SuperAdmin"
+      : req.user.role || "Player";
+  return { id, name, role };
+}
+
+// ════════════════════════════════════
+// OWNERSHIP / MEMBERSHIP HELPERS
 // ════════════════════════════════════
 function isOwner(chat, userId) {
-  return chat.createdBy === userId;
+  return String(chat.createdBy) === String(userId);
 }
 
 function isMember(chat, userId) {
-  return chat.members.some((m) => m.userId === userId);
+  return (
+    String(chat.createdBy) === String(userId) ||
+    (chat.members || []).some((m) => String(m.userId) === String(userId))
+  );
 }
 
 // ════════════════════════════════════
-// SEARCH USERS (for adding members)
+// SEARCH USERS (for adding members) — authenticated only
 // ════════════════════════════════════
 router.get("/search-users", async (req, res) => {
   try {
@@ -51,21 +79,28 @@ router.get("/search-users", async (req, res) => {
 });
 
 // ════════════════════════════════════
-// CREATE CHAT (any user)
+// CREATE CHAT (any authenticated user — becomes owner)
 // ════════════════════════════════════
 router.post("/", async (req, res) => {
   try {
-    const { name, description, createdBy, createdByName, createdByRole, members } = req.body;
-    if (!name || !createdBy) return res.status(400).json({ success: false, message: "name and createdBy required" });
+    const { name, description, members } = req.body;
+    if (!name) return res.status(400).json({ success: false, message: "name required" });
 
-    // Owner auto-added as first member
+    const me = caller(req);
+
+    // Owner auto-added as first member; identity comes from the token, not the body.
     const memberList = [
-      { userId: createdBy, name: createdByName || "Owner", role: createdByRole || "Player" },
-      ...(members || []).filter((m) => m.userId !== createdBy),
+      { userId: me.id, name: me.name, role: me.role },
+      ...(Array.isArray(members) ? members : []).filter((m) => m && m.userId && String(m.userId) !== me.id),
     ];
 
     const chat = await GroupChat.create({
-      name, description, createdBy, createdByName, createdByRole, members: memberList,
+      name,
+      description,
+      createdBy: me.id,
+      createdByName: me.name,
+      createdByRole: me.role,
+      members: memberList,
     });
 
     res.status(201).json({ success: true, chat });
@@ -75,18 +110,17 @@ router.post("/", async (req, res) => {
 });
 
 // ════════════════════════════════════
-// GET USER'S CHATS
+// GET CALLER'S CHATS
 // ════════════════════════════════════
 router.get("/", async (req, res) => {
   try {
-    const { userId } = req.query;
-    if (!userId) return res.status(400).json({ success: false, message: "userId required" });
+    const me = caller(req);
 
-    const chats = await GroupChat.find({ "members.userId": userId })
+    const chats = await GroupChat.find({ "members.userId": me.id })
       .sort({ lastMessageAt: -1, createdAt: -1 }).lean();
 
     // Mark ownership for each chat
-    const result = chats.map((c) => ({ ...c, isOwner: c.createdBy === userId }));
+    const result = chats.map((c) => ({ ...c, isOwner: String(c.createdBy) === me.id }));
     res.json({ success: true, chats: result });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -94,12 +128,16 @@ router.get("/", async (req, res) => {
 });
 
 // ════════════════════════════════════
-// GET SINGLE CHAT
+// GET SINGLE CHAT (members only)
 // ════════════════════════════════════
 router.get("/:id", async (req, res) => {
   try {
+    const me = caller(req);
     const chat = await GroupChat.findById(req.params.id).lean();
     if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
+    if (!isMember(chat, me.id)) {
+      return res.status(403).json({ success: false, message: "Not a member of this chat" });
+    }
     res.json({ success: true, chat });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -111,15 +149,16 @@ router.get("/:id", async (req, res) => {
 // ════════════════════════════════════
 router.put("/:id/rename", async (req, res) => {
   try {
-    const { requesterId, name } = req.body;
-    if (!requesterId || !name || !name.trim()) {
-      return res.status(400).json({ success: false, message: "requesterId and name required" });
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "name required" });
     }
 
+    const me = caller(req);
     const chat = await GroupChat.findById(req.params.id);
     if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
 
-    if (!isOwner(chat, requesterId)) {
+    if (!isOwner(chat, me.id)) {
       return res.status(403).json({ success: false, message: "Only the chat owner can rename this chat" });
     }
 
@@ -140,18 +179,19 @@ router.put("/:id/rename", async (req, res) => {
 // ════════════════════════════════════
 router.post("/:id/add", async (req, res) => {
   try {
-    const { requesterId, userId, name, role } = req.body;
-    if (!requesterId || !userId || !name) return res.status(400).json({ success: false, message: "requesterId, userId, name required" });
+    const { userId, name, role } = req.body;
+    if (!userId || !name) return res.status(400).json({ success: false, message: "userId, name required" });
 
+    const me = caller(req);
     const chat = await GroupChat.findById(req.params.id);
     if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
 
     // STRICT: only owner can add
-    if (!isOwner(chat, requesterId)) {
+    if (!isOwner(chat, me.id)) {
       return res.status(403).json({ success: false, message: "Only the chat owner can add members" });
     }
 
-    if (chat.members.some((m) => m.userId === userId)) {
+    if (chat.members.some((m) => String(m.userId) === String(userId))) {
       return res.status(400).json({ success: false, message: "Already a member" });
     }
 
@@ -172,22 +212,23 @@ router.post("/:id/add", async (req, res) => {
 // ════════════════════════════════════
 router.post("/:id/remove", async (req, res) => {
   try {
-    const { requesterId, userId } = req.body;
-    if (!requesterId || !userId) return res.status(400).json({ success: false, message: "requesterId and userId required" });
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ success: false, message: "userId required" });
 
+    const me = caller(req);
     const chat = await GroupChat.findById(req.params.id);
     if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
 
-    if (!isOwner(chat, requesterId)) {
+    if (!isOwner(chat, me.id)) {
       return res.status(403).json({ success: false, message: "Only the chat owner can remove members" });
     }
 
     // Cannot remove owner
-    if (userId === chat.createdBy) {
+    if (String(userId) === String(chat.createdBy)) {
       return res.status(400).json({ success: false, message: "Cannot remove the chat owner" });
     }
 
-    chat.members = chat.members.filter((m) => m.userId !== userId);
+    chat.members = chat.members.filter((m) => String(m.userId) !== String(userId));
     await chat.save();
 
     const io = req.app.get("io");
@@ -208,13 +249,11 @@ router.post("/:id/remove", async (req, res) => {
 // ════════════════════════════════════
 router.delete("/:id", async (req, res) => {
   try {
-    const { requesterId } = req.body;
-    if (!requesterId) return res.status(400).json({ success: false, message: "requesterId required" });
-
+    const me = caller(req);
     const chat = await GroupChat.findById(req.params.id);
     if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
 
-    if (!isOwner(chat, requesterId)) {
+    if (!isOwner(chat, me.id)) {
       return res.status(403).json({ success: false, message: "Only the chat owner can delete this chat" });
     }
 
@@ -223,7 +262,7 @@ router.delete("/:id", async (req, res) => {
 
     // Notify members before deletion
     const io = req.app.get("io");
-    if (io) io.to(`gchat_${chat._id}`).emit("gchat:deleted", { chatId: chat._id, deletedBy: requesterId });
+    if (io) io.to(`gchat_${chat._id}`).emit("gchat:deleted", { chatId: chat._id, deletedBy: me.id });
 
     // Delete chat
     await GroupChat.findByIdAndDelete(chat._id);
@@ -235,10 +274,17 @@ router.delete("/:id", async (req, res) => {
 });
 
 // ════════════════════════════════════
-// GET MESSAGES
+// GET MESSAGES (members only)
 // ════════════════════════════════════
 router.get("/:id/messages", async (req, res) => {
   try {
+    const me = caller(req);
+    const chat = await GroupChat.findById(req.params.id).select("members createdBy").lean();
+    if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
+    if (!isMember(chat, me.id)) {
+      return res.status(403).json({ success: false, message: "Not a member of this chat" });
+    }
+
     const { before } = req.query;
     const filter = { chatId: req.params.id };
     if (before) filter.createdAt = { $lt: new Date(before) };
@@ -259,13 +305,13 @@ router.get("/:id/messages", async (req, res) => {
 // ════════════════════════════════════
 router.post("/:id/message", upload.array("files", 5), async (req, res) => {
   try {
-    const { senderId, senderName, senderRole, text } = req.body;
-    if (!senderId) return res.status(400).json({ success: false, message: "senderId required" });
+    const { text } = req.body;
+    const me = caller(req);
 
     const chat = await GroupChat.findById(req.params.id);
     if (!chat) return res.status(404).json({ success: false, message: "Chat not found" });
 
-    if (!isMember(chat, senderId)) {
+    if (!isMember(chat, me.id)) {
       return res.status(403).json({ success: false, message: "Not a member of this chat" });
     }
 
@@ -281,13 +327,18 @@ router.post("/:id/message", upload.array("files", 5), async (req, res) => {
     }
 
     const message = await GroupChatMessage.create({
-      chatId: chat._id, senderId, senderName: senderName || "User", senderRole: senderRole || "Player", text: text || "", attachments,
+      chatId: chat._id,
+      senderId: me.id,
+      senderName: me.name,
+      senderRole: me.role,
+      text: text || "",
+      attachments,
     });
 
     // Update chat metadata
     chat.lastMessageAt = message.createdAt;
     chat.lastMessageText = text || (attachments.length > 0 ? `📎 ${attachments.length} file(s)` : "");
-    chat.lastMessageBy = senderName || "User";
+    chat.lastMessageBy = me.name;
     chat.messageCount += 1;
     await chat.save();
 

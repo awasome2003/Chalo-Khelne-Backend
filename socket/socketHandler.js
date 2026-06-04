@@ -8,7 +8,7 @@ module.exports = function setupSocket(io) {
       return next(new Error("Authentication required"));
     }
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
       // Support both Player JWT (decoded.id) and Manager JWT (decoded.userId)
       socket.userId = decoded.id || decoded.userId;
       if (!socket.userId) return next(new Error("Invalid token payload"));

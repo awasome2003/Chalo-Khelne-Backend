@@ -1,12 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const couponController = require("../controllers/couponController");
+const { authenticate, managerAuth } = require("../middleware/authMiddleware");
+const { requireOwner } = require("../middleware/authz");
 
-// Public — validate coupon
-router.post("/validate", couponController.validate);
+// Authenticated — validate coupon (player at checkout)
+router.post("/validate", authenticate, couponController.validate);
 
-// Public — get available coupons for a booking type
-router.get("/available", async (req, res) => {
+// Authenticated — get available coupons for a booking type
+router.get("/available", authenticate, async (req, res) => {
   try {
     const { type, item_id } = req.query; // type: facility|tournament, item_id: turfId|tournamentId
     const now = new Date();
@@ -44,13 +46,13 @@ router.get("/available", async (req, res) => {
 });
 
 // Authenticated — record usage after booking
-router.post("/record-usage", couponController.recordUsage);
+router.post("/record-usage", authenticate, couponController.recordUsage);
 
-// Manager/Admin — CRUD
-router.post("/create", couponController.create);
-router.get("/list", couponController.list);
-router.get("/analytics", couponController.analytics);
-router.put("/toggle/:id", couponController.toggle);
-router.delete("/:id", couponController.delete);
+// Manager — CRUD
+router.post("/create", managerAuth, couponController.create);
+router.get("/list", managerAuth, couponController.list);
+router.get("/analytics", managerAuth, couponController.analytics);
+router.put("/toggle/:id", managerAuth, requireOwner({ model: "Coupon", ownerField: "createdBy", idParam: "id" }), couponController.toggle);
+router.delete("/:id", managerAuth, requireOwner({ model: "Coupon", ownerField: "createdBy", idParam: "id" }), couponController.delete);
 
 module.exports = router;

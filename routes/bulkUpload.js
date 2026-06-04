@@ -5,41 +5,47 @@ const fs = require("fs");
 const path = require("path");
 const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
-const XLSX = require("xlsx");
+const { readSheetRows, writeAoaToFile } = require("../utils/excelUtils");
 
 const User = require("../Modal/User");
 const { miniAIMatch } = require("../utils/miniAIMapper");
+const { requireSuperAdmin } = require("../middleware/authMiddleware");
 
 const router = express.Router();
-const upload = multer({ dest: "uploads/" });
+// 5MB cap prevents large-file DoS on the import endpoints.
+const upload = multer({ dest: "uploads/", limits: { fileSize: 5 * 1024 * 1024 } });
+
+// User provisioning is a SuperAdmin-only operation — guard the whole router.
+router.use(requireSuperAdmin);
 
 // ✅ GET: Download Excel Template
-router.get("/template", (req, res) => {
-  const templatePath = path.join(__dirname, "../templates/user_template.xlsx");
-  const templateDir = path.dirname(templatePath);
+router.get("/template", async (req, res) => {
+  try {
+    const templatePath = path.join(__dirname, "../templates/user_template.xlsx");
+    const templateDir = path.dirname(templatePath);
 
-  if (!fs.existsSync(templateDir)) {
-    fs.mkdirSync(templateDir, { recursive: true });
-  }
-
-  const data = [
-    ["name", "email", "mobile", "password", "role", "age", "sex"],
-    ["John Doe", "john@example.com", "9876543210", "password123", "Player", "25", "male"],
-    ["Jane Smith", "jane@example.com", "9123456780", "password123", "Manager", "30", "female"],
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Users");
-
-  XLSX.writeFile(wb, templatePath);
-
-  res.download(templatePath, "ChaloKhelne_User_Template.xlsx", (err) => {
-    if (err) {
-      console.error("Error downloading template:", err);
-      res.status(500).send("Error downloading template");
+    if (!fs.existsSync(templateDir)) {
+      fs.mkdirSync(templateDir, { recursive: true });
     }
-  });
+
+    const data = [
+      ["name", "email", "mobile", "password", "role", "age", "sex"],
+      ["John Doe", "john@example.com", "9876543210", "password123", "Player", "25", "male"],
+      ["Jane Smith", "jane@example.com", "9123456780", "password123", "Manager", "30", "female"],
+    ];
+
+    await writeAoaToFile(data, templatePath, "Users");
+
+    res.download(templatePath, "ChaloKhelne_User_Template.xlsx", (err) => {
+      if (err) {
+        console.error("Error downloading template:", err);
+        if (!res.headersSent) res.status(500).send("Error downloading template");
+      }
+    });
+  } catch (error) {
+    console.error("Error generating template:", error);
+    res.status(500).send("Error generating template");
+  }
 });
 
 // ✅ POST: Bulk Upload
@@ -62,10 +68,8 @@ router.post("/", upload.single("file"), async (req, res) => {
       originalName.endsWith(".xlsx") ||
       originalName.endsWith(".xls")
     ) {
-      const workbook = XLSX.readFile(filePath);
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      jsonArray = XLSX.utils.sheet_to_json(worksheet);
+      // No blankValue → sparse rows, matching the previous sheet_to_json default.
+      jsonArray = await readSheetRows(filePath);
     } else if (mime === "application/pdf") {
       try {
         const dataBuffer = fs.readFileSync(filePath);
@@ -120,7 +124,9 @@ router.post("/", upload.single("file"), async (req, res) => {
     });
   } catch (error) {
     console.error("Upload Error:", error);
-    if (req.file) fs.unlinkSync(path.join(__dirname, "..", req.file.path));
+    if (req.file) {
+      try { fs.unlinkSync(path.join(__dirname, "..", req.file.path)); } catch (_) {}
+    }
     res.status(500).json({ success: false, message: "Server Error during upload" });
   }
 });
@@ -128,19 +134,31 @@ router.post("/", upload.single("file"), async (req, res) => {
 // ✅ POST: Create Single User
 router.post("/single", async (req, res) => {
   try {
-    const userData = req.body;
+    const b = req.body || {};
 
-    if (!userData.name || !userData.email || !userData.mobile || !userData.password || !userData.role) {
+    if (!b.name || !b.email || !b.mobile || !b.password) {
       return res.status(400).json({ success: false, message: "Please fill all required fields" });
     }
 
-    const existingUser = await User.findOne({ email: userData.email });
+    const existingUser = await User.findOne({ email: String(b.email) });
     if (existingUser) {
       return res.status(400).json({ success: false, message: "User with this email already exists" });
     }
 
-    userData.playerId = "PLR" + Date.now();
-    userData.isApproved = true;
+    // Allowlist input — never accept role/isApproved/permissions from the client.
+    // Imported users are created as approved Players; elevate later via the
+    // guarded role endpoint (/api/update/user-role).
+    const userData = {
+      name: b.name,
+      email: b.email,
+      mobile: b.mobile,
+      password: b.password,
+      age: b.age,
+      sex: b.sex,
+      role: "Player",
+      isApproved: true,
+      playerId: "PLR" + Date.now(),
+    };
 
     await User.create(userData);
     res.json({ success: true, message: "User created successfully" });
@@ -165,14 +183,19 @@ async function processUserUpload(jsonArray) {
         userObj[fieldMap[key]] = entry[key];
       }
     }
+    // Never provision role/approval/permissions from the imported file.
+    delete userObj.role;
+    delete userObj.isApproved;
+    delete userObj.permissions;
 
     try {
       // Basic validation
-      if (userObj.name && userObj.email && userObj.mobile && userObj.password && userObj.role) {
+      if (userObj.name && userObj.email && userObj.mobile && userObj.password) {
         // Check if user already exists
-        const existing = await User.findOne({ email: userObj.email });
+        const existing = await User.findOne({ email: String(userObj.email) });
         if (!existing) {
           userObj.playerId = "PLR" + Math.floor(Math.random() * 1000000) + Date.now();
+          userObj.role = "Player";
           userObj.isApproved = true;
           await User.create(userObj);
           successCount++;

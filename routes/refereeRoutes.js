@@ -4,6 +4,7 @@ const router = express.Router();
 // Import the controller for referee-related routes
 const refereeController = require("../controllers/refereeController");
 const { uploadMiddleware } = require("../middleware/uploads");
+const { allowUserOrManager } = require("../middleware/authMiddleware");
 
 // Import the controller for referee request-related routes
 const {
@@ -13,11 +14,15 @@ const {
   updateRequestStatus
 } = require("../controllers/refreerequestController");
 
-// Public routes (no auth required)
+// ── Public routes (read-only directory; no auth required) ──
 router.get("/referees", refereeController.getAllReferees);
 router.get("/profile/:id", refereeController.getRefereeProfile);
 
-// Protected routes (auth required)
+// ── Everything below requires a valid token (User, Manager, or SuperAdmin) ──
+// NOTE: this closes the "no auth at all" hole. Object-level ownership (a referee
+// only editing their OWN profile/assignments) is a follow-up hardening pass.
+router.use(allowUserOrManager);
+
 router.put("/profile/:id", refereeController.updateRefereeProfile);
 router.post("/certificate/:id", (req, res, next) => {
   uploadMiddleware.single("certificate")(req, res, (err) => {

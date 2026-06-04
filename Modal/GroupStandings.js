@@ -60,4 +60,9 @@ groupStandingsSchema.index({ tournamentId: 1, groupId: 1 }, { unique: true });
 // in STEP 16 once every doc has sportId populated by the migration script.
 groupStandingsSchema.index({ tournamentId: 1, sportId: 1, groupId: 1 });
 
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId
+// (derived via tournamentId → Tournament.clubId by the backfill).
+const tenantScope = require("../utils/tenantScope");
+groupStandingsSchema.plugin(tenantScope, { field: "clubId", enforce: true });
+
 module.exports = mongoose.model("GroupStandings", groupStandingsSchema);

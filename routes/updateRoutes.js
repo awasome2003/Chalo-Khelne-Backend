@@ -8,6 +8,12 @@ const ClubAdmin = require("../Modal/ClubAdmin");
 const Organizer = require("../Modal/Organizermodel");
 const User = require("../Modal/User");
 const Inquiry = require("../Modal/Inquiry");
+const { requireSuperAdmin } = require("../middleware/authMiddleware");
+
+// Every route in this file is a SuperAdmin control-plane action (approve/
+// reject users, change roles, platform overview). Guard the whole router —
+// any route added later inherits the gate automatically.
+router.use(requireSuperAdmin);
 
 
 router.put('/user-role/:id', async (req, res) => {

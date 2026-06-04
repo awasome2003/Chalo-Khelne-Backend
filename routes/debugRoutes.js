@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const { requireSuperAdmin } = require("../middleware/authMiddleware");
 const { findMatchById, readMatchResult, getSchemaName } = require("../utils/matchUtils");
+
+// Debug endpoints expose internal match/tournament state — superadmin only.
+router.use(requireSuperAdmin);
 const { getScoringType } = require("../utils/matchFormatUtils");
 const Tournament = require("../Modal/Tournament");
 

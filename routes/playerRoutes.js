@@ -1,7 +1,6 @@
 // routes/merged-routes.js
 const express = require("express");
 const router = express.Router();
-const Razorpay = require("razorpay");
 const crypto = require("crypto");
 const Payment = require("../Modal/Payments");
 const Booking = require("../Modal/BookingModel");
@@ -11,17 +10,16 @@ const Turf = require("../Modal/Turf");
 const User = require("../Modal/User");
 const { Manager } = require("../Modal/ClubManager");
 const mongoose = require("mongoose");
+const { getClubId } = require("../utils/tenantContext");
+const { authenticate, managerAuth, allowUserOrManager, requireSuperAdmin } = require("../middleware/authMiddleware");
+const { requireSelf, requireOwner, forceSelfBody, requireTurfBookingOwner, requireTurfOwner } = require("../middleware/authz");
+const escapeRegex = require("../utils/escapeRegex");
 
-// Initialize Razorpay
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
 
 // ===== TOURNAMENT BOOKING ROUTES =====
 
 // Route to fetch tournament teams
-router.get("/bookings/tournament-teams/:tournamentId", async (req, res) => {
+router.get("/bookings/tournament-teams/:tournamentId", allowUserOrManager, async (req, res) => {
   try {
     const { tournamentId } = req.params;
 
@@ -67,7 +65,7 @@ router.get("/bookings/tournament-teams/:tournamentId", async (req, res) => {
 });
 
 // Fetch specific team details
-router.get("/team-details/:bookingId", async (req, res) => {
+router.get("/team-details/:bookingId", authenticate, requireOwner({ model: "Booking", ownerField: "userId", idParam: "bookingId" }), async (req, res) => {
   try {
     const { bookingId } = req.params;
 
@@ -107,7 +105,7 @@ router.get("/team-details/:bookingId", async (req, res) => {
 });
 
 // Check booking status
-router.get("/bookings/status", async (req, res) => {
+router.get("/bookings/status", authenticate, async (req, res) => {
   try {
     const { userId, tournamentId } = req.query;
 
@@ -116,6 +114,11 @@ router.get("/bookings/status", async (req, res) => {
         success: false,
         message: "User ID and Tournament ID are required",
       });
+    }
+
+    // A player may only check their OWN booking status.
+    if (String(req.user?.id || req.user?._id || "") !== String(userId)) {
+      return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
     // Find existing booking
@@ -141,7 +144,7 @@ router.get("/bookings/status", async (req, res) => {
 });
 
 // Get user's bookings
-router.get("/bookings/user/:userId", async (req, res) => {
+router.get("/bookings/user/:userId", authenticate, requireSelf("userId"), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -169,7 +172,7 @@ router.get("/bookings/user/:userId", async (req, res) => {
 });
 
 // Get booking by ID
-router.get("/booking/:bookingId", async (req, res) => {
+router.get("/booking/:bookingId", authenticate, requireOwner({ model: "Booking", ownerField: "userId", idParam: "bookingId" }), async (req, res) => {
   try {
     const { bookingId } = req.params;
 
@@ -206,7 +209,7 @@ router.get("/booking/:bookingId", async (req, res) => {
 // ===== PLAYER/USER ROUTES =====
 
 // Validate players
-router.post("/users/validate-players", async (req, res) => {
+router.post("/users/validate-players", allowUserOrManager, async (req, res) => {
   try {
     const { players } = req.body;
     console.log("Received players for validation:", players);
@@ -241,7 +244,7 @@ router.post("/users/validate-players", async (req, res) => {
     const validUsers = await User.find({
       name: {
         $in: cleanedPlayers.map(
-          (name) => new RegExp(`^${name.trim()}\\s*$`, "i")
+          (name) => new RegExp(`^${escapeRegex(name.trim())}\\s*$`, "i")
         ),
       },
       isApproved: true,
@@ -289,7 +292,7 @@ router.post("/users/validate-players", async (req, res) => {
 });
 
 // Get player by ID
-router.get("/player/:playerId", async (req, res) => {
+router.get("/player/:playerId", allowUserOrManager, async (req, res) => {
   try {
     console.log("Searching for player with ID:", req.params.playerId);
 
@@ -329,7 +332,7 @@ router.get("/player/:playerId", async (req, res) => {
 });
 
 // Get user profile
-router.get("/user/profile/:userId", async (req, res) => {
+router.get("/user/profile/:userId", authenticate, requireSelf("userId"), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -377,7 +380,7 @@ router.get("/user/profile/:userId", async (req, res) => {
 });
 
 // Search players
-router.get("/search-players", async (req, res) => {
+router.get("/search-players", allowUserOrManager, async (req, res) => {
   try {
     const searchQuery = req.query.query || "";
 
@@ -587,7 +590,7 @@ router.get("/turf-availability/:turfId", async (req, res) => {
 });
 
 // Get user's turf bookings
-router.get("/turf-bookings/user/:userId", async (req, res) => {
+router.get("/turf-bookings/user/:userId", authenticate, requireSelf("userId"), async (req, res) => {
   try {
     const { userId } = req.params;
     const { status } = req.query;
@@ -626,7 +629,7 @@ router.get("/turf-bookings/user/:userId", async (req, res) => {
 });
 
 // Get turf bookings by turf ID
-router.get("/turf-bookings/turf/:turfId", async (req, res) => {
+router.get("/turf-bookings/turf/:turfId", allowUserOrManager, requireTurfOwner({ idParam: "turfId" }), async (req, res) => {
   try {
     const { turfId } = req.params;
     const { date, status } = req.query;
@@ -674,7 +677,7 @@ router.get("/turf-bookings/turf/:turfId", async (req, res) => {
 });
 
 // Get turf booking by ID
-router.get("/turf-booking/:bookingId", async (req, res) => {
+router.get("/turf-booking/:bookingId", authenticate, requireOwner({ model: "TurfBooking", ownerField: "userId", idParam: "bookingId" }), async (req, res) => {
   try {
     const { bookingId } = req.params;
 
@@ -713,7 +716,7 @@ router.get("/turf-booking/:bookingId", async (req, res) => {
 // ===== PAYMENT ROUTES =====
 
 // Check payment status
-router.get("/payments/check", async (req, res) => {
+router.get("/payments/check", allowUserOrManager, async (req, res) => {
   try {
     const { userId, tournamentId } = req.query;
 
@@ -722,6 +725,13 @@ router.get("/payments/check", async (req, res) => {
         success: false,
         message: "User ID and Tournament ID are required",
       });
+    }
+
+    // Players may only check their OWN payment status; managers/superadmin any.
+    const callerId = String(req.user?._id || req.user?.id || "");
+    const privileged = req.userRole === "Manager" || req.userRole === "SuperAdmin";
+    if (!privileged && callerId && String(userId) !== callerId) {
+      return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
     // Find the most recent payment for this tournament by this user
@@ -768,7 +778,7 @@ router.get("/payments/check", async (req, res) => {
 });
 
 // Get Payment History
-router.get("/payment-history", async (req, res) => {
+router.get("/payment-history", requireSuperAdmin, async (req, res) => {
   try {
     const payments = await Payment.find()
       .sort({ createdAt: -1 }) // Most recent first
@@ -796,7 +806,7 @@ router.get("/payment-history", async (req, res) => {
 });
 
 // Get Payment History by User
-router.get("/payment-history/:userId", async (req, res) => {
+router.get("/payment-history/:userId", authenticate, requireSelf("userId"), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -837,634 +847,8 @@ router.get("/payment-history/:userId", async (req, res) => {
   }
 });
 
-// Payment verification helper function
-const verifyRazorpaySignature = (orderId, paymentId, signature) => {
-  const text = orderId + "|" + paymentId;
-  const generated_signature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-    .update(text)
-    .digest("hex");
-  return generated_signature === signature;
-};
-
-// Enhanced Payment Verification Handler
-const verifyPaymentStatus = async (orderId) => {
-  try {
-    const payment = await Payment.findOne({ orderId });
-    if (!payment) return null;
-
-    // Check if payment is too old (expired)
-    const expirationTime = 30 * 60 * 1000; // 30 minutes
-    if (Date.now() - payment.createdAt > expirationTime) {
-      payment.status = "timeout";
-      await payment.save();
-      return payment;
-    }
-
-    // For UPI payments, check transaction status
-    if (payment.paymentMethod === "upi" && payment.status === "pending") {
-      const upiStatus = await razorpay.payments.fetch(payment.paymentId);
-
-      switch (upiStatus.status) {
-        case "authorized":
-        case "captured":
-          payment.status = "completed";
-          payment.transactionDetails = {
-            upiTransactionId: upiStatus.acquirer_data?.upi_transaction_id,
-            paymentMode: "UPI",
-            gatewayResponse: upiStatus,
-          };
-          break;
-        case "failed":
-          payment.status = "failed";
-          payment.error = {
-            description: "UPI transaction failed",
-            code: upiStatus.error_code,
-            timestamp: new Date(),
-          };
-          break;
-        case "pending":
-          // Keep as pending but update verification attempts
-          payment.verificationAttempts += 1;
-          payment.lastVerificationTime = new Date();
-          break;
-      }
-    }
-
-    // For netbanking, check bank status
-    if (
-      payment.paymentMethod === "netbanking" &&
-      payment.status === "pending"
-    ) {
-      const bankStatus = await razorpay.payments.fetch(payment.paymentId);
-
-      if (bankStatus.status === "captured") {
-        payment.status = "completed";
-        payment.transactionDetails = {
-          bankTransactionId: bankStatus.acquirer_data?.bank_transaction_id,
-          bankReference: bankStatus.acquirer_data?.bank_reference,
-          paymentMode: "NetBanking",
-          gatewayResponse: bankStatus,
-        };
-      }
-    }
-
-    await payment.save();
-    return payment;
-  } catch (error) {
-    console.error("Payment verification error:", error);
-    return null;
-  }
-};
-
-// Create Order - Enhanced with detailed logging
-router.post("/create-order", async (req, res) => {
-  try {
-    const { amount, eventId, paymentMethod = "any", userId } = req.body;
-    console.log("Creating order:", { amount, eventId, paymentMethod, userId });
-
-    // Input validation
-    if (!amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid amount",
-        details: "Amount must be greater than 0",
-      });
-    }
-
-    if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid eventId",
-        details: "eventId must be a valid MongoDB ObjectId",
-      });
-    }
-
-    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid userId",
-        details: "userId must be a valid MongoDB ObjectId",
-      });
-    }
-
-    // Check if Razorpay is properly initialized
-    if (!razorpay) {
-      console.error("Razorpay not initialized");
-      return res.status(500).json({
-        success: false,
-        error: "Payment gateway not configured",
-        details: "Contact the administrator",
-      });
-    }
-
-    // Validate event exists
-    try {
-      const tournament = await Tournament.findById(eventId);
-      if (!tournament) {
-        console.log("Tournament not found:", eventId);
-        return res.status(404).json({
-          success: false,
-          error: "Tournament not found",
-        });
-      }
-    } catch (tournamentError) {
-      console.error("Error finding tournament:", tournamentError);
-      return res.status(500).json({
-        success: false,
-        error: "Database error",
-        details: "Error finding tournament",
-      });
-    }
-
-    const receipt = "receipt_" + Math.random().toString(36).substring(7);
-    console.log("Generated receipt:", receipt);
-
-    // Ensure amount is an integer (Razorpay requirement)
-    const amountInPaise = Math.round(Number(amount));
-
-    const options = {
-      amount: amountInPaise,
-      currency: "INR",
-      receipt: receipt,
-    };
-
-    console.log("Razorpay order options:", options);
-
-    // Create Razorpay order with detailed error handling
-    let razorpayOrder;
-    try {
-      razorpayOrder = await razorpay.orders.create(options);
-      console.log("Razorpay order created:", razorpayOrder);
-    } catch (razorpayError) {
-      console.error("Razorpay API Error:", {
-        message: razorpayError.message,
-        stack: razorpayError.stack,
-        code: razorpayError.code,
-        statusCode: razorpayError.statusCode,
-        description: razorpayError.description,
-      });
-
-      return res.status(500).json({
-        success: false,
-        error: "Payment gateway error",
-        message: razorpayError.message,
-        code: razorpayError.code || "UNKNOWN",
-      });
-    }
-
-    // Create payment record in database
-    try {
-      const payment = new Payment({
-        orderId: razorpayOrder.id,
-        userId: userId,
-        eventId: eventId,
-        amount: amountInPaise / 100, // Convert back to regular currency
-        currency: "INR",
-        receipt: receipt,
-        status: "created",
-        paymentMethod: paymentMethod || "any",
-        attempts: 0,
-        createTime: Date.now(),
-      });
-
-      await payment.save();
-      console.log("Payment record created:", payment);
-    } catch (dbError) {
-      console.error("Database error creating payment record:", dbError);
-      // Still return the order to client since Razorpay order was created
-      // Just log the database error
-    }
-
-    return res.status(200).json({
-      success: true,
-      ...razorpayOrder,
-    });
-  } catch (error) {
-    console.error("Order creation failed:", {
-      message: error.message,
-      stack: error.stack,
-    });
-
-    return res.status(500).json({
-      success: false,
-      error: "Server error",
-      message: error.message,
-    });
-  }
-});
-
-// Enhanced verify-payment route with real-time handling
-router.post("/verify-payment", async (req, res) => {
-  try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-      status,
-      paymentMethod,
-      userId,
-      eventId,
-      userName,
-      tournamentName,
-      tournamentType,
-      team,
-    } = req.body;
-
-    // Log the tournamentType to debug
-    console.log("Tournament Type received:", tournamentType);
-
-    let payment = await Payment.findOne({ orderId: razorpay_order_id });
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment record not found",
-      });
-    }
-
-    // Update payment with additional information
-    payment.userId = userId || payment.userId;
-    payment.eventId = eventId || payment.eventId;
-
-    // Handle network timeouts and pending states
-    if (status === "pending") {
-      payment.status = "pending";
-      payment.pendingReason =
-        req.body.pendingReason || "Awaiting bank confirmation";
-      payment.processingTimeout = new Date(Date.now() + 10 * 60 * 1000);
-      await payment.save();
-
-      return res.json({
-        success: true,
-        status: "pending",
-        message: "Payment is being processed",
-        payment: payment,
-      });
-    }
-
-    // Verify signature
-    const isValid = verifyRazorpaySignature(
-      payment.orderId,
-      razorpay_payment_id,
-      razorpay_signature
-    );
-
-    if (!isValid) {
-      payment.status = "failed";
-      payment.error = {
-        description: "Invalid signature",
-        code: "SIGNATURE_VERIFICATION_FAILED",
-        timestamp: new Date(),
-      };
-      await payment.save();
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment signature",
-      });
-    }
-
-    try {
-      // Fetch payment status from Razorpay
-      const paymentStatus = await razorpay.payments.fetch(razorpay_payment_id);
-      console.log("Razorpay payment status:", paymentStatus.status);
-
-      if (paymentStatus.status === "captured") {
-        // Update payment record
-        payment.status = "completed";
-        payment.paymentId = razorpay_payment_id;
-        payment.transactionDetails = {
-          paymentMode: paymentStatus.method || paymentMethod || "online",
-          gatewayResponse: paymentStatus,
-          verifiedAt: new Date(),
-        };
-        await payment.save();
-
-        // Create booking record
-        try {
-          // Get tournament details to get the tournament type if not provided
-          let resolvedTournamentType = tournamentType;
-
-          if (!resolvedTournamentType) {
-            try {
-              const tournament = await Tournament.findById(payment.eventId);
-              // STEP 17b.i — derive type via per-sport helper.
-              // Payment context has no sportId — fall back to sports[0]
-              // for the tournamentType label on the booking record.
-              const { getTournamentType } = require("../utils/sportTrackUtils");
-              const _tournamentType = getTournamentType(tournament);
-              if (_tournamentType) {
-                resolvedTournamentType = _tournamentType;
-                console.log(
-                  `Retrieved tournament type from database: ${resolvedTournamentType}`
-                );
-              }
-            } catch (err) {
-              console.error("Error fetching tournament type:", err);
-            }
-          }
-
-          // Validate tournament type against schema enum
-          const validTournamentTypes = [
-            "Team Knockouts",
-            "Group Stage",
-            "Single Elimination",
-            "Double Elimination",
-            "Round Robin",
-          ];
-
-          if (!validTournamentTypes.includes(resolvedTournamentType)) {
-            console.log(
-              `Invalid tournament type: ${resolvedTournamentType}. Attempting to find valid type.`
-            );
-
-            // If notes contains a valid type, use that
-            const notesType =
-              payment.transactionDetails?.gatewayResponse?.notes
-                ?.tournamentType;
-            if (notesType && validTournamentTypes.includes(notesType)) {
-              resolvedTournamentType = notesType;
-            } else {
-              // Log error but continue with a valid value
-              console.error(
-                `No valid tournament type found. Using "Group Stage" as fallback.`
-              );
-              resolvedTournamentType = "Group Stage";
-            }
-          }
-
-          // Prepare booking data
-          const bookingData = {
-            userId: payment.userId,
-            userName: userName || "User", // Request parameter first
-            tournamentId: payment.eventId,
-            tournamentName: tournamentName || "Tournament Name", // Request parameter first
-            status: "confirmed",
-            tournamentType: resolvedTournamentType,
-            paymentId: payment._id,
-          };
-
-          // Log the exact data
-          console.log(
-            "Final booking data:",
-            JSON.stringify({
-              userId: bookingData.userId,
-              userName: bookingData.userName,
-              tournamentName: bookingData.tournamentName,
-              tournamentType: bookingData.tournamentType,
-            })
-          );
-
-          // If there's team data, add it
-          if (team) {
-            // Format players according to schema
-            if (team.players && Array.isArray(team.players)) {
-              const formattedPlayers = team.players.map((player) => ({
-                name: player,
-                id: new mongoose.Types.ObjectId().toString(),
-                profileImage: "", // Default empty string for profile image
-              }));
-
-              const formattedSubstitutes = (team.substitutes || []).map(
-                (sub) => ({
-                  name: sub,
-                  id: new mongoose.Types.ObjectId().toString(),
-                  profileImage: "", // Default empty string for profile image
-                })
-              );
-
-              // Create team object with proper schema format
-              bookingData.team = {
-                name: team.name,
-                positions: {
-                  A: team.captain, // Captain
-                  B: formattedPlayers[0]?.name || "", // First player
-                  C: formattedPlayers[1]?.name || "", // Second player
-                },
-                captain: {
-                  name: team.captain,
-                  id: new mongoose.Types.ObjectId().toString(),
-                  profileImage: "", // Default empty string for profile image
-                },
-                players: formattedPlayers,
-                substitutes: formattedSubstitutes,
-              };
-            } else {
-              // If team is in a different format, use it directly
-              bookingData.team = team;
-            }
-          }
-
-          console.log("Creating booking with data:", bookingData);
-
-          // Create and save booking
-          const booking = new Booking(bookingData);
-          await booking.save();
-
-          console.log("Booking created successfully:", booking._id);
-
-          // Include booking in response
-          return res.json({
-            success: true,
-            message: "Payment successful and booking created",
-            payment,
-            booking: booking.toObject(),
-          });
-        } catch (bookingError) {
-          console.error("Booking creation error:", bookingError);
-          // Still return payment success even if booking creation fails
-          return res.json({
-            success: true,
-            message: "Payment successful but booking creation failed",
-            payment,
-            error: bookingError.message,
-          });
-        }
-      } else {
-        // Payment was not captured
-        payment.status = "failed";
-        payment.error = {
-          description: "Payment not captured",
-          code: "PAYMENT_NOT_CAPTURED",
-          timestamp: new Date(),
-        };
-        await payment.save();
-
-        return res.status(400).json({
-          success: false,
-          message: "Payment not captured",
-          paymentStatus: paymentStatus.status,
-        });
-      }
-    } catch (error) {
-      console.error("Payment verification API error:", error);
-      payment.status = "failed";
-      payment.error = {
-        description: error.message,
-        code: "PAYMENT_VERIFICATION_ERROR",
-        timestamp: new Date(),
-      };
-      await payment.save();
-
-      return res.status(500).json({
-        success: false,
-        message: "Payment verification failed",
-        error: error.message,
-      });
-    }
-  } catch (error) {
-    console.error("Payment verification route error:", error);
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-      details: error.stack,
-    });
-  }
-});
-
-// Add a payment polling endpoint
-router.get("/poll-payment-status/:orderId", async (req, res) => {
-  try {
-    const updatedPayment = await verifyPaymentStatus(req.params.orderId);
-    if (!updatedPayment) {
-      return res.status(404).json({ error: "Payment not found" });
-    }
-
-    res.json({
-      success: true,
-      status: updatedPayment.status,
-      payment: {
-        orderId: updatedPayment.orderId,
-        status: updatedPayment.status,
-        amount: updatedPayment.amount,
-        paymentMethod: updatedPayment.paymentMethod,
-        lastVerificationTime: updatedPayment.lastVerificationTime,
-      },
-    });
-  } catch (error) {
-    console.error("Payment polling error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Add real-time webhooks handler
-router.post("/razorpay-webhook", async (req, res) => {
-  try {
-    const webhook = req.body;
-    const payment = await Payment.findOne({
-      orderId: webhook.payload.payment.entity.order_id,
-    });
-
-    if (!payment) {
-      return res.status(404).json({ error: "Payment not found" });
-    }
-
-    switch (webhook.event) {
-      case "payment.authorized":
-        payment.status = "processing";
-        payment.transactionDetails = webhook.payload.payment.entity;
-        break;
-
-      case "payment.captured":
-        payment.status = "completed";
-        payment.transactionDetails = webhook.payload.payment.entity;
-        break;
-
-      case "payment.failed":
-        payment.status = "failed";
-        payment.error = {
-          description: webhook.payload.payment.entity.error_description,
-          code: webhook.payload.payment.entity.error_code,
-          source: "razorpay_webhook",
-          timestamp: new Date(),
-        };
-        break;
-    }
-
-    await payment.save();
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Webhook handling error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Cancel Payment
-router.post("/cancel-payment", async (req, res) => {
-  try {
-    const { orderId, cancelledReason, timestamp } = req.body;
-
-    const payment = await Payment.findOne({ orderId });
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-      });
-    }
-
-    // Prevent cancellation of completed payments
-    if (payment.status === "completed") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot cancel completed payment",
-      });
-    }
-
-    payment.status = "cancelled";
-    payment.cancellation = {
-      reason: cancelledReason,
-      timestamp: timestamp || new Date(),
-      initiatedBy: "user",
-    };
-    payment.updatedAt = new Date();
-
-    await payment.save();
-
-    // Update tournament registration if exists
-    if (payment.eventId) {
-      await Tournament.findByIdAndUpdate(payment.eventId, {
-        $pull: {
-          registrations: { paymentId: payment._id },
-        },
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Payment cancelled successfully",
-    });
-  } catch (error) {
-    console.error("Payment cancellation error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get Payment Status
-router.get("/payment-status/:orderId", async (req, res) => {
-  try {
-    console.log("Fetching payment status for order:", req.params.orderId);
-    const payment = await Payment.findOne({
-      orderId: req.params.orderId,
-    }).populate("eventId", "title tournamentFee"); // Populate tournament details if needed
-
-    if (!payment) {
-      return res.status(404).json({ error: "Payment not found" });
-    }
-
-    res.json({
-      success: true,
-      payment,
-    });
-  } catch (error) {
-    console.error("Failed to fetch payment status:", {
-      message: error.message,
-      stack: error.stack,
-    });
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // Get All Payments for a Tournament
-router.get("/tournament-payments/:tournamentId", async (req, res) => {
+router.get("/tournament-payments/:tournamentId", managerAuth, async (req, res) => {
   try {
     console.log("Fetching payments for tournament:", req.params.tournamentId);
     const payments = await Payment.find({
@@ -1485,9 +869,16 @@ router.get("/tournament-payments/:tournamentId", async (req, res) => {
 });
 
 // Get Payment Statistics
-router.get("/payment-stats", async (req, res) => {
+router.get("/payment-stats", managerAuth, async (req, res) => {
   try {
+    // Multi-tenancy: .aggregate() bypasses the tenantScope plugin, so scope to
+    // the caller's club explicitly. managerAuth always sets a clubId context.
+    const clubId = getClubId();
+    if (!clubId) {
+      return res.status(403).json({ success: false, message: "No tenant context" });
+    }
     const stats = await Payment.aggregate([
+      { $match: { clubId: new mongoose.Types.ObjectId(clubId) } },
       {
         $group: {
           _id: "$status",
@@ -1511,7 +902,7 @@ router.get("/payment-stats", async (req, res) => {
 });
 
 // ===== TURF BOOKING: CREATE =====
-router.post("/turf-bookings/create", async (req, res) => {
+router.post("/turf-bookings/create", authenticate, forceSelfBody("userId"), async (req, res) => {
   try {
     const { userId, turfId, sportName, date, timeSlot } = req.body;
 
@@ -1689,7 +1080,7 @@ router.post("/turf-bookings/create", async (req, res) => {
 });
 
 // ===== TURF BOOKING: CANCEL =====
-router.post("/turf-bookings/cancel", async (req, res) => {
+router.post("/turf-bookings/cancel", authenticate, forceSelfBody("userId"), async (req, res) => {
   try {
     const { bookingId, userId, reason } = req.body;
 
@@ -1812,7 +1203,7 @@ router.post("/turf-bookings/cancel", async (req, res) => {
 });
 
 // ===== TURF BOOKING: MANAGER UPDATE STATUS (accept/reject/complete) =====
-router.put("/turf-bookings/:bookingId/status", async (req, res) => {
+router.put("/turf-bookings/:bookingId/status", allowUserOrManager, requireTurfBookingOwner({ idParam: "bookingId" }), async (req, res) => {
   try {
     const { bookingId } = req.params;
     const { status, reason } = req.body;

@@ -2,6 +2,7 @@ const express = require("express");
 const Event = require("../Modal/EventModel"); // Ensure the path is correct
 const router = express.Router();
 const { uploadMiddleware, cleanupFile } = require("../middleware/uploads");
+const { authenticate } = require("../middleware/authMiddleware");
 
 // Add new event with players
 // router.post("/", uploadMiddleware.array("playerImages"), async (req, res) => {
@@ -57,7 +58,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/:eventId/scores", async (req, res) => {
+router.post("/:eventId/scores", authenticate, async (req, res) => {
   const { eventId } = req.params;
   const { setOne, setTwo, setThree, winner } = req.body;
 

@@ -1,14 +1,15 @@
 const express = require("express");
 const router = express.Router();
 const { createInquiry, getAllInquiries, updateInquiryStatus } = require("../controllers/InquiryController");
+const { requireSuperAdmin } = require("../middleware/authMiddleware");
 
-// POST - Submit a new inquiry
+// POST - Submit a new inquiry (public contact form)
 router.post("/", createInquiry);
 
-// GET - Get all inquiries (protected route logic can be added later)
-router.get("/", getAllInquiries);
+// GET - Get all inquiries — superadmin only
+router.get("/", requireSuperAdmin, getAllInquiries);
 
-// PUT - Update inquiry status
-router.put("/:id/status", updateInquiryStatus);
+// PUT - Update inquiry status — superadmin only
+router.put("/:id/status", requireSuperAdmin, updateInquiryStatus);
 
 module.exports = router;

@@ -1,4 +1,5 @@
 const Tournament = require("../Modal/Tournament");
+const escapeRegex = require("../utils/escapeRegex");
 const Booking = require("../Modal/BookingModel");
 const BookingGroup = require("../Modal/bookinggroup");
 const Score = require("../Modal/Score");
@@ -6,6 +7,12 @@ const Match = require("../Modal/Tournnamentmatch");
 const KnockoutMatch = require("../Modal/KnockoutMatch");
 const SuperMatch = require("../Modal/SuperMatch");
 const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+// Additional models for full tournament-delete cascade.
+const GroupStandings = require("../Modal/GroupStandings");
+const TeamKnockout = require("../Modal/TeamKnockout");
+const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
+const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
+const PlayerPayment = require("../Modal/playerPaymentSchema");
 const User = require("../Modal/User");
 const SportRuleBook = require("../Modal/SportRuleBook");
 const { sanitizeBySportType, validateCustomRules, normalizeMatchFormat, getScoringType } = require("../utils/matchFormatUtils");
@@ -292,21 +299,36 @@ exports.identifySuperPlayers = async (req, res) => {
 
     const superPlayers = [];
 
-    // For each Round 2 group, find the winner
-    // This is a simplified version - you'd want to integrate with your points system
+    // Pick each group's winner from real standings (top by totalPoints, then
+    // wins, then rounds-won as tiebreakers). Falls back to group.players[0]
+    // only when standings haven't been recorded yet (groups with no completed
+    // matches) — logged so the fallback is visible in ops.
+    const GroupStandings = require("../Modal/GroupStandings");
     for (let group of round2Groups) {
-      // In a real implementation, you'd calculate the group winner from match results
-      // For now, we'll take the first player as a placeholder
-      if (group.players && group.players.length > 0) {
-        const winner = group.players[0]; // Placeholder logic
-
+      const standingsDoc = await GroupStandings.findOne({ groupId: group._id }).lean();
+      const sorted = (standingsDoc?.standings || []).slice().sort(
+        (a, b) =>
+          (b.totalPoints || 0) - (a.totalPoints || 0)
+          || (b.won || 0) - (a.won || 0)
+          || (b.roundsWon || 0) - (a.roundsWon || 0)
+      );
+      let winner = null;
+      if (sorted.length > 0) {
+        winner = { playerId: sorted[0].playerId, userName: sorted[0].playerName };
+      } else if (group.players && group.players.length > 0) {
+        console.warn(
+          `[identifySuperPlayers] No standings for group ${group._id} — falling back to first registered player.`
+        );
+        winner = group.players[0];
+      }
+      if (winner) {
         superPlayers.push({
           playerId: winner.playerId,
           playerName: winner.userName,
           category: group.category,
           sourceGroupId: group._id,
           sourceRound: 2,
-          status: 'super_player'
+          status: 'super_player',
         });
       }
     }
@@ -593,7 +615,7 @@ exports.createTournament = async (req, res) => {
       if (perSportLevel === "unranked" || !s.sportName) continue;
       try {
         const rb = await SportRuleBook.findOne({
-          sportName: { $regex: new RegExp(`^${s.sportName}$`, "i") },
+          sportName: { $regex: new RegExp(`^${escapeRegex(s.sportName)}$`, "i") },
           level: perSportLevel,
         }).lean();
         if (rb) {
@@ -647,7 +669,7 @@ exports.createTournament = async (req, res) => {
       // Backend safety: validate + sanitize against sport config
       if (_primarySportName) {
         const sportDoc = await Sport.findOne({
-          name: { $regex: new RegExp(`^${_primarySportName}$`, "i") },
+          name: { $regex: new RegExp(`^${escapeRegex(_primarySportName)}$`, "i") },
           isActive: true,
         }).lean();
 
@@ -753,7 +775,21 @@ exports.createTournament = async (req, res) => {
           sportSlug: sportDoc.slug || slugify(s.sportName),
           tournamentLevel: perSportLevel,
           type: s.type || null,
-          categories: s.categories.map((c) => ({ name: c.name, fee: Number(c.fee || 0) })),
+          categories: s.categories.map((c) => {
+            const g = (c.gender || "any").toString().toLowerCase();
+            const toIntOrNull = (v) => {
+              if (v === null || v === undefined || v === "") return null;
+              const n = Number(v);
+              return Number.isFinite(n) ? n : null;
+            };
+            return {
+              name: c.name,
+              fee: Number(c.fee || 0),
+              minAge: toIntOrNull(c.minAge),
+              maxAge: toIntOrNull(c.maxAge),
+              gender: ["male", "female", "any"].includes(g) ? g : "any",
+            };
+          }),
           groupStageFormat: s.groupStageFormat || null,
           knockoutFormat: s.knockoutFormat || null,
           davisCupFormatId: s.davisCupFormatId || null,
@@ -1011,8 +1047,24 @@ exports.getAllTournaments = async (req, res) => {
     const includePrivate = req.query.includePrivate === "true";
     const filter = includePrivate ? {} : { isPrivate: { $ne: true } };
 
-    const tournaments = await Tournament.find(filter);
+    // Pagination — default 20 per page, hard-capped at 100 so a client can't
+    // ask for the entire collection. Previously this returned EVERY tournament
+    // to every mobile client on app open.
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const skip = (page - 1) * limit;
 
+    const [tournaments, total] = await Promise.all([
+      Tournament.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Tournament.countDocuments(filter),
+    ]);
+
+    // Pagination metadata in headers so existing clients that expect a bare
+    // array keep working unchanged (they just receive ≤limit items).
+    res.set("X-Total-Count", String(total));
+    res.set("X-Page", String(page));
+    res.set("X-Limit", String(limit));
+    res.set("X-Total-Pages", String(Math.ceil(total / limit) || 1));
     res.status(200).json(tournaments);
   } catch (error) {
     console.error("Error fetching tournaments:", error.message);
@@ -1024,34 +1076,63 @@ exports.getAllTournaments = async (req, res) => {
 };
 
 exports.deleteTournament = async (req, res) => {
-  try {
-    const { id } = req.params;
+  const { id } = req.params;
 
-    // Delete the tournament
-    const tournament = await Tournament.findByIdAndDelete(id);
-    if (!tournament) {
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ message: "Invalid tournament id" });
+  }
+
+  // Every related collection keyed by tournamentId. Deleting a tournament must
+  // remove ALL of these — previously only Booking + BookingGroup were deleted,
+  // orphaning matches, scores, payments and standings. Models that don't have a
+  // tournamentId field simply match nothing (harmless).
+  const RELATED_MODELS = [
+    Booking,
+    BookingGroup,
+    Score,
+    Match,                 // Tournnamentmatch (group-stage matches)
+    KnockoutMatch,
+    DirectKnockoutMatch,
+    SuperMatch,
+    TeamKnockout,
+    TeamKnockoutMatches,
+    TeamKnockoutTeams,
+    GroupStandings,
+    TopPlayers,
+    SuperPlayers,
+    PlayerPayment,
+  ];
+
+  const session = await mongoose.startSession();
+  try {
+    let found = false;
+    await session.withTransaction(async () => {
+      const tournament = await Tournament.findByIdAndDelete(id, { session });
+      if (!tournament) return; // leave found=false → 404 below (txn commits with no deletes)
+      found = true;
+
+      const filter = { tournamentId: id };
+      // Sequential (NOT Promise.all) — a single session is not safe for
+      // concurrent operations within a transaction.
+      for (const Model of RELATED_MODELS) {
+        await Model.deleteMany(filter, { session });
+      }
+    });
+
+    if (!found) {
       return res.status(404).json({ message: "Tournament not found" });
     }
-
-    // Delete all bookings related to this tournament
-    await Booking.deleteMany({ tournamentId: id });
-
-    // Delete all booking groups related to this tournament
-    await BookingGroup.deleteMany({ tournamentId: id });
-
-    // Add other deletions here if needed (e.g., matches, scores, etc.)
-
-    res
-      .status(200)
-      .json({
-        message: "Tournament and all related data deleted successfully",
-      });
+    return res.status(200).json({
+      message: "Tournament and all related data deleted successfully",
+    });
   } catch (error) {
     console.error("Error deleting tournament and related data:", error);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to delete tournament and related data",
       error: error.message,
     });
+  } finally {
+    session.endSession();
   }
 };
 
@@ -1240,7 +1321,7 @@ exports.editTournament = async (req, res) => {
         if (perSportLevel !== "unranked" && s.sportName) {
           try {
             const rb = await SportRuleBook.findOne({
-              sportName: { $regex: new RegExp(`^${s.sportName}$`, "i") },
+              sportName: { $regex: new RegExp(`^${escapeRegex(s.sportName)}$`, "i") },
               level: perSportLevel,
             }).lean();
             if (rb) {
@@ -1265,7 +1346,21 @@ exports.editTournament = async (req, res) => {
           sportSlug: sportDoc.slug || slugifyMS(s.sportName),
           tournamentLevel: perSportLevel,
           type: s.type || null,
-          categories: s.categories.map((c) => ({ name: c.name, fee: Number(c.fee || 0) })),
+          categories: s.categories.map((c) => {
+            const g = (c.gender || "any").toString().toLowerCase();
+            const toIntOrNull = (v) => {
+              if (v === null || v === undefined || v === "") return null;
+              const n = Number(v);
+              return Number.isFinite(n) ? n : null;
+            };
+            return {
+              name: c.name,
+              fee: Number(c.fee || 0),
+              minAge: toIntOrNull(c.minAge),
+              maxAge: toIntOrNull(c.maxAge),
+              gender: ["male", "female", "any"].includes(g) ? g : "any",
+            };
+          }),
           groupStageFormat: s.groupStageFormat || null,
           knockoutFormat: s.knockoutFormat || null,
           davisCupFormatId: s.davisCupFormatId || null,

@@ -6,6 +6,7 @@ const Notification = require("../Modal/Notification");
 const Tournament = require("../Modal/Tournament");
 const { validateTeamSize } = require("../utils/teamValidation");
 const { assertSportSelections, handleSportContextError } = require("../middleware/requireSportContext");
+const { eligibilityFor, findCategory } = require("../utils/eligibility");
 
 const bookingController = {
 
@@ -43,6 +44,14 @@ const bookingController = {
         });
       }
 
+      // Reject malformed ids early — a clean 400 instead of a Mongoose CastError 500.
+      if (!mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(tournamentId)) {
+        return res.status(400).json({ success: false, message: "Invalid userId or tournamentId" });
+      }
+      if (paymentId && !mongoose.isValidObjectId(paymentId)) {
+        return res.status(400).json({ success: false, message: "Invalid paymentId" });
+      }
+
       // STEP 16c — sportSelections is now required at the API boundary.
       // Reject legacy `selectedCategories`-only payloads up front.
       let _sportSelections;
@@ -63,6 +72,42 @@ const bookingController = {
       }
       // Check for corporate whitelist
       const tournament = await Tournament.findById(tournamentId);
+
+      // Block registrations after the registration deadline has passed.
+      if (
+        tournament &&
+        tournament.registrationDeadline &&
+        new Date() > new Date(tournament.registrationDeadline)
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Registration for this tournament has closed.",
+          code: "REGISTRATION_CLOSED",
+        });
+      }
+
+      // Block booking a tournament that has already ended (e.g. opened from an
+      // old notification). startDate/endDate are stored as strings.
+      if (tournament && (tournament.endDate || tournament.startDate)) {
+        const raw = tournament.endDate || tournament.startDate;
+        let endDate;
+        if (String(raw).includes("/")) {
+          const [day, m, y] = String(raw).split("/").map(Number);
+          endDate = new Date(y, m - 1, day);
+        } else {
+          endDate = new Date(raw);
+        }
+        if (!isNaN(endDate.getTime())) {
+          endDate.setHours(23, 59, 59, 999);
+          if (new Date() > endDate) {
+            return res.status(403).json({
+              success: false,
+              message: "This tournament has already ended.",
+              code: "TOURNAMENT_ENDED",
+            });
+          }
+        }
+      }
 
       if (tournament && tournament.whitelist && tournament.whitelist.length > 0) {
         // Fetch user's mobile if not provided in request
@@ -142,6 +187,49 @@ const bookingController = {
         };
       });
 
+      // Age + gender eligibility check — authoritative gate. The mobile UI
+      // greys out ineligible categories, but never trust the client. Runs
+      // before payment so we don't have to refund anything on rejection.
+      const eligibilityUser = await User.findById(userId)
+        .select("dateOfBirth sex")
+        .lean();
+      if (!eligibilityUser) {
+        return res.status(404).json({
+          success: false,
+          message: "Player profile not found",
+        });
+      }
+      const eligibilityFailures = [];
+      try {
+        for (const sel of _sportSelections) {
+          const category = findCategory(tournament, sel.sportId, sel.categoryName);
+          if (!category) continue; // unknown category — leave existing validation paths to handle
+          const result = eligibilityFor(eligibilityUser, category, tournament.startDate);
+          if (!result.eligible) {
+            eligibilityFailures.push({
+              sportName: sel.sportName,
+              categoryName: sel.categoryName,
+              reason: result.reason,
+            });
+          }
+        }
+      } catch (err) {
+        if (err.code === "TOURNAMENT_DATE_INVALID") {
+          return res.status(500).json({
+            success: false,
+            message: "Tournament is misconfigured: start date is missing or invalid. Contact the organizer.",
+          });
+        }
+        throw err;
+      }
+      if (eligibilityFailures.length > 0) {
+        return res.status(403).json({
+          success: false,
+          message: "Not eligible for one or more selected categories",
+          ineligible: eligibilityFailures,
+        });
+      }
+
       // totalFee is server-authoritative — sum of sportSelections.fee.
       const _totalFee = _sportSelections.reduce(
         (sum, s) => sum + Number(s.fee),
@@ -159,11 +247,16 @@ const bookingController = {
         paymentStatus: "pending",
         sportSelections: _sportSelections,
         totalFee: _totalFee,
+        // Server-authoritative amount owed for this registration. Previously
+        // left unset (defaulted to 0), which made club-admin finance revenue
+        // read as 0. Free tournaments resolve to 0 via _totalFee.
+        paymentAmount: _totalFee,
         employeeId: req.body.employeeId,
       };
 
       // Handle payment
       let paymentRecord;
+      let newPayment = null; // a newly-created Payment to persist inside the transaction
       if (paymentAmount === 0 && normalizedPaymentMethod !== "cash") {
         // Free tournament (but not cash)
         paymentRecord = new Payment({
@@ -182,8 +275,8 @@ const bookingController = {
           },
         });
 
-        await paymentRecord.save();
-        bookingData.paymentId = paymentRecord._id;
+        newPayment = paymentRecord; // defer the write into the transaction below
+        bookingData.paymentId = paymentRecord._id; // _id exists at instantiation
         bookingData.paymentMethod = "online";
         bookingData.paymentStatus = "paid"; // free = auto paid
       } else if (paymentId) {
@@ -299,8 +392,8 @@ const bookingController = {
           });
         }
 
-        // Create booking
-        const booking = new Booking({
+        // Augment booking with team data; persisted atomically below.
+        bookingData = {
           ...bookingData,
           team: {
             name: team.name,
@@ -317,23 +410,40 @@ const bookingController = {
             players: formattedPlayers,
             substitutes: formattedSubstitutes,
           },
-        });
+        };
+      }
 
-        await booking.save();
+      // ── Atomic write ──────────────────────────────────────────────────
+      // The (optional) new Payment and the Booking succeed together or not at
+      // all. Previously these were two separate writes — a failed Booking save
+      // left an orphaned Payment. The (userId, tournamentId) unique index also
+      // turns a double-registration race into a clean 409 here.
+      const session = await mongoose.startSession();
+      try {
+        let savedBooking;
+        await session.withTransaction(async () => {
+          if (newPayment) await newPayment.save({ session });
+          const booking = new Booking(bookingData);
+          await booking.save({ session });
+          savedBooking = booking;
+        });
         return res.status(201).json({
           success: true,
           message: "Tournament registration confirmed",
-          booking: booking.toObject(),
+          booking: savedBooking.toObject(),
         });
+      } catch (txErr) {
+        // Duplicate-registration unique index (E11000) → friendly 409.
+        if (txErr && txErr.code === 11000) {
+          return res.status(409).json({
+            success: false,
+            message: "You have already registered for this tournament",
+          });
+        }
+        throw txErr; // other errors handled by the outer catch (500)
+      } finally {
+        session.endSession();
       }
-      // Standard booking for other tournament types
-      const booking = new Booking(bookingData);
-      await booking.save();
-      res.status(201).json({
-        success: true,
-        message: "Tournament registration confirmed",
-        booking: booking.toObject(),
-      });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({
@@ -347,6 +457,9 @@ const bookingController = {
   checkBooking: async (req, res) => {
     try {
       const { userId, tournamentId } = req.query;
+      if (!mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(tournamentId)) {
+        return res.status(400).json({ success: false, message: "Invalid userId or tournamentId" });
+      }
       const booking = await Booking.findOne({
         userId,
         tournamentId,
@@ -390,6 +503,9 @@ const bookingController = {
   getUserBookings: async (req, res) => {
     try {
       const { userId } = req.params;
+      if (!mongoose.isValidObjectId(userId)) {
+        return res.status(400).json({ success: false, message: "Invalid userId" });
+      }
 
       // Fetch all bookings for that user (no status filter)
       const bookings = await Booking.find({ userId });
@@ -412,6 +528,9 @@ const bookingController = {
   getTournamentBookings: async (req, res) => {
     try {
       const { tournamentId } = req.params;
+      if (!mongoose.isValidObjectId(tournamentId)) {
+        return res.status(400).json({ success: false, message: "Invalid tournamentId" });
+      }
       const bookings = await Booking.find({
         tournamentId,
       });
@@ -434,6 +553,19 @@ const bookingController = {
 
       if (!tournamentId || !userId) {
         return res.status(400).json({ success: false, message: "Tournament ID and User ID are required" });
+      }
+      if (!mongoose.isValidObjectId(tournamentId) || !mongoose.isValidObjectId(userId)) {
+        return res.status(400).json({ success: false, message: "Invalid tournamentId or userId" });
+      }
+
+      // Ownership: the caller (managerAuth) must manage this tournament.
+      const callerId = String(req.user?.id || req.user?._id || "");
+      const ownTour = await Tournament.findById(tournamentId).select("managerId").lean();
+      if (!ownTour) {
+        return res.status(404).json({ success: false, message: "Tournament not found" });
+      }
+      if (!(ownTour.managerId || []).some((m) => String(m) === callerId)) {
+        return res.status(403).json({ success: false, message: "Forbidden: not your tournament" });
       }
 
       const booking = await Booking.findOne({ tournamentId, userId });
@@ -503,6 +635,16 @@ const bookingController = {
 
       if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, message: "No bookings provided" });
+      }
+
+      // Ownership: the caller must manage EVERY tournament referenced in the batch.
+      const callerId = String(req.user?.id || req.user?._id || "");
+      const tournamentIds = [...new Set(items.map((i) => i.tournamentId).filter(Boolean).map(String))];
+      const owned = await Tournament.find({ _id: { $in: tournamentIds }, managerId: callerId })
+        .select("_id")
+        .lean();
+      if (owned.length !== tournamentIds.length) {
+        return res.status(403).json({ success: false, message: "Forbidden: one or more tournaments are not yours" });
       }
 
       const bulkOps = items.map(({ userId, tournamentId, paymentMethod }) => {

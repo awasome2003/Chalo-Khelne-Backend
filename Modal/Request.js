@@ -46,7 +46,7 @@ const RequestSchema = new mongoose.Schema({
   },
   sessionType: {
     type: String,
-    enum: ["personal", "group", "intermediate"],
+    enum: ["personal", "group", "intermediate", "academy"],
     required: true,
   },
   location: {
@@ -93,5 +93,9 @@ RequestSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
   next();
 });
+
+// Trainer console queries: dashboard count {trainerId,type,status} and
+// listRequests {trainerId,type} sort createdAt — both served by this prefix index.
+RequestSchema.index({ trainerId: 1, type: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Request", RequestSchema);

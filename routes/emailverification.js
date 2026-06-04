@@ -15,14 +15,14 @@ const OTP_COOLDOWN_MS = 60 * 1000; // 60 seconds between resends
 // Function to generate a 6-digit OTP
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000);
 
-const EMAIL_FROM = process.env.EMAIL_USER || "bestowalsystems1@gmail.com";
+const EMAIL_FROM = process.env.EMAIL_FROM || process.env.EMAIL_USER;
 
-// Nodemailer transporter setup
+// Nodemailer transporter setup — credentials come from env only (never source).
 const transporter = nodemailer.createTransport({
   service: "Gmail",
   auth: {
-    user: process.env.EMAIL_USER || "bestowalsystems1@gmail.com",
-    pass: process.env.EMAIL_PASS || "oitnmxsxhkrxgwkr",
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
@@ -89,16 +89,17 @@ router.post("/forgot-password/send-otp", async (req, res) => {
       });
     }
 
-    // Check if user or manager exists
+    // Check if user or manager exists — but NEVER reveal which (no enumeration).
     const user = await User.findOne({ email });
-    let manager = null;
-
+    let recipientExists = !!user;
     if (!user) {
       const { Manager } = require("../Modal/ClubManager");
-      manager = await Manager.findOne({ email });
-      if (!manager) {
-        return res.status(404).json({ message: "No account found with this email address" });
-      }
+      const manager = await Manager.findOne({ email });
+      recipientExists = !!manager;
+    }
+    // No account → respond identically to success without sending a code.
+    if (!recipientExists) {
+      return res.json({ message: "OTP sent successfully!", expiresIn: 300 });
     }
 
     const otp = generateOTP();
@@ -146,6 +147,11 @@ router.post("/forgot-password/verify-otp", async (req, res) => {
   }
 
   if (otpStore[email].otp !== parseInt(otp)) {
+    otpStore[email].attempts = (otpStore[email].attempts || 0) + 1;
+    if (otpStore[email].attempts >= 5) {
+      delete otpStore[email];
+      return res.status(429).json({ message: "Too many incorrect attempts. Please request a new code." });
+    }
     return res.status(400).json({ message: "Incorrect code. Please check and try again." });
   }
 

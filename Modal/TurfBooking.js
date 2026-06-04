@@ -46,6 +46,12 @@ const turfBookingSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // Which physical court the slot was booked on. Optional so existing
+    // turfs/bookings without courts configured still validate.
+    court: {
+      name: { type: String, default: "" },
+      type: { type: String, default: "" },
+    },
     amount: {
       type: Number,
       required: true,
@@ -63,7 +69,13 @@ const turfBookingSchema = new mongoose.Schema(
     paymentMethod: {
       type: String,
       default: "cash",
-      enum: ["cash", "free", "waived"],
+      enum: ["cash", "free", "waived", "online"],
+    },
+    // For online payments, which provider/category the user picked
+    // ("upi" | "card" | "wallet" | "razorpay" | …). Empty for cash.
+    paymentProvider: {
+      type: String,
+      default: "",
     },
     cancellationReason: String,
     cancellationDate: Date,
@@ -80,5 +92,22 @@ turfBookingSchema.index({ turfId: 1 });
 turfBookingSchema.index({ status: 1 });
 turfBookingSchema.index({ date: 1 });
 turfBookingSchema.index({ "sport.name": 1 });
+
+// Tenant-aware compound index for owner/club booking dashboards.
+turfBookingSchema.index({ clubId: 1, status: 1, date: -1 });
+
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId.
+// Turf bookings are created by players (cross-tenant), so derive the tenant
+// from the turf (turfId → Turf.clubId) when context can't supply it.
+const tenantScope = require("../utils/tenantScope");
+turfBookingSchema.plugin(tenantScope, {
+  field: "clubId",
+  enforce: true,
+  derive: async (doc) => {
+    if (!doc.turfId) return null;
+    const t = await mongoose.model("Turf").findById(doc.turfId).select("clubId").lean();
+    return t ? t.clubId : null;
+  },
+});
 
 module.exports = mongoose.model("TurfBooking", turfBookingSchema);

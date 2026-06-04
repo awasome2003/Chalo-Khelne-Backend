@@ -73,6 +73,12 @@ const ScoreSchema = new mongoose.Schema(
   }
 );
 
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId.
+// Score has no tournamentId; its clubId is derived two-hop via
+// matchId → TournamentMatch.clubId by the backfill.
+const tenantScope = require("../utils/tenantScope");
+ScoreSchema.plugin(tenantScope, { field: "clubId", enforce: true });
+
 // Check if the model already exists to prevent OverwriteModelError
 const Score = mongoose.models.Score || mongoose.model("Score", ScoreSchema);
 

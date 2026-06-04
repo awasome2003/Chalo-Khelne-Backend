@@ -1,4 +1,5 @@
 const SportRuleBook = require("../Modal/SportRuleBook");
+const escapeRegex = require("../utils/escapeRegex");
 const Sport = require("../Modal/Sport");
 const { sportRulePresets, LEVELS } = require("../Config/sportRulePresets");
 
@@ -85,7 +86,7 @@ exports.getAllRuleBooks = async (req, res) => {
   try {
     const { sportName, level } = req.query;
     const filter = {};
-    if (sportName) filter.sportName = { $regex: new RegExp(sportName, "i") };
+    if (sportName) filter.sportName = { $regex: new RegExp(escapeRegex(sportName), "i") };
     if (level) filter.level = level;
 
     const ruleBooks = await SportRuleBook.find(filter)
@@ -106,7 +107,7 @@ exports.getRulesBysportAndLevel = async (req, res) => {
     const { sportName, level } = req.params;
 
     const ruleBook = await SportRuleBook.findOne({
-      sportName: { $regex: new RegExp(`^${sportName}$`, "i") },
+      sportName: { $regex: new RegExp(`^${escapeRegex(sportName)}$`, "i") },
       level: level.toLowerCase(),
     }).lean();
 
@@ -131,7 +132,7 @@ exports.getRulesBySport = async (req, res) => {
     const { sportName } = req.params;
 
     const ruleBooks = await SportRuleBook.find({
-      sportName: { $regex: new RegExp(`^${sportName}$`, "i") },
+      sportName: { $regex: new RegExp(`^${escapeRegex(sportName)}$`, "i") },
     })
       .sort({ level: 1 })
       .lean();
@@ -170,7 +171,7 @@ exports.getLevelsForSport = async (req, res) => {
     const { sportName } = req.params;
 
     const ruleBooks = await SportRuleBook.find({
-      sportName: { $regex: new RegExp(`^${sportName}$`, "i") },
+      sportName: { $regex: new RegExp(`^${escapeRegex(sportName)}$`, "i") },
     })
       .select("level")
       .lean();

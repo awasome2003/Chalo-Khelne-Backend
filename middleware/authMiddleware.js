@@ -2,6 +2,27 @@ const jwt = require("jsonwebtoken");
 const Manager = require("../Modal/ClubManager").Manager;
 
 const User = require("../Modal/User");
+const Superadminmodel = require("../Modal/Superadminmodel");
+const { runWithTenant, contextForUser } = require("../utils/tenantContext");
+
+// ═══════════════════════════════════════════════════════════════
+// Suspension gate — shared across authenticate/managerAuth/allowUserOrManager.
+// SuperAdmin is never suspendable, so this is only called for User/Manager
+// documents. Returns true if the request was rejected (and the response was
+// sent); caller must return immediately. Returns false if the user is active.
+// ═══════════════════════════════════════════════════════════════
+function rejectIfSuspended(account, res) {
+  if (!account || !account.status || account.status === "active") return false;
+  const suspended = account.status === "suspended";
+  return res.status(403).json({
+    success: false,
+    code: suspended ? "ACCOUNT_SUSPENDED" : "ACCOUNT_REJECTED",
+    message: suspended
+      ? "Your account has been suspended. Contact support."
+      : "Your account has been rejected. Contact support.",
+    reason: account.suspensionReason || null,
+  });
+}
 
 // Middleware to verify JWT token for managers
 exports.managerAuth = async (req, res, next) => {
@@ -19,16 +40,22 @@ exports.managerAuth = async (req, res, next) => {
 
   try {
     // Verify the token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const manager = await Manager.findById(decoded.id);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+    const manager = await Manager.findById(decoded.id).select(
+      "_id status suspensionReason clubId"
+    );
 
     if (!manager) {
       return res.status(401).json({ message: "Manager not found." });
     }
 
+    if (rejectIfSuspended(manager, res)) return;
+
     // Store the decoded user in the request object for use in the next middleware
     req.user = decoded;
-    next();
+    // Tenant context: a Manager's tenant is its owning ClubAdmin (manager.clubId).
+    const ctx = { clubId: manager.clubId ? String(manager.clubId) : null, principalType: "Manager" };
+    return runWithTenant(ctx, () => next());
   } catch (error) {
     return res.status(401).json({ message: "Invalid token." });
   }
@@ -46,15 +73,21 @@ exports.authenticate = async (req, res, next) => {
   const token = authHeader.replace("Bearer ", "");
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+    const user = await User.findById(decoded.id).select(
+      "_id role status suspensionReason"
+    );
 
     if (!user) {
       return res.status(401).json({ message: "User not found." });
     }
 
+    if (rejectIfSuspended(user, res)) return;
+
     req.user = decoded;
-    next();
+    // Tenant context: owner roles (ClubAdmin/corporate_admin) scope to their own
+    // id; players & other roles carry no clubId (cross-tenant) and aren't scoped.
+    return runWithTenant(contextForUser(decoded.role, decoded.id), () => next());
   } catch (error) {
     return res.status(401).json({ message: "Invalid token." });
   }
@@ -70,32 +103,125 @@ exports.allowUserOrManager = async (req, res, next) => {
   const token = authHeader.replace("Bearer ", "");
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
     const id = decoded.id || decoded.userId; // Support both token formats
 
-    // SuperAdmin — allow directly
+    // SuperAdmin — never suspendable, allow directly. Sees all tenants.
     if (decoded.role === "superadmin") {
       req.user = { _id: id, role: "superadmin", email: decoded.email };
       req.userRole = "SuperAdmin";
-      return next();
+      req.isSuperAdmin = true;
+      return runWithTenant({ isSuperAdmin: true, principalType: "SuperAdmin" }, () => next());
     }
 
     let user = await User.findById(id);
     if (user) {
+      if (rejectIfSuspended(user, res)) return;
       req.user = user;
       req.userRole = "User";
-      return next();
+      return runWithTenant(contextForUser(user.role, user._id), () => next());
     }
 
     const manager = await Manager.findById(id);
     if (manager) {
+      if (rejectIfSuspended(manager, res)) return;
       req.user = manager;
       req.userRole = "Manager";
-      return next();
+      const ctx = { clubId: manager.clubId ? String(manager.clubId) : null, principalType: "Manager" };
+      return runWithTenant(ctx, () => next());
     }
 
     return res.status(401).json({ message: "User or Manager not found." });
   } catch (err) {
     return res.status(401).json({ message: "Invalid token." });
   }
+};
+
+/**
+ * requireSuperAdmin — gate for the SuperAdmin control plane (RBAC, user
+ * approval/role changes, sport/coupon admin, etc.).
+ *
+ * Superadmin tokens come in two shapes:
+ *   • POST /login           → { email, role: "superadmin", userId }   (has role)
+ *   • POST /superadminlogin → { email, userId }                       (NO role)
+ * Because one shape carries no role claim, we don't trust the role string —
+ * we resolve the id (userId|id) and confirm it exists in the Superadmin
+ * collection. A regular User/Manager _id will not be found there, so this
+ * is a hard membership check, not a guessable claim.
+ *
+ * SuperAdmin accounts are NEVER suspendable — no status check here.
+ */
+exports.requireSuperAdmin = async (req, res, next) => {
+  const authHeader = req.header("Authorization");
+  if (!authHeader) {
+    return res.status(401).json({ success: false, message: "Authorization denied. No token provided." });
+  }
+  const token = authHeader.replace("Bearer ", "");
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+    const id = decoded.userId || decoded.id;
+    if (!id) {
+      return res.status(403).json({ success: false, message: "Superadmin access required" });
+    }
+    const sa = await Superadminmodel.findById(id).select("_id").lean();
+    if (!sa) {
+      return res.status(403).json({ success: false, message: "Superadmin access required" });
+    }
+    req.user = decoded;
+    req.userRole = "SuperAdmin";
+    req.isSuperAdmin = true;
+    req.superadminId = String(id);
+    return runWithTenant({ isSuperAdmin: true, principalType: "SuperAdmin" }, () => next());
+  } catch (err) {
+    return res.status(401).json({ success: false, message: "Invalid token." });
+  }
+};
+
+/**
+ * requireRole(...allowed) — general role gate. Reuses req.user if a prior
+ * auth middleware already ran, otherwise decodes the token itself, so it can
+ * stand alone on a route. Roles are matched exactly as stored on the token
+ * ("Manager", "ClubAdmin", "corporate_admin", "superadmin", ...). A roleless
+ * /superadminlogin token is resolved to "superadmin" via the collection.
+ *
+ *   router.post("/x", requireRole("corporate_admin", "superadmin"), handler)
+ */
+exports.requireRole = (...allowed) => async (req, res, next) => {
+  let decoded = req.user;
+  if (!decoded || typeof decoded !== "object") {
+    const authHeader = req.header("Authorization");
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: "Authorization denied. No token provided." });
+    }
+    try {
+      decoded = jwt.verify(authHeader.replace("Bearer ", ""), process.env.JWT_SECRET, { algorithms: ["HS256"] });
+    } catch (err) {
+      return res.status(401).json({ success: false, message: "Invalid token." });
+    }
+  }
+  let role = decoded.role;
+  // /superadminlogin tokens carry no role — resolve membership from the collection.
+  if (!role) {
+    const id = decoded.userId || decoded.id;
+    if (id) {
+      try {
+        const sa = await Superadminmodel.findById(id).select("_id").lean();
+        if (sa) role = "superadmin";
+      } catch (_) { /* fall through to 403 */ }
+    }
+  }
+  // SuperAdmin bypasses all role gates — full-application access by design.
+  // Even if the caller forgot to list "superadmin", SA always passes.
+  if (role === "superadmin") {
+    req.user = decoded;
+    req.userRole = "superadmin";
+    req.isSuperAdmin = true;
+    return next();
+  }
+  if (!role || !allowed.includes(role)) {
+    return res.status(403).json({ success: false, message: "Forbidden: insufficient role" });
+  }
+  req.user = decoded;
+  req.userRole = role;
+  return next();
 };

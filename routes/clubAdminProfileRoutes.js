@@ -10,29 +10,31 @@ const {
   bulkDeleteClubAdmins,
   toggleClubAdminStatus,
 } = require("../controllers/ClubAdminController");
+const { authenticate, requireSuperAdmin, requireRole } = require("../middleware/authMiddleware");
+const { requireSelf } = require("../middleware/authz");
 
-// POST - Create a new ClubAdmin profile
-router.post("/", createClubAdminProfile);
+// POST - Create a new ClubAdmin profile (club admin or superadmin)
+router.post("/", requireRole("ClubAdmin", "superadmin"), createClubAdminProfile);
 
-// POST - Onboard a new ClubAdmin (User + Profile + Credentials)
-router.post("/onboard", onboardClubAdmin);
+// POST - Onboard a new ClubAdmin (User + Profile + Credentials) — superadmin only
+router.post("/onboard", requireSuperAdmin, onboardClubAdmin);
 
-// GET - Get ClubAdmin profile + clubName, email, mobile
-router.get("/:userId", getClubAdminProfile);
+// GET - Get ClubAdmin profile + clubName, email, mobile (own profile)
+router.get("/:userId", authenticate, requireSelf("userId"), getClubAdminProfile);
 
-// PUT - Update ClubAdmin profile
-router.put("/:userId", updateClubAdminProfile);
+// PUT - Update ClubAdmin profile (own profile)
+router.put("/:userId", authenticate, requireSelf("userId"), updateClubAdminProfile);
 
-// GET - Get All ClubAdmins
-router.get("/", getAllClubAdmins);
+// GET - Get All ClubAdmins — superadmin only
+router.get("/", requireSuperAdmin, getAllClubAdmins);
 
-// DELETE - Bulk delete club admins (must be before /:userId)
-router.delete("/bulk", bulkDeleteClubAdmins);
+// DELETE - Bulk delete club admins (must be before /:userId) — superadmin only
+router.delete("/bulk", requireSuperAdmin, bulkDeleteClubAdmins);
 
-// DELETE - Delete a ClubAdmin profile and user
-router.delete("/:userId", deleteClubAdmin);
+// DELETE - Delete a ClubAdmin profile and user — superadmin only
+router.delete("/:userId", requireSuperAdmin, deleteClubAdmin);
 
-// PATCH - Toggle active status
-router.patch("/:userId/status", toggleClubAdminStatus);
+// PATCH - Toggle active status — superadmin only
+router.patch("/:userId/status", requireSuperAdmin, toggleClubAdminStatus);
 
 module.exports = router;

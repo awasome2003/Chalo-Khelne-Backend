@@ -1,64 +1,42 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
+/**
+ * Bootstrap — connects DB, creates HTTP(S) server, attaches Socket.io.
+ * Express wiring lives in app.js. Route registry lives in routes/index.js.
+ */
+
 require("dotenv").config();
-const path = require("path");
+
+// ── Fail fast on missing/weak critical env (runs before any other module) ──
+const { validateEnv } = require("./Config/validateEnv");
+validateEnv();
+
+// Route all console.* through winston (structured levels + timestamps). Must
+// run before other modules load so their logs are captured too.
+const { patchConsole } = require("./utils/logger");
+patchConsole();
+
+// Optional error tracking (no-op unless SENTRY_DSN set + @sentry/node installed).
+const { initSentry, captureException } = require("./utils/sentry");
+initSentry();
+
+const mongoose = require("mongoose");
 const fs = require("fs");
 const https = require("https");
 const http = require("http");
-
-// Import routes
-const authRoutes = require("./routes/authRoutes");
-const protectedRoutes = require("./routes/protectedRoutes");
-const updateRoutes = require("./routes/updateRoutes");
-const managerRoute = require("./routes/managerRoute");
-const eventRoutes = require("./routes/eventRoutes");
-const tournamentRoutes = require("./routes/tournamentRoutes");
-const playerRoutes = require("./routes/playerRoutes");
-const emailverification = require("./routes/emailverification");
-const turfRoutes = require("./routes/turfRoutes");
-const trainerRoutes = require("./routes/trainerRoutes");
-const refereeRoutes = require("./routes/refereeRoutes");
-const passwordReset = require("./routes/passwordReset");
-const postRoutes = require("./routes/postRoutes");
-const notificationRoutes = require("./routes/notificationRoutes");
-const favoriteRoutes = require("./routes/favoriteRoutes");
-const ClubAdminProfile = require("./routes/clubAdminProfileRoutes")
-const Search = require("./routes/search")
-const BulkUpload = require("./routes/bulkUpload")
-const sportRoutes = require("./routes/sportRoutes");
-const sportRuleBookRoutes = require("./routes/sportRuleBookRoutes");
-const debugRoutes = require("./routes/debugRoutes");
-const ManagerPayment = require("./routes/managerPaymentRoutes")
-const corporateRoutes = require("./routes/corporateRoutes");
-const inquiryRoutes = require("./routes/inquiryRoutes");
-const newsRoutes = require("./routes/newsRoutes");
-const donationRoutes = require("./routes/donationRoutes");
-const onboardingRoutes = require("./routes/onboardingRoutes");
-const chatRoutes = require("./routes/chatRoutes");
-const expenseRoutes = require("./routes/expenseRoutes");
-const clubAdminFinanceRoutes = require("./routes/clubAdminFinanceRoutes");
-const rbacRoutes = require("./routes/rbacRoutes");
-const vendorRoutes = require("./routes/vendorRoutes");
-const invitationRoutes = require("./routes/invitationRoutes");
-const couponRoutes = require("./routes/couponRoutes");
-const staffApplicationRoutes = require("./routes/staffApplicationRoutes");
-const playerStatsRoutes = require("./routes/playerStatsRoutes");
 const { Server } = require("socket.io");
+
+const { createApp } = require("./app");
 const setupSocket = require("./socket/socketHandler");
+const { startAllCrons } = require("./cron/startCrons");
 
-// Initialize express
-const app = express();
+const app = createApp();
 
-// SSL Configuration - only for production or when explicitly enabled
+// ── SSL (production only) ─────────────────────────────────────────────
 let sslOptions = null;
-const useSSL = process.env.USE_SSL === 'true' && process.env.NODE_ENV === 'production';
+const useSSL = process.env.USE_SSL === "true" && process.env.NODE_ENV === "production";
 
 if (useSSL) {
   const certPath = process.env.SSL_CERT_PATH || "/etc/letsencrypt/live/dev.bestowalsystems.in/fullchain.pem";
   const keyPath = process.env.SSL_KEY_PATH || "/etc/letsencrypt/live/dev.bestowalsystems.in/privkey.pem";
-
-  // Check if SSL certificates exist
   if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
     sslOptions = {
       key: fs.readFileSync(keyPath),
@@ -72,127 +50,128 @@ if (useSSL) {
       ].join(":"),
       honorCipherOrder: true,
     };
-    console.log("SSL certificates loaded successfully");
+    console.log("SSL certificates loaded");
   } else {
-    console.warn("SSL certificates not found at specified paths. Starting HTTP server instead.");
-    console.warn(`Cert path: ${certPath}`);
-    console.warn(`Key path: ${keyPath}`);
+    console.warn(`SSL certs not found — starting HTTP. cert=${certPath} key=${keyPath}`);
   }
 }
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, "uploads");
-const profilesDir = path.join(uploadsDir, "profiles");
-const certificatesDir = path.join(uploadsDir, "certificates");
+// ── Mongo ─────────────────────────────────────────────────────────────
+// Runtime connection events (reconnect handled automatically by the driver).
+mongoose.connection.on("error", (err) => console.error("[MONGO] runtime error:", err.message));
+mongoose.connection.on("disconnected", () => console.warn("[MONGO] disconnected"));
+mongoose.connection.on("reconnected", () => console.log("[MONGO] reconnected"));
 
-[uploadsDir, profilesDir, certificatesDir].forEach((dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-});
-
-// Middleware
-app.use(express.json());
-app.use(cors({ origin: "*" }));
-
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-app.locals.directories = {
-  uploads: uploadsDir,
-  profiles: profilesDir,
-  certificates: certificatesDir,
-};
-
-require("./Modal/ClubManager");
-require("./Modal/Referee");
-
-// Connect to MongoDB
 mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log(err));
-
-app.get("/", (req, res) => {
-  res.send("Chalo Khelne API is running");
-});
-
-// Routes
-app.use("/api", authRoutes);
-app.use("/api/protected", protectedRoutes);
-app.use("/api/update", updateRoutes);
-app.use("/api/manager", managerRoute);
-app.use("/api/events", eventRoutes);
-app.use("/api/tournaments", tournamentRoutes);
-app.use("/api/players", playerRoutes);
-app.use("/api/email", emailverification);
-app.use("/api/turfs", turfRoutes);
-app.use("/api/trainer", trainerRoutes);
-app.use("/api/referee", refereeRoutes);
-app.use("/api/posts", postRoutes);
-app.use("/api/notifications", notificationRoutes);
-app.use("/api/users", favoriteRoutes);
-app.use("/api", passwordReset);
-app.use("/api/clubadminprofile", ClubAdminProfile)
-app.use("/api/search", Search)
-app.use("/api/bulk-upload", BulkUpload)
-app.use("/api/sports", sportRoutes);
-app.use("/api/sport-rules", sportRuleBookRoutes);
-app.use("/api/debug", debugRoutes);
-app.use("/api/payments", ManagerPayment);// Error handling middleware
-app.use("/api/corporate", corporateRoutes);
-app.use("/api/inquiries", inquiryRoutes);
-app.use("/api/news", newsRoutes);
-app.use("/api/donations", donationRoutes);
-app.use("/api/onboarding", onboardingRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/expenses", expenseRoutes);
-app.use("/api/club-admin/finance", clubAdminFinanceRoutes);
-app.use("/api/roles", rbacRoutes);
-app.use("/api/equipment", vendorRoutes);
-app.use("/api/invitations", invitationRoutes);
-app.use("/api/coupons", couponRoutes);
-app.use("/api/staff-applications", staffApplicationRoutes);
-app.use("/api/player-stats", playerStatsRoutes);
-app.use("/api/group-chat", require("./routes/groupChatRoutes"));
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-
-  // Handle multer errors
-  if (err.name === "MulterError") {
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({
-        error: "File too large. Maximum size is 5MB.",
-      });
+  .connect(process.env.MONGO_URI, {
+    maxPoolSize: 50,
+    minPoolSize: 5,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  })
+  .then(() => {
+    console.log("MongoDB connected");
+    // Background cron jobs. Single-instance (default): the web process owns them.
+    // Multi-instance (Phase 2 HA): set RUN_CRON=false on every web instance and
+    // run worker.js as the ONE cron owner, so jobs don't double-fire.
+    if (process.env.RUN_CRON !== "false") {
+      startAllCrons();
+    } else {
+      console.log("[cron] RUN_CRON=false — crons delegated to the worker process");
     }
-    return res.status(400).json({ error: err.message });
-  }
+  })
+  .catch((err) => {
+    console.error("FATAL: MongoDB connection failed:", err.message);
+    process.exit(1);
+  });
 
-  res.status(500).json({ error: "Something broke!" });
-});
-
+// ── Listen ────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3003;
 
-// Start server with or without SSL
-let server;
-if (sslOptions) {
-  server = https.createServer(sslOptions, app);
-  server.listen(PORT, () => {
-    console.log(`HTTPS Server running on https://dev.bestowalsystems.in:${PORT}`);
-  });
-} else {
-  server = http.createServer(app);
-  server.listen(PORT, () => {
-    console.log(`HTTP Server running on http://localhost:${PORT}`);
-    if (process.env.NODE_ENV === 'production') {
-      console.warn("WARNING: Running HTTP server in production mode!");
-    }
+const server = sslOptions
+  ? https.createServer(sslOptions, app)
+  : http.createServer(app);
+
+server.listen(PORT, () => {
+  const proto = sslOptions ? "https" : "http";
+  const host = sslOptions ? "dev.bestowalsystems.in" : "localhost";
+  console.log(`${proto.toUpperCase()} Server running on ${proto}://${host}:${PORT}`);
+  if (!sslOptions && process.env.NODE_ENV === "production") {
+    console.warn("WARNING: Running HTTP server in production mode!");
+  }
+});
+
+// ── Graceful shutdown ──────────────────────────────────────────────
+// Render / k8s send SIGTERM before killing a pod. Drain HTTP first so
+// in-flight requests finish, then close Mongo cleanly. Hard-exit after
+// 30s as a safety net for stuck connections.
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[shutdown] received ${signal} — draining...`);
+  const forceExit = setTimeout(() => {
+    console.error("[shutdown] forced exit (drain timeout)");
+    process.exit(1);
+  }, 30_000);
+  forceExit.unref();
+  server.close((err) => {
+    if (err) console.error("[shutdown] server.close error:", err.message);
+    mongoose.connection
+      .close(false)
+      .then(() => {
+        console.log("[shutdown] mongo closed. bye.");
+        clearTimeout(forceExit);
+        process.exit(err ? 1 : 0);
+      })
+      .catch((e) => {
+        console.error("[shutdown] mongo close error:", e.message);
+        process.exit(1);
+      });
   });
 }
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
-// Socket.io — attach to existing HTTP server
-const io = new Server(server, {
-  cors: { origin: "*" },
+// ── Last-resort process guards ─────────────────────────────────────────
+// asyncHandler (utils/asyncHandler) converts route-level throws/rejections into
+// clean 500s, so these should rarely fire. When they DO, process state may be
+// unreliable — log loudly and shut down GRACEFULLY (drain HTTP + close Mongo)
+// so the process manager (PM2) restarts a fresh instance. We never silently
+// swallow the error, and never exit instantly without cleanup.
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled promise rejection:", reason);
+  captureException(reason instanceof Error ? reason : new Error("Unhandled rejection: " + String(reason)), { kind: "unhandledRejection" });
+  shutdown("unhandledRejection");
 });
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err);
+  captureException(err, { kind: "uncaughtException" });
+  shutdown("uncaughtException");
+});
+
+// ── Sockets ───────────────────────────────────────────────────────────
+// Match the HTTP CORS policy: native mobile sends no origin (allowed); browser
+// origins must be allowlisted via WEB_ALLOWED_ORIGINS. Fail closed in production.
+const _socketOrigins = (process.env.WEB_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+const io = new Server(server, {
+  cors: {
+    origin(origin, cb) {
+      if (!origin) return cb(null, true);
+      if (_socketOrigins.length > 0) return cb(null, _socketOrigins.includes(origin));
+      if (process.env.NODE_ENV === "production") return cb(null, false);
+      return cb(null, true);
+    },
+    credentials: true,
+  },
+});
+// Attach the Redis adapter when REDIS_URL is set (multi-instance fan-out);
+// otherwise no-op → default in-memory adapter (single-instance, unchanged).
+const { attachRedisAdapter } = require("./utils/socketAdapter");
+attachRedisAdapter(io);
 app.set("io", io);
 setupSocket(io);
 console.log("[SOCKET] Socket.io initialized");

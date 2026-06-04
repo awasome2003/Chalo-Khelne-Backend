@@ -526,17 +526,35 @@ exports.acceptRequest = async (req, res) => {
 
     // Handle different request types
     if (request.requestType === "join_session" && request.sessionId) {
-      // Add player to existing session
       const session = request.sessionId;
 
-      // Add player to the session if not already added
-      if (!session.players.includes(request.playerId)) {
-        session.players.push(request.playerId);
-        session.currentParticipants = session.players.length;
-        await session.save();
+      // Atomically add the player ONLY if not already enrolled. The filter
+      // `players: { $ne: playerId }` makes the $addToSet + $inc a single
+      // conditional write, so two concurrent accepts can't double-enroll or
+      // overcount currentParticipants (read-modify-write race fixed).
+      const updatedSession = await Session.findOneAndUpdate(
+        {
+          _id: session._id,
+          players: { $ne: request.playerId },
+          $expr: { $lt: ["$currentParticipants", "$maxParticipants"] },
+        },
+        { $addToSet: { players: request.playerId }, $inc: { currentParticipants: 1 } },
+        { new: true }
+      );
+
+      if (!updatedSession) {
+        // Null = either already enrolled (idempotent) OR the session is full.
+        const current = await Session.findById(session._id)
+          .select("players currentParticipants maxParticipants")
+          .lean();
+        const alreadyIn = current && current.players.some((p) => String(p) === String(request.playerId));
+        if (!alreadyIn) {
+          return res.status(409).json({ success: false, message: "Session is full" });
+        }
+        return res.json({ request, session: current });
       }
 
-      res.json({ request, session });
+      res.json({ request, session: updatedSession });
     } else {
       // Create a new session from the request
       const session = new Session({

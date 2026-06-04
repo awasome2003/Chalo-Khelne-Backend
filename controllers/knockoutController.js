@@ -247,7 +247,10 @@ exports.generateNextRound = async (req, res) => {
     // Load tournament for sport config (MatchFactory needs it)
     const tournament = await Tournament.findById(tournamentId);
 
-    const nextRoundMatches = [];
+    // Build ALL next-round match documents first (no DB writes yet) so we can
+    // persist them atomically. Previously each match was saved individually in
+    // this loop — a crash midway left a partial, corrupt bracket.
+    const matchDocs = [];
     let bracketPosition = 1;
 
     for (let i = 0; i < winners.length; i += 2) {
@@ -256,7 +259,7 @@ exports.generateNextRound = async (req, res) => {
 
       if (!player2) {
         // BYE match — odd number of winners
-        const byeDoc = createLegacyKnockoutMatch({
+        matchDocs.push(createLegacyKnockoutMatch({
           tournament,
           tournamentId,
           sportId: _priorSportId,
@@ -270,13 +273,10 @@ exports.generateNextRound = async (req, res) => {
           status: "BYE",
           isBye: true,
           winner: { playerId: player1.playerId, playerName: player1.playerName, playerType: player1.playerType },
-        });
-        const byeMatch = new KnockoutMatch(byeDoc);
-        await byeMatch.save();
-        nextRoundMatches.push(byeMatch);
+        }));
       } else {
         // Regular match
-        const matchDoc = createLegacyKnockoutMatch({
+        matchDocs.push(createLegacyKnockoutMatch({
           tournament,
           tournamentId,
           sportId: _priorSportId,
@@ -287,13 +287,22 @@ exports.generateNextRound = async (req, res) => {
           player1: { playerId: player1.playerId, playerName: player1.playerName, playerType: player1.playerType },
           player2: { playerId: player2.playerId, playerName: player2.playerName, playerType: player2.playerType },
           category: category || "Open",
-        });
-        const match = new KnockoutMatch(matchDoc);
-        await match.save();
-        nextRoundMatches.push(match);
+        }));
       }
 
       bracketPosition++;
+    }
+
+    // Persist atomically — all matches insert together or none (rolls back on
+    // any failure, so the bracket is never left half-generated).
+    let nextRoundMatches = [];
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        nextRoundMatches = await KnockoutMatch.insertMany(matchDocs, { session });
+      });
+    } finally {
+      session.endSession();
     }
 
     res.status(201).json({

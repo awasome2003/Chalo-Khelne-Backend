@@ -18,6 +18,15 @@ const playerPaymentSchema = new mongoose.Schema(
             required: true,
         },
 
+        // The registration this proof pays for. Links the proof-review flow to
+        // the Booking so that approving a proof can confirm the booking.
+        // Optional: older records (and proofs submitted before a booking exists)
+        // may not have it — verifyPayment falls back to (playerId, tournamentId).
+        bookingId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Booking",
+        },
+
         // Which method was used
         paymentMethod: {
             type: String,

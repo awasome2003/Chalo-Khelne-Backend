@@ -156,7 +156,10 @@ exports.getPaymentSetup = async (req, res) => {
    ========================================================= */
 exports.deletePaymentOption = async (req, res) => {
     try {
-        const { managerId, optionId, type } = req.body;
+        const { optionId, type } = req.body;
+        // managerId comes from the authenticated token (managerAuth), NEVER the
+        // request body — otherwise any manager could edit another's setup (IDOR).
+        const managerId = req.user?.id || req.user?._id;
         const setup = await ManagerPayment.findOne({ managerId });
         if (!setup) return res.status(404).json({ success: false, message: "Payment setup not found" });
 
@@ -201,7 +204,9 @@ exports.deletePaymentOption = async (req, res) => {
    ========================================================= */
 exports.updatePaymentOption = async (req, res) => {
     try {
-        const { managerId, optionId, type, updates } = req.body;
+        const { optionId, type, updates } = req.body;
+        // managerId from the token, not the body (see deletePaymentOption).
+        const managerId = req.user?.id || req.user?._id;
         const setup = await ManagerPayment.findOne({ managerId });
         if (!setup) return res.status(404).json({ success: false, message: "Payment setup not found" });
 

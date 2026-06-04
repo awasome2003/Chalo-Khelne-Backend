@@ -1,4 +1,5 @@
 const News = require("../Modal/News");
+const escapeRegex = require("../utils/escapeRegex");
 
 // POST /api/news/create — Create news (Admin/Manager)
 exports.createNews = async (req, res) => {
@@ -284,7 +285,7 @@ exports.getNewsBySport = async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
 
     const filter = {
-      sports: { $regex: new RegExp(`^${sportName}$`, "i") },
+      sports: { $regex: new RegExp(`^${escapeRegex(sportName)}$`, "i") },
       status: "Published",
     };
 
@@ -323,8 +324,8 @@ exports.getNewsByRegion = async (req, res) => {
     const { region, area, page = 1, limit = 20 } = req.query;
 
     const filter = { status: "Published" };
-    if (region) filter.region = { $regex: new RegExp(`^${region}$`, "i") };
-    if (area) filter.area = { $regex: new RegExp(`^${area}$`, "i") };
+    if (region) filter.region = { $regex: new RegExp(`^${escapeRegex(region)}$`, "i") };
+    if (area) filter.area = { $regex: new RegExp(`^${escapeRegex(area)}$`, "i") };
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const total = await News.countDocuments(filter);

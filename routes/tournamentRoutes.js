@@ -1,9 +1,11 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
 const Match = require("../Modal/Tournnamentmatch");
 const tournamentController = require("../controllers/tournamentController");
+const exportController = require("../controllers/exportController");
 const bookingController = require("../controllers/BookingController");
 const bookingGroupController = require("../controllers/booking groupcontroller");
 const matchController = require("../controllers/matchController");
@@ -20,41 +22,204 @@ const {
 const KnockoutMatch = require("../Modal/semifinal");
 const teamKnockoutController = require("../controllers/teamKnockoutController");
 const tournamentLeaderboardController = require("../controllers/tournamentLeaderboardController");
-const { allowUserOrManager } = require("../middleware/authMiddleware");
+const { allowUserOrManager, authenticate } = require("../middleware/authMiddleware");
+const { requireTournamentOwner, scopeTournamentCreate, forceSelfBody, requireSelf } = require("../middleware/authz");
+const { requirePermission } = require("../middleware/rbacMiddleware");
+
+// Ownership guard for routes that carry tournamentId in the BODY (not the path).
+// Closes cross-tenant IDOR: previously a manager with the permission could pass
+// ANY tournamentId in the body and manage/score a tournament they don't own.
+// (Routes with :matchId are already scoped by the router.param("matchId") guard.)
+const ownsBodyTournament = requireTournamentOwner({ idBody: "tournamentId" });
+
+// ── Auth gate ─────────────────────────────────────────────────────────
+// Every state-changing tournament route (create/edit/delete/score/group/court/
+// knockout/etc.) requires a logged-in user or manager. All web + mobile clients
+// attach a token via their axios interceptors, so only ANONYMOUS callers are
+// blocked. Public GET reads — catalog, detail, leaderboards, and live match-state
+// for spectators — remain open. Per-tournament OWNERSHIP is layered per-route
+// below (requireTournamentOwner) on routes that carry a :tournamentId.
+//
+// RBAC (requirePermission) is layered ON TOP of these guards — it gates by
+// role+permission, not by ownership. SuperAdmin bypasses both.
+router.use((req, res, next) => {
+  if (req.method === "GET") return next();
+  return allowUserOrManager(req, res, next);
+});
+
+// ── Match-write scorer guard ─────────────────────────────────────────
+// For ANY non-GET route that carries `:matchId`, the caller must be one of:
+//   • a Manager listed on the tournament (Tournament.managerId)
+//   • a ClubAdmin who owns one of those Managers (Manager.clubId === caller)
+//   • a Referee assigned to this specific match (Assignment.refereeId, accepted)
+//   • a SuperAdmin
+// Spectator GETs (live-state, scores) skip this. Runs AFTER the gate, so
+// req.user/req.userRole are already populated.
+router.param("matchId", async (req, res, next, matchId) => {
+  if (req.method === "GET") return next();
+  try {
+    const me = req.user?.id || req.user?._id;
+    if (!me) return res.status(401).json({ success: false, message: "Authentication required" });
+    if (req.userRole === "SuperAdmin") return next();
+    if (!mongoose.Types.ObjectId.isValid(matchId)) {
+      return res.status(400).json({ success: false, message: "Invalid match id" });
+    }
+    const { findMatchById } = require("../utils/matchUtils");
+    const result = await findMatchById(matchId);
+    if (!result) return res.status(404).json({ success: false, message: "Match not found" });
+    const tournamentId = result.match?.tournamentId;
+    if (!tournamentId) {
+      return res.status(403).json({ success: false, message: "Match has no tournament context" });
+    }
+    const t = await mongoose
+      .model("Tournament")
+      .findById(tournamentId)
+      .select("managerId")
+      .lean();
+    if (!t) return res.status(404).json({ success: false, message: "Tournament not found" });
+    const managerIds = (t.managerId || []).map(String);
+    if (managerIds.includes(String(me))) return next();
+    const ownsManager = await mongoose
+      .model("Manager")
+      .exists({ _id: { $in: t.managerId || [] }, clubId: me });
+    if (ownsManager) return next();
+    const assigned = await mongoose
+      .model("Assignment")
+      .exists({ matchId, refereeId: me, status: "accepted" });
+    if (assigned) return next();
+    return res.status(403).json({ success: false, message: "Forbidden: not a scorer for this match" });
+  } catch (err) {
+    next(err);
+  }
+});
 
 //*Create Tournament*//
 
 router.post(
   "/createTournament",
+  allowUserOrManager,
+  requirePermission("tournament:create"),
   uploadMiddleware.single("tournamentLogo"),
+  scopeTournamentCreate,
   tournamentController.createTournament
 );
 router.get("/", tournamentController.getAllTournaments);
+
+// MUST come before the catch-all `/:id`. Legacy pages
+// (TournamentOverviewPage, PlayersPage, useGroups, useTournamentDashboard)
+// call `/api/tournaments/getRegisteredPlayers?tournamentId=...` but the
+// handler was never implemented — every call fell into `/:id` and threw
+// a CastError trying to cast "getRegisteredPlayers" to an ObjectId.
+// Implements the contract the legacy code expects: `{ bookings: [...] }`.
+router.get("/getRegisteredPlayers", async (req, res) => {
+  try {
+    const { tournamentId } = req.query;
+    if (!tournamentId) {
+      return res.status(400).json({ message: "tournamentId is required", bookings: [] });
+    }
+    const Booking = require("../Modal/BookingModel");
+    const bookings = await Booking.find({ tournamentId }).lean();
+    return res.json({ bookings });
+  } catch (err) {
+    console.error("getRegisteredPlayers error:", err.message);
+    return res.status(500).json({ message: "Failed to fetch registered players", bookings: [] });
+  }
+});
+
 router.get("/manager/:managerId", tournamentController.getTournamentsByManager);
 // 🚀 New Corporate specific routes
 router.get("/corporate/:corporateId", tournamentController.getTournamentsByCorporate);
-router.put("/:tournamentId/whitelist", tournamentController.updateTournamentWhitelist);
+router.put(
+  "/:tournamentId/whitelist",
+  allowUserOrManager,
+  requirePermission("tournament:update"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.updateTournamentWhitelist
+);
 
-router.put("/edit/:id", uploadMiddleware.single("tournamentLogo"), tournamentController.editTournament);
-router.delete("/:id", tournamentController.deleteTournament);
+// ── Reports & Export (manager downloads participants / results) ──
+router.get(
+  "/:tournamentId/export/participants.csv",
+  allowUserOrManager,
+  requirePermission("tournament:export"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  exportController.exportParticipantsCsv
+);
+router.get(
+  "/:tournamentId/export/results.csv",
+  allowUserOrManager,
+  requirePermission("tournament:export"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  exportController.exportResultsCsv
+);
+router.get(
+  "/:tournamentId/export/results.xlsx",
+  allowUserOrManager,
+  requirePermission("tournament:export"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  exportController.exportResultsXlsx
+);
+router.get(
+  "/:tournamentId/export/results.pdf",
+  allowUserOrManager,
+  requirePermission("tournament:export"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  exportController.exportResultsPdf
+);
+
+router.put(
+  "/edit/:id",
+  allowUserOrManager,
+  requirePermission("tournament:update"),
+  requireTournamentOwner({ idParam: "id" }),
+  uploadMiddleware.single("tournamentLogo"),
+  tournamentController.editTournament
+);
+router.delete(
+  "/:id",
+  allowUserOrManager,
+  requirePermission("tournament:delete"),
+  requireTournamentOwner({ idParam: "id" }),
+  tournamentController.deleteTournament
+);
 
 //*ROUND 2 PROGRESSION ROUTES*//
 router.get("/round2/status/:tournamentId", tournamentController.getRound2Status);
-router.post("/round2/initiate", tournamentController.initiateRound2);
-router.post("/round2/create-groups", tournamentController.createRound2Groups);
+router.post("/round2/initiate", requirePermission("tournament:manage"), ownsBodyTournament, tournamentController.initiateRound2);
+router.post("/round2/create-groups", requirePermission("tournament:manage"), ownsBodyTournament, tournamentController.createRound2Groups);
 router.get("/round2/groups/:tournamentId", tournamentController.getRound2Groups);
-router.post("/round2/reset", tournamentController.resetRound2Progress);
-router.post("/superplayers/identify", tournamentController.identifySuperPlayers);
+router.post("/round2/reset", requirePermission("tournament:manage"), ownsBodyTournament, tournamentController.resetRound2Progress);
+router.post("/superplayers/identify", requirePermission("tournament:manage"), ownsBodyTournament, tournamentController.identifySuperPlayers);
 router.get("/superplayers/:tournamentId", tournamentController.getSuperPlayers);
-router.post("/cleanup/superplayers-from-topplayers/:tournamentId", tournamentController.cleanupSuperPlayersFromTopPlayers);
-router.post("/cleanup/aggressive-superplayers/:tournamentId", tournamentController.aggressiveCleanupSuperPlayers);
+router.post(
+  "/cleanup/superplayers-from-topplayers/:tournamentId",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.cleanupSuperPlayersFromTopPlayers
+);
+router.post(
+  "/cleanup/aggressive-superplayers/:tournamentId",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.aggressiveCleanupSuperPlayers
+);
 
 //*SUPER PLAYERS KNOCKOUT ROUTES*//
-router.post("/knockout/generate", tournamentController.generateKnockoutMatches);
-router.delete("/knockout/:tournamentId/all", tournamentController.deleteAllKnockoutMatches);
+router.post("/knockout/generate", requirePermission("tournament:manage"), ownsBodyTournament, tournamentController.generateKnockoutMatches);
+router.delete(
+  "/knockout/:tournamentId/all",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.deleteAllKnockoutMatches
+);
 router.get("/knockout/matches/:tournamentId", tournamentController.getKnockoutMatches);
-router.post("/knockout/redistribute-courts/:tournamentId", tournamentController.redistributeKnockoutCourts);
-router.put("/knockout/match/:matchId/result", tournamentController.updateKnockoutMatchResult);
+router.post(
+  "/knockout/redistribute-courts/:tournamentId",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.redistributeKnockoutCourts
+);
+router.put("/knockout/match/:matchId/result", requirePermission("tournament:score"), tournamentController.updateKnockoutMatchResult);
 router.get("/knockout/leaderboard/:tournamentId", tournamentController.getTournamentLeaderboard);
 router.get("/comprehensive-stats/:tournamentId", tournamentController.getComprehensiveTournamentStats);
 
@@ -68,12 +233,16 @@ router.get("/leaderboard/:tournamentId/teams", tournamentLeaderboardController.g
 // Validate player selection for Direct Knockout (power-of-2 check)
 router.post(
   "/direct-knockout/validate-players",
+  requirePermission("tournament:manage"),
+  ownsBodyTournament,
   directKnockoutController.validatePlayerSelection
 );
 
 // Create Direct Knockout matches with bracket generation
 router.post(
   "/direct-knockout/create-matches",
+  requirePermission("tournament:manage"),
+  ownsBodyTournament,
   directKnockoutController.createDirectKnockoutMatches
 );
 
@@ -86,16 +255,20 @@ router.get(
 // Progress winner to next match in bracket
 router.post(
   "/direct-knockout/matches/:matchId/progress-winner",
+  requirePermission("tournament:manage"),
   directKnockoutController.progressWinnerToNextMatch
 );
 
 // Standalone mode — no group stage needed
 router.post(
   "/direct-knockout/standalone/validate",
+  requirePermission("tournament:manage"),
   directKnockoutController.validateStandalonePlayers
 );
 router.post(
   "/direct-knockout/standalone/create",
+  requirePermission("tournament:manage"),
+  ownsBodyTournament,
   directKnockoutController.createStandaloneKnockout
 );
 
@@ -103,34 +276,51 @@ router.post(
 router.post(
   "/direct-knockout/matches/:matchId/complete-game",
   allowUserOrManager,
+  requirePermission("tournament:score"),
   directKnockoutController.completeGame
 );
 
 // Give BYE to a player in a match
 router.post(
   "/direct-knockout/matches/:matchId/bye",
+  requirePermission("tournament:manage"),
   directKnockoutController.giveBye
 );
 
 // Bulk score upload for Direct Knockout
 router.post(
   "/direct-knockout/bulk-upload-scores",
+  requirePermission("tournament:score"),
+  ownsBodyTournament,
   directKnockoutController.bulkUploadScores
 );
 
 // Reset bracket
 router.delete(
   "/direct-knockout/:tournamentId/reset",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
   directKnockoutController.resetBracket
 );
 
 //*GROUP STAGE TOURNAMENT ROUTES*//
 //*Registred Players*//
 
-router.post("/bookings/create", bookingController.createBooking);
-router.post("/bookings/bulk-create", bookingController.bulkCreateBookings);
+// forceSelfBody: a player can only register THEMSELVES (the gate auth is upstream).
+// Manager bulk-registration uses the separate /bookings/bulk-create route.
+router.post(
+  "/bookings/create",
+  requirePermission("tournament:register"),
+  forceSelfBody("userId"),
+  bookingController.createBooking
+);
+router.post(
+  "/bookings/bulk-create",
+  requirePermission("tournament:bulk_register"),
+  bookingController.bulkCreateBookings
+);
 router.get("/bookings/check", bookingController.checkBooking);
-router.get("/bookings/user/:userId", bookingController.getUserBookings);
+router.get("/bookings/user/:userId", authenticate, requireSelf("userId"), bookingController.getUserBookings);
 router.get(
   "/bookings/tournament/:tournamentId",
   bookingController.getTournamentBookings
@@ -139,17 +329,19 @@ router.get(
 
 //*League Group*//
 
-router.post("/bookinggroups/create", bookingGroupController.createBookingGroup);
+router.post("/bookinggroups/create", requirePermission("tournament:manage"), ownsBodyTournament, bookingGroupController.createBookingGroup);
 router.get(
   "/bookinggroups/tournament/:tournamentId",
   bookingGroupController.getBookingGroups
 );
 router.put(
   "/bookinggroups/:groupId",
+  requirePermission("tournament:manage"),
   bookingGroupController.updateBookingGroup
 );
 router.delete(
   "/bookinggroups/:groupId",
+  requirePermission("tournament:manage"),
   bookingGroupController.deleteBookingGroup
 );
 // Bulk delete — body: { groupIds: [] }. Cascades matches per group, blocks
@@ -157,19 +349,40 @@ router.delete(
 // AND its sport has progressed past group_stage. Sub-step Plan A.
 router.post(
   "/bookinggroups/bulk-delete",
+  requirePermission("tournament:manage"),
   bookingGroupController.deleteBulkBookingGroups
 );
 
 // 🚀 Court / table catalog (Sub-step 1 of court management).
 // v1: tournament-wide pool (sportId nullable on each entry). Soft-delete only.
 router.get   ("/:tournamentId/courts",          courtController.listCourts);
-router.post  ("/:tournamentId/courts",          courtController.createCourt);
+router.post  (
+  "/:tournamentId/courts",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  courtController.createCourt
+);
 // Static-segment routes MUST be registered before /:courtId so that
 // "bulk" / "utilization" don't get matched as a courtId parameter.
-router.post  ("/:tournamentId/courts/bulk",     courtController.bulkCreateCourts);
+router.post  (
+  "/:tournamentId/courts/bulk",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  courtController.bulkCreateCourts
+);
 router.get   ("/:tournamentId/courts/utilization", courtController.getCourtUtilization);
-router.put   ("/:tournamentId/courts/:courtId", courtController.updateCourt);
-router.delete("/:tournamentId/courts/:courtId", courtController.deleteCourt);
+router.put   (
+  "/:tournamentId/courts/:courtId",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  courtController.updateCourt
+);
+router.delete(
+  "/:tournamentId/courts/:courtId",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  courtController.deleteCourt
+);
 
 // 🚀 Group-specific match format routes
 router.get(
@@ -178,23 +391,24 @@ router.get(
 );
 router.put(
   "/bookinggroups/:groupId/match-format",
+  requirePermission("tournament:manage"),
   bookingGroupController.updateGroupMatchFormat
 );
 
 //*Matches*//
 
-router.post("/matches/create", matchController.createMatches);
-router.post("/matches/generate-group", matchController.generateGroupMatches);
+router.post("/matches/create", requirePermission("tournament:manage"), ownsBodyTournament, matchController.createMatches);
+router.post("/matches/generate-group", requirePermission("tournament:manage"), ownsBodyTournament, matchController.generateGroupMatches);
 // Bulk generate — body: { tournamentId, groupIds: [], courtNumber?, startTime?,
 // intervalMinutes? }. Iterates server-side; skipped groups (already have
 // matches) are reported in the response, not failed. Sub-step Plan A.
-router.post("/matches/generate-bulk", matchController.generateBulkGroupMatches);
-router.post("/matches/transition-to-knockout", matchController.transitionToKnockout);
+router.post("/matches/generate-bulk", requirePermission("tournament:manage"), ownsBodyTournament, matchController.generateBulkGroupMatches);
+router.post("/matches/transition-to-knockout", requirePermission("tournament:manage"), ownsBodyTournament, matchController.transitionToKnockout);
 
 //*GROUP STAGE SCOREBOARD ROUTES (Must come before general match routes)*//
 
 // Start match and initialize scoreboard
-router.post("/matches/:matchId/start", groupStageScoreboardController.startMatch);
+router.post("/matches/:matchId/start", requirePermission("tournament:score"), groupStageScoreboardController.startMatch);
 
 // Get live match state (for scoreboard UI)
 router.get("/matches/:matchId/live-state", groupStageScoreboardController.getLiveMatchState);
@@ -206,25 +420,35 @@ router.get("/matches/:matchId/scores", groupStageScoreboardController.getMatchSc
 router.get("/scores/:matchId", groupStageScoreboardController.getMatchScore);
 
 // Update live score during game
-router.put("/matches/:matchId/live-score", groupStageScoreboardController.updateLiveScore);
+router.put("/matches/:matchId/live-score", requirePermission("tournament:score"), groupStageScoreboardController.updateLiveScore);
 
 // Complete current game and progress match
-router.post("/matches/:matchId/complete-game", allowUserOrManager, groupStageScoreboardController.completeGame);
+router.post(
+  "/matches/:matchId/complete-game",
+  allowUserOrManager,
+  requirePermission("tournament:score"),
+  groupStageScoreboardController.completeGame
+);
 
 // Reset match (admin function)
-router.post("/matches/:matchId/reset", groupStageScoreboardController.resetMatch);
+router.post("/matches/:matchId/reset", requirePermission("tournament:manage"), groupStageScoreboardController.resetMatch);
 
 // Get match statistics
 router.get("/matches/:matchId/statistics", groupStageScoreboardController.getMatchStatistics);
 
 // Sync live match data to Score model for points table compatibility
-router.post("/matches/:matchId/sync-scores", groupStageScoreboardController.syncMatchScores);
+router.post("/matches/:matchId/sync-scores", requirePermission("tournament:score"), groupStageScoreboardController.syncMatchScores);
 
 // Bulk sync all tournament matches to Score model (for already played matches)
-router.post("/:tournamentId/bulk-sync-scores", groupStageScoreboardController.bulkSyncTournamentScores);
+router.post(
+  "/:tournamentId/bulk-sync-scores",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  groupStageScoreboardController.bulkSyncTournamentScores
+);
 
 // Bulk upload set scores for multiple matches at once
-router.post("/matches/bulk-upload-scores", groupStageScoreboardController.bulkUploadScores);
+router.post("/matches/bulk-upload-scores", requirePermission("tournament:score"), ownsBodyTournament, groupStageScoreboardController.bulkUploadScores);
 
 // 🚀 VALIDATION ENDPOINT - Test game completion logic fix
 router.get("/validate/game-completion-logic", groupStageScoreboardController.validateGameCompletionLogic);
@@ -271,13 +495,18 @@ router.get(
   "/matches/:tournamentId/:groupId",
   matchController.getMatchesByGroup
 );
-router.put("/matches/:matchId", matchController.updateMatch);
+router.put("/matches/:matchId", requirePermission("tournament:score"), matchController.updateMatch);
 // Sub-step 5 — inline court reassignment. Multi-collection: looks up the
 // match across Match / SuperMatch / DirectKnockoutMatch / KnockoutMatch /
 // TeamKnockoutMatches and updates whichever holds the id.
-router.patch("/matches/:matchId/court", matchController.updateMatchCourt);
-router.delete("/matches/:matchId", matchController.deleteMatch);
-router.delete("/matches/:tournamentId/:groupId/all", matchController.deleteGroupMatches);
+router.patch("/matches/:matchId/court", requirePermission("tournament:manage"), matchController.updateMatchCourt);
+router.delete("/matches/:matchId", requirePermission("tournament:manage"), matchController.deleteMatch);
+router.delete(
+  "/matches/:tournamentId/:groupId/all",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  matchController.deleteGroupMatches
+);
 
 //* Match Configuration *//
 
@@ -288,20 +517,25 @@ router.get("/match-format-options", tournamentController.getMatchFormatOptions);
 router.get("/:tournamentId/match-format", tournamentController.getTournamentMatchFormat);
 
 // Update tournament match format configuration
-router.put("/:tournamentId/match-format", tournamentController.updateTournamentMatchFormat);
+router.put(
+  "/:tournamentId/match-format",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.updateTournamentMatchFormat
+);
 
 // Get specific match configuration (inherits from tournament)
 router.get("/matches/:matchId/format", tournamentController.getMatchFormat);
 
 // Update specific match configuration (override tournament defaults)
-router.put("/matches/:matchId/format", tournamentController.updateMatchFormat);
+router.put("/matches/:matchId/format", requirePermission("tournament:manage"), tournamentController.updateMatchFormat);
 
 //*Scores*//
 
-router.post("/scores/:matchId", tournamentController.createScore);
+router.post("/scores/:matchId", requirePermission("tournament:score"), tournamentController.createScore);
 router.get("/scores/:matchId", tournamentController.getScoreByMatchId);
-router.put('/scores/:matchId', tournamentController.updateScoreByMatchId);
-router.delete('/scores/:matchId', tournamentController.deleteScoreByMatchId);
+router.put('/scores/:matchId', requirePermission("tournament:score"), tournamentController.updateScoreByMatchId);
+router.delete('/scores/:matchId', requirePermission("tournament:score"), tournamentController.deleteScoreByMatchId);
 
 
 
@@ -322,22 +556,22 @@ router.get("/referee/matches/:refereeId", async (req, res) => {
 });
 
 
-router.post("/top-player-groups", createTopPlayerGroup);
+router.post("/top-player-groups", requirePermission("tournament:manage"), ownsBodyTournament, createTopPlayerGroup);
 router.get("/top-player-groups/:tournamentId", getTopPlayerGroups);
 
 // Get super matches for a tournament
 router.get("/super-matches/:tournamentId", tournamentController.getSuperPlayers);
-router.post("/superplayers/save", tournamentController.saveSuperPlayers);
+router.post("/superplayers/save", requirePermission("tournament:manage"), ownsBodyTournament, tournamentController.saveSuperPlayers);
 
 
 // routes/bookingRoutes.js (new controller bookingGroup)
-router.post("/bookinggroups/create", bookingGroupController.createBookingGroup);
+router.post("/bookinggroups/create", requirePermission("tournament:manage"), ownsBodyTournament, bookingGroupController.createBookingGroup);
 router.get(
   "/bookinggroups/tournament/:tournamentId",
   bookingGroupController.getBookingGroups
 );
 
-router.post("/topplayers/save", tournamentController.saveTopPlayers);
+router.post("/topplayers/save", requirePermission("tournament:manage"), ownsBodyTournament, tournamentController.saveTopPlayers);
 
 router.get("/topplayers/:tournamentId/:groupId", tournamentController.getTopPlayersByGroup);
 
@@ -345,23 +579,41 @@ router.get("/topplayers/:tournamentId", tournamentController.getTopPlayersByTour
 
 router.delete(
   "/topplayers/:tournamentId/:groupId/player/:playerId",
+  requirePermission("tournament:manage"),
   tournamentController.removeTopPlayer
 );
 
 // Toggle skip-Round-2 flag on a Top Player (seeds them for the final KO)
 router.post(
   "/topplayers/:tournamentId/skip-round2",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
   tournamentController.toggleSkipRound2
 );
 
 //*TOURNAMENT PROGRESSION ROUTES*//
 
 // Seeded Players Management
-router.post("/:tournamentId/seeded-players", tournamentController.addSeededPlayers);
+router.post(
+  "/:tournamentId/seeded-players",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.addSeededPlayers
+);
 
 // Tournament Stage Progression
-router.post("/:tournamentId/generate-qualifier-knockout", tournamentController.generateQualifierKnockout);
-router.post("/:tournamentId/generate-main-knockout", tournamentController.generateMainKnockout);
+router.post(
+  "/:tournamentId/generate-qualifier-knockout",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.generateQualifierKnockout
+);
+router.post(
+  "/:tournamentId/generate-main-knockout",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  tournamentController.generateMainKnockout
+);
 
 // Tournament Status and Progression
 router.get("/:tournamentId/progression", tournamentController.getTournamentProgression);
@@ -373,10 +625,15 @@ router.get("/:tournamentId/knockout-matches", knockoutController.getKnockoutMatc
 router.get("/knockout-matches/:matchId", knockoutController.getKnockoutMatchById);
 
 // Update match results
-router.put("/knockout-matches/:matchId/result", knockoutController.updateKnockoutMatchResult);
+router.put("/knockout-matches/:matchId/result", requirePermission("tournament:score"), knockoutController.updateKnockoutMatchResult);
 
 // Generate next round
-router.post("/:tournamentId/generate-next-round", knockoutController.generateNextRound);
+router.post(
+  "/:tournamentId/generate-next-round",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  knockoutController.generateNextRound
+);
 
 // Get tournament bracket
 router.get("/:tournamentId/bracket", knockoutController.getTournamentBracket);
@@ -384,7 +641,7 @@ router.get("/:tournamentId/bracket", knockoutController.getTournamentBracket);
 
 // Update your knockout matches route
 // Update your knockout matches route
-router.post("/knockout-matches", async (req, res) => {
+router.post("/knockout-matches", requirePermission("tournament:manage"), async (req, res) => {
   try {
     const { tournamentId, matches } = req.body;
 
@@ -499,12 +756,16 @@ router.get("/:id/logo", tournamentController.getLogo);
 // Tournament Creation
 router.post(
   "/team-knockout/create",
+  requirePermission("tournament:manage"),
+  ownsBodyTournament,
   teamKnockoutController.createTournamentFromBookings
 );
 
 // Round Robin
 router.post(
   "/team-knockout/round-robin/generate",
+  requirePermission("tournament:manage"),
+  ownsBodyTournament,
   teamKnockoutController.generateRoundRobinMatches
 );
 router.get(
@@ -513,12 +774,16 @@ router.get(
 );
 router.post(
   "/team-knockout/round-robin/delete",
+  requirePermission("tournament:manage"),
+  ownsBodyTournament,
   teamKnockoutController.deleteRoundRobinMatches
 );
 
 // Bulk upload scores for team knockout matches
 router.post(
   "/team-knockout/bulk-upload-scores",
+  requirePermission("tournament:score"),
+  ownsBodyTournament,
   teamKnockoutController.bulkUploadScores
 );
 
@@ -529,16 +794,19 @@ router.get(
 );
 router.put(
   "/team-knockout/matches/:matchId/live-score",
+  requirePermission("tournament:score"),
   teamKnockoutController.updateLiveScore
 );
 router.post(
   "/team-knockout/matches/:matchId/complete-game",
+  requirePermission("tournament:score"),
   teamKnockoutController.completeGame
 );
 
 // Captain's doubles pairing selection
 router.post(
   "/team-knockout/matches/:matchId/select-pairing",
+  requirePermission("tournament:score"),
   teamKnockoutController.selectDoublesPairing
 );
 
@@ -563,6 +831,8 @@ router.get(
 // Next Round Generation
 router.post(
   "/team-knockout/next-round",
+  requirePermission("tournament:manage"),
+  ownsBodyTournament,
   teamKnockoutController.createNextRound
 );
 
@@ -575,25 +845,30 @@ router.get(
 // Player Substitutions
 router.post(
   "/team-knockout/teams/:teamId/swap-players",
+  requirePermission("tournament:manage"),
   teamKnockoutController.swapTeamPlayers
 );
 
 router.post(
   "/team-knockout/matches/:matchId/substitute",
+  requirePermission("tournament:manage"),
   teamKnockoutController.updateMatchLineup
 );
 
 // Utility Functions
 router.post(
   "/team-knockout/matches/:matchId/start",
+  requirePermission("tournament:score"),
   teamKnockoutController.startMatch
 );
 router.put(
   "/team-knockout/matches/:matchId/reschedule",
+  requirePermission("tournament:manage"),
   teamKnockoutController.rescheduleMatch
 );
 router.put(
   "/team-knockout/matches/:matchId/cancel",
+  requirePermission("tournament:manage"),
   teamKnockoutController.cancelMatch
 );
 
@@ -616,6 +891,8 @@ router.get(
 // Reset & Health
 router.delete(
   "/team-knockout/tournaments/:tournamentId/reset",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
   teamKnockoutController.resetTournament
 );
 
@@ -628,12 +905,14 @@ router.get(
 // Live Score Updates (for real-time scoring)
 router.patch(
   "/tournaments/matches/:matchId",
+  requirePermission("tournament:score"),
   teamKnockoutController.updateLiveScore
 );
 
 // Player Substitutions (for scoreboard substitutions)
 router.post(
   "/tournaments/matches/:matchId/substitute",
+  requirePermission("tournament:manage"),
   teamKnockoutController.substitutePlayer
 );
 
@@ -670,8 +949,8 @@ const resultUpload = multer({
   },
 });
 
-router.post("/bulk-result-upload", resultUpload.single("file"), bulkResultUploadController.uploadResults);
-router.post("/bulk-result-upload/preview", resultUpload.single("file"), bulkResultUploadController.previewFile);
+router.post("/bulk-result-upload", requirePermission("tournament:score"), resultUpload.single("file"), bulkResultUploadController.uploadResults);
+router.post("/bulk-result-upload/preview", requirePermission("tournament:manage"), resultUpload.single("file"), bulkResultUploadController.previewFile);
 router.get("/bulk-result-upload/template", bulkResultUploadController.downloadTemplate);
 
 module.exports = router;

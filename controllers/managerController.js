@@ -9,8 +9,8 @@ const transporter = nodemailer.createTransport({
   port: 465,
   secure: true,
   auth: {
-    user: "notmumbai@gmail.com",
-    pass: "djbz wrcn uwtt woob",
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
@@ -40,7 +40,7 @@ exports.addManager = async (req, res) => {
     const newManager = new Manager({ name, email, password: hashedPassword });
     await newManager.save();
 
-    const loginLink = `exp://192.168.0.141:8081/--/manager-login`;
+    const loginLink = `${process.env.FRONTEND_URL || "https://chalokhelne.com"}/login`;
 
     const mailOptions = {
       from: process.env.EMAIL_USER,

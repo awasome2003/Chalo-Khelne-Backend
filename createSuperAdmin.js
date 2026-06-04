@@ -12,6 +12,12 @@ const createSuperAdmin = async () => {
         process.exit(1);
     }
 
+    // Never accept a weak SuperAdmin password (this account controls everything).
+    if (password.length < 12) {
+        console.error("Password must be at least 12 characters.");
+        process.exit(1);
+    }
+
     try {
         await mongoose.connect(process.env.MONGO_URI);
         console.log("Connected to MongoDB");

@@ -12,6 +12,17 @@ const turfSchema = new mongoose.Schema(
       ref: "User",
       required: [true, "Turf owner is required"],
     },
+    // ── Tenant key (Phase 1.1 multi-tenancy) ──
+    // A turf's tenant IS its owner: a club (ClubAdmin/corporate_admin User id)
+    // for club turfs, or the individual User id for independently-registered
+    // turfs. Set = owner on create (controller) and by the backfill. Players
+    // browsing/booking are cross-tenant (no context → see all approved turfs).
+    clubId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
     images: [String],
     address: {
       fullAddress: {
@@ -45,6 +56,22 @@ const turfSchema = new mongoose.Schema(
           type: Number,
           default: 0,
         },
+        // "indoor" or "outdoor" — drives the Indoor / Outdoor tab filter on
+        // the sport-selection popup. Older sports without this field fall
+        // back to "outdoor" in the UI.
+        category: {
+          type: String,
+          enum: ["indoor", "outdoor"],
+          default: "outdoor",
+        },
+      },
+    ],
+    // Physical courts a player can book a slot on (e.g. "Natural Grass
+    // Field" / "Indoor Turf Court"). Used by the slot-selection screen.
+    courts: [
+      {
+        name: { type: String, required: true },
+        type: { type: String, default: "" },
       },
     ],
     assignedManagers: [
@@ -89,6 +116,14 @@ const turfSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    // Approval gate for the public marketplace. Club-owned turfs are
+    // auto-approved on create; independently-registered turfs start false and
+    // require SuperAdmin approval before appearing publicly. Existing turfs are
+    // backfilled to true (scripts/backfillTurfApproval.js).
+    isApproved: {
+      type: Boolean,
+      default: false,
     },
     // For scheduling and availability
     availableTimeSlots: [
@@ -148,6 +183,12 @@ turfSchema.index({ "sports.name": 1 });
 turfSchema.index({ owner: 1 });
 turfSchema.index({ isActive: 1, isApproved: 1 });
 turfSchema.index({ isActive: 1, createdAt: -1 });
+
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. clubId = owner, set
+// explicitly by the create controller + the backfill (NOT from request context,
+// since a turf's tenant is its owner, which may differ from the creator).
+const tenantScope = require("../utils/tenantScope");
+turfSchema.plugin(tenantScope, { field: "clubId", enforce: true });
 
 const Turf = mongoose.model("Turf", turfSchema);
 

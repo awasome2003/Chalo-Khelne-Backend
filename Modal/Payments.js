@@ -13,6 +13,17 @@ const paymentSchema = new mongoose.Schema({
     ref: "Tournament",
     required: true,
   },
+  // ── Tenant key (Phase 1.1 multi-tenancy) ──
+  // Owning club = ClubAdmin/corporate_admin User _id. Derived from the payment's
+  // tournament (eventId → Tournament.clubId) via the backfill script and stamped
+  // on create from the request tenant context. Scoping runs in SHADOW MODE until
+  // backfilled + verified.
+  clubId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+    index: true,
+  },
   amount: { type: Number, required: true },
   currency: { type: String, default: "INR" },
   status: {
@@ -79,5 +90,25 @@ const paymentSchema = new mongoose.Schema({
 paymentSchema.index({ orderId: 1 });
 paymentSchema.index({ status: 1, createdAt: 1 });
 paymentSchema.index({ eventId: 1, status: 1 });
+// Tenant-aware compound index for club finance dashboards.
+paymentSchema.index({ clubId: 1, status: 1, createdAt: -1 });
+
+// Multi-tenant scoping (Phase 1.1) — ENFORCED (2026-06-02).
+// Backfill stamped 2 of 99 payments; the other 97 are legacy orphans of deleted
+// tournaments (verifyPaymentTenancy.js: mismatch=0, all nulls are orphans) —
+// inert under enforcement (no club sees them). Scoping proof passed. To revert,
+// set enforce:false. NOTE: .aggregate() pipelines are NOT yet scoped.
+const tenantScope = require("../utils/tenantScope");
+paymentSchema.plugin(tenantScope, {
+  field: "clubId",
+  enforce: true,
+  // Payments are created by players (cross-tenant) — derive the tenant from the
+  // tournament (eventId) when the request context can't supply it.
+  derive: async (doc) => {
+    if (!doc.eventId) return null;
+    const t = await mongoose.model("Tournament").findById(doc.eventId).select("clubId").lean();
+    return t ? t.clubId : null;
+  },
+});
 
 module.exports = mongoose.model("Payment", paymentSchema);

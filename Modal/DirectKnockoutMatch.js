@@ -316,4 +316,9 @@ DirectKnockoutMatchSchema.index({ tournamentId: 1, mode: 1 });
 // Multi-sport scoping index. Non-unique — STEP 9a additive.
 DirectKnockoutMatchSchema.index({ tournamentId: 1, sportId: 1 });
 
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId
+// (derived via tournamentId → Tournament.clubId by the backfill).
+const tenantScope = require("../utils/tenantScope");
+DirectKnockoutMatchSchema.plugin(tenantScope, { field: "clubId", enforce: true });
+
 module.exports = mongoose.model("DirectKnockoutMatch", DirectKnockoutMatchSchema);

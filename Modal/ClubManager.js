@@ -64,6 +64,23 @@ const managerSchema = new Schema(
     },
     password: { type: String, required: true },
     isActive: { type: Boolean, default: false },
+
+    // ── Account status (SuperAdmin-controlled via /api/roles/users/:userId/status) ──
+    // Orthogonal to `isActive` (ClubAdmin's activate-manager flow).
+    status: {
+      type: String,
+      enum: ["active", "suspended", "rejected"],
+      default: "active",
+      index: true,
+    },
+    suspensionReason: { type: String, default: null },
+    suspendedAt: { type: Date, default: null },
+    suspendedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SuperAdmin",
+      default: null,
+    },
+
     clubId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User", // References the ClubAdmin user

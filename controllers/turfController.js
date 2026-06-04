@@ -1,8 +1,22 @@
 const Turf = require("../Modal/Turf");
 const User = require("../Modal/User");
+const escapeRegex = require("../utils/escapeRegex");
 const { Manager } = require("../Modal/ClubManager");
 const { cleanupFile, turfsDir } = require("../middleware/uploads");
 const path = require("path");
+
+// Authorizes the authenticated caller (managerAuth → req.user.id) to act on a turf:
+// they own it directly, are an assigned manager, or it belongs to their ClubAdmin
+// (Manager.clubId === turf.owner). Replaces the prior checks that trusted a
+// client-supplied ownerId/userId — which any caller could echo from the public turf.
+async function callerOwnsTurf(req, turf) {
+  const me = String(req.user?.id || req.user?._id || "");
+  if (!me || !turf) return false;
+  if (String(turf.owner) === me) return true;
+  if ((turf.assignedManagers || []).some((m) => String(m) === me)) return true;
+  const manager = await Manager.findById(me).select("clubId").lean();
+  return !!(manager?.clubId && String(turf.owner) === String(manager.clubId));
+}
 
 // Controller methods for turf management
 const turfController = {
@@ -79,6 +93,7 @@ const turfController = {
       const newTurf = new Turf({
         name: req.body.name,
         owner: ownerId,
+        clubId: ownerId, // tenant key = owner (Phase 1.1 multi-tenancy)
         clubName,
         images: imagePaths,
         address,
@@ -87,6 +102,7 @@ const turfController = {
         availableTimeSlots,
         description: req.body.description,
         isActive: true,
+        isApproved: true, // club/manager-created turfs are auto-approved
       });
 
       await newTurf.save();
@@ -111,6 +127,99 @@ const turfController = {
     }
   },
 
+  // Self-registration: any authenticated user registers their OWN turf.
+  // owner + clubId are forced to the caller (never trusted from the body), and
+  // the turf starts unapproved (isApproved:false) — hidden from the public
+  // marketplace until a SuperAdmin approves it.
+  registerTurf: async (req, res) => {
+    try {
+      const callerId = String(req.user?.id || req.user?._id || "");
+      if (!callerId) return res.status(401).json({ message: "Authentication required" });
+
+      const imagePaths = req.files && req.files.length > 0
+        ? req.files.map((file) =>
+          path.join("turfs", path.basename(file.path)).replace(/\\/g, "/")
+        )
+        : [];
+
+      const parseMaybe = (v) => (typeof v === "string" ? JSON.parse(v) : v) || [];
+      const sports = req.body.sports ? parseMaybe(req.body.sports) : [];
+      const facilities = req.body.facilities ? parseMaybe(req.body.facilities) : [];
+      const availableTimeSlots = req.body.availableTimeSlots ? parseMaybe(req.body.availableTimeSlots) : [];
+
+      const address = {
+        fullAddress: req.body.address || "",
+        area: req.body.area || "",
+        city: req.body.city || "",
+        pincode: req.body.pincode || "",
+        coordinates: {
+          lat: parseFloat(req.body.latitude) || 0,
+          lng: parseFloat(req.body.longitude) || 0,
+        },
+      };
+
+      const newTurf = new Turf({
+        name: req.body.name,
+        owner: callerId,
+        clubId: callerId, // tenant key = owner (the individual)
+        images: imagePaths,
+        address,
+        sports,
+        facilities,
+        availableTimeSlots,
+        description: req.body.description,
+        isActive: true,
+        isApproved: false, // pending SuperAdmin approval
+      });
+
+      await newTurf.save();
+      return res.status(201).json({
+        message: "Turf registered. It will be visible publicly once approved by an admin.",
+        turf: newTurf,
+      });
+    } catch (error) {
+      console.error("Error registering turf:", error);
+      if (req.files) {
+        for (const file of req.files) await cleanupFile(file.path);
+      }
+      return res.status(500).json({ message: "Failed to register turf", error: error.message });
+    }
+  },
+
+  // SuperAdmin: list turfs awaiting approval.
+  getPendingTurfs: async (req, res) => {
+    try {
+      const turfs = await Turf.find({ isApproved: false })
+        .populate("owner", "name email mobile")
+        .sort({ createdAt: -1 })
+        .lean();
+      return res.json({ turfs, total: turfs.length });
+    } catch (error) {
+      console.error("Error fetching pending turfs:", error);
+      return res.status(500).json({ message: "Failed to fetch pending turfs", error: error.message });
+    }
+  },
+
+  // SuperAdmin: approve (or unapprove) a turf for the public marketplace.
+  approveTurf: async (req, res) => {
+    try {
+      const approved = req.body.approved !== false; // default true
+      const turf = await Turf.findByIdAndUpdate(
+        req.params.id,
+        { $set: { isApproved: approved } },
+        { new: true }
+      );
+      if (!turf) return res.status(404).json({ message: "Turf not found" });
+      return res.json({
+        message: approved ? "Turf approved" : "Turf approval revoked",
+        turf,
+      });
+    } catch (error) {
+      console.error("Error approving turf:", error);
+      return res.status(500).json({ message: "Failed to update turf approval", error: error.message });
+    }
+  },
+
   // Get all turfs with filtering options
   getAllTurfs: async (req, res) => {
     try {
@@ -129,12 +238,11 @@ const turfController = {
       // Build query object
       const query = {};
 
-      if (city) query["address.city"] = { $regex: new RegExp(city, "i") };
-      if (area) query["address.area"] = { $regex: new RegExp(area, "i") };
+      if (city) query["address.city"] = { $regex: new RegExp(escapeRegex(city), "i") };
+      if (area) query["address.area"] = { $regex: new RegExp(escapeRegex(area), "i") };
       if (pincode) query["address.pincode"] = pincode;
-      if (sport) query["sports.name"] = { $regex: new RegExp(sport, "i") };
+      if (sport) query["sports.name"] = { $regex: new RegExp(escapeRegex(sport), "i") };
       if (isActive !== undefined) query.isActive = isActive === "true";
-      if (isApproved !== undefined) query.isApproved = isApproved === "true";
       if (ownerId) query.owner = ownerId;
 
       // Default to only showing active turfs for public queries
@@ -142,10 +250,13 @@ const turfController = {
         query.isActive = true;
       }
 
-      // Only apply isApproved filter if it exists in the schema
-      // This prevents filtering by a non-existent field
+      // Approval gate: an explicit ?isApproved=true/false filters exactly;
+      // otherwise (public default) hide only turfs explicitly pending approval
+      // (isApproved === false) so existing/approved turfs always remain visible.
       if (isApproved !== undefined) {
         query.isApproved = isApproved === "true";
+      } else {
+        query.isApproved = { $ne: false };
       }
 
       // Calculate pagination
@@ -232,8 +343,8 @@ const turfController = {
         return res.status(404).json({ message: "Turf not found" });
       }
 
-      // Check permissions - only owner can update
-      if (turf.owner.toString() !== ownerId) {
+      // Check permissions — caller must own/manage the turf (not just echo its ownerId)
+      if (!(await callerOwnsTurf(req, turf))) {
         // Clean up any uploaded files
         if (req.files) {
           for (const file of req.files) {
@@ -404,7 +515,7 @@ const turfController = {
       }
 
       // Check permissions - only owner can delete
-      if (turf.owner.toString() !== userId) {
+      if (!(await callerOwnsTurf(req, turf))) {
         return res
           .status(403)
           .json({ message: "Unauthorized: Insufficient permissions" });
@@ -498,19 +609,20 @@ const turfController = {
   // Get all turfs owned by the current user
   getUserTurfs: async (req, res) => {
     try {
-      // Get userId from query params instead of req.user
-      const userId = req.query.userId;
-
-      if (!userId) {
-        return res
-          .status(400)
-          .json({ message: "User ID is required as a query parameter" });
+      // Scope to the authenticated caller — turfs they own, manage, or that
+      // belong to their ClubAdmin. Ignores any client-supplied userId.
+      const me = req.user?.id || req.user?._id;
+      if (!me) {
+        return res.status(401).json({ message: "Authentication required" });
       }
+      const manager = await Manager.findById(me).select("clubId").lean();
+      const ownerIds = [me];
+      if (manager?.clubId) ownerIds.push(manager.clubId);
 
       const turfs = await Turf.find({
         $or: [
-          { owner: userId },
-          { assignedManagers: userId },
+          { owner: { $in: ownerIds } },
+          { assignedManagers: me },
         ],
       })
         .sort({ createdAt: -1 })
@@ -548,7 +660,7 @@ const turfController = {
       }
 
       // Check permissions - only owner can toggle status
-      if (turf.owner.toString() !== userId) {
+      if (!(await callerOwnsTurf(req, turf))) {
         return res
           .status(403)
           .json({ message: "Unauthorized: Insufficient permissions" });
@@ -695,6 +807,104 @@ const turfController = {
       console.error("Error fetching manager assigned turfs:", error);
       res.status(500).json({
         message: "Failed to fetch assigned turfs",
+        error: error.message,
+      });
+    }
+  },
+
+  // GET /api/turfs/availability/today
+  // Returns a map of { [turfId]: { availableSlots, totalSlots, bookedSlots } }
+  // for all active turfs based on today's TurfBooking docs.
+  getTodaysAvailability: async (req, res) => {
+    try {
+      const TurfBooking = require("../Modal/TurfBooking");
+
+      const now = new Date();
+      const todayStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate()
+      );
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+
+      const dayName = [
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+      ][now.getDay()];
+
+      const parseTimeToHours = (raw) => {
+        if (!raw) return null;
+        const s = String(raw).trim().toLowerCase();
+        const m = s.match(/(\d{1,2}):?(\d{0,2})\s*(am|pm)?/);
+        if (!m) return null;
+        let h = parseInt(m[1], 10);
+        const min = parseInt(m[2] || "0", 10) || 0;
+        const ap = m[3];
+        if (ap === "pm" && h < 12) h += 12;
+        if (ap === "am" && h === 12) h = 0;
+        if (isNaN(h)) return null;
+        return h + min / 60;
+      };
+
+      const rangeHours = (start, end) => {
+        const a = parseTimeToHours(start);
+        const b = parseTimeToHours(end);
+        if (a === null || b === null) return 0;
+        let diff = b - a;
+        if (diff <= 0) diff += 24;
+        return Math.max(0, Math.floor(diff));
+      };
+
+      const turfs = await Turf.find({ isActive: true })
+        .select("_id availableTimeSlots")
+        .lean();
+
+      const bookings = await TurfBooking.find({
+        date: { $gte: todayStart, $lt: todayEnd },
+        status: { $in: ["pending", "confirmed"] },
+      })
+        .select("turfId")
+        .lean();
+
+      const bookingCountByTurf = new Map();
+      for (const b of bookings) {
+        const tid = String(b.turfId);
+        bookingCountByTurf.set(tid, (bookingCountByTurf.get(tid) || 0) + 1);
+      }
+
+      const availability = {};
+      for (const turf of turfs) {
+        const tid = String(turf._id);
+        const slotsForToday = (turf.availableTimeSlots || []).filter(
+          (s) => s && s.day === dayName
+        );
+        let totalSlots = 0;
+        if (slotsForToday.length > 0) {
+          totalSlots = slotsForToday.reduce(
+            (sum, s) => sum + rangeHours(s.startTime, s.endTime),
+            0
+          );
+        } else {
+          // Fallback when the turf hasn't configured weekly hours yet.
+          totalSlots = 12;
+        }
+        const bookedSlots = bookingCountByTurf.get(tid) || 0;
+        const availableSlots = Math.max(0, totalSlots - bookedSlots);
+        availability[tid] = { availableSlots, totalSlots, bookedSlots };
+      }
+
+      res.json({ success: true, availability });
+    } catch (error) {
+      console.error("Error computing today's availability:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to compute today's availability",
         error: error.message,
       });
     }

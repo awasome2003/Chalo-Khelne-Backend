@@ -52,6 +52,7 @@ const permissionSchema = new mongoose.Schema(
         "sport",
         "staff",
         "role",
+        "users", // user lifecycle (suspend/reject/reactivate)
       ],
     },
 
@@ -74,6 +75,13 @@ const permissionSchema = new mongoose.Schema(
         "export",
         "view_all",  // cross-scope visibility
         "view_own",  // own scope only
+        // Tournament-pilot additions:
+        "score",          // submit/update match scores
+        "register",       // self-register for a tournament
+        "bulk_register",  // bulk-add players (manager-only)
+        // User-lifecycle additions:
+        "suspend",        // suspend or reject any user
+        "reactivate",     // reactivate a suspended/rejected user
       ],
     },
 

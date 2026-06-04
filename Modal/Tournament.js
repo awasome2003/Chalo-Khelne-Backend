@@ -60,10 +60,24 @@ const sportTrackSchema = new mongoose.Schema(
       default: null,
     },
 
-    // Per-sport categories with their own fees.
+    // Per-sport categories with their own fees and optional eligibility rules.
+    // minAge / maxAge are inclusive caps on the player's age at tournament
+    // start. minBirthDate / maxBirthDate are derived in utils/eligibility.js
+    // from `tournament.startDate` at check time — not stored — so editing the
+    // tournament date never leaves a stale cutoff behind.
     categories: [{
-      name: { type: String, required: true },
-      fee:  { type: Number, required: true },
+      // Reference to the CategoryTemplate this row was created from. Optional
+      // for backward compatibility with categories created before templates
+      // existed; new categories should always carry a templateId so the SA
+      // can report usage. The age + gender fields below remain the source of
+      // truth for the eligibility check — they are snapshots, so editing or
+      // deactivating the template later never affects this tournament.
+      templateId: { type: mongoose.Schema.Types.ObjectId, ref: "CategoryTemplate", default: null },
+      name:   { type: String, required: true },
+      fee:    { type: Number, required: true },
+      minAge: { type: Number, default: null },
+      maxAge: { type: Number, default: null },
+      gender: { type: String, enum: ["male", "female", "any"], default: "any" },
     }],
 
     groupStageFormat: {
@@ -240,6 +254,18 @@ const tournamentSchema = new mongoose.Schema(
       },
     ],
 
+    // ── Tenant key (Phase 1.1 multi-tenancy) ──
+    // Owning club = a ClubAdmin/corporate_admin User _id (same convention as
+    // Manager.clubId). Stamped on create from the request tenant context and via
+    // scripts/backfillTournamentClubId.js. Additive/nullable during rollout;
+    // scoping runs in SHADOW MODE (enforce:false) until backfilled + verified.
+    clubId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+
     // Per-sport tracks. Canonical source of all per-sport config:
     // sportName, type, categories, matchFormat, sportRules,
     // groupStageFormat, knockoutFormat, davisCupFormatId, drawSize,
@@ -299,5 +325,14 @@ const tournamentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+
+// Multi-tenant scoping (Phase 1.1) — ENFORCED (2026-06-02).
+// Backfill (scripts/backfillTournamentClubId.js: 15 updated, 0 skipped) +
+// isolation proof (scripts/verifyTournamentTenancy.js: consistency clean,
+// scoping correct) both passed. Club-staff queries are now auto-scoped to their
+// clubId; players/public/SuperAdmin are unaffected. To revert, set enforce:false.
+// NOTE: .aggregate() pipelines are NOT yet scoped by this plugin.
+const tenantScope = require("../utils/tenantScope");
+tournamentSchema.plugin(tenantScope, { field: "clubId", enforce: true });
 
 module.exports = mongoose.model("Tournament", tournamentSchema);

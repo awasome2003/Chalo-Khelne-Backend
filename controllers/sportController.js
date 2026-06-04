@@ -1,4 +1,5 @@
 const Sport = require("../Modal/Sport");
+const escapeRegex = require("../utils/escapeRegex");
 const Tournament = require("../Modal/Tournament");
 const Turf = require("../Modal/Turf");
 const Session = require("../Modal/Session");
@@ -18,7 +19,7 @@ exports.createSport = async (req, res) => {
     }
 
     const existing = await Sport.findOne({
-      name: { $regex: new RegExp(`^${name}$`, "i") },
+      name: { $regex: new RegExp(`^${escapeRegex(name)}$`, "i") },
     });
     if (existing) {
       return res
@@ -176,7 +177,7 @@ exports.getDefaultFormat = async (req, res) => {
     const sport = await Sport.findOne({
       $or: [
         { slug },
-        { name: { $regex: new RegExp(`^${sportName}$`, "i") } },
+        { name: { $regex: new RegExp(`^${escapeRegex(sportName)}$`, "i") } },
       ],
     }).lean();
 
@@ -277,7 +278,7 @@ exports.getTournamentsBySport = async (req, res) => {
     const { sportName } = req.params;
 
     const tournaments = await Tournament.find({
-      sportsType: { $regex: new RegExp(sportName, "i") },
+      sportsType: { $regex: new RegExp(escapeRegex(sportName), "i") },
     })
       .sort({ createdAt: -1 })
       .lean();
@@ -296,7 +297,7 @@ exports.getVenuesBySport = async (req, res) => {
     const { sportName } = req.params;
 
     const venues = await Turf.find({
-      "sports.name": { $regex: new RegExp(sportName, "i") },
+      "sports.name": { $regex: new RegExp(escapeRegex(sportName), "i") },
     })
       .sort({ createdAt: -1 })
       .lean();
@@ -315,7 +316,7 @@ exports.getTrainingBySport = async (req, res) => {
     const { sportName } = req.params;
 
     const sessions = await Session.find({
-      sportType: { $regex: new RegExp(sportName, "i") },
+      sportType: { $regex: new RegExp(escapeRegex(sportName), "i") },
     })
       .sort({ createdAt: -1 })
       .lean();

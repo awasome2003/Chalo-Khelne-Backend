@@ -7,8 +7,8 @@ const transporter = nodemailer.createTransport({
     port: 465,
     secure: true,
     auth: {
-        user: "notmumbai@gmail.com", // Should ideally be in env vars
-        pass: "djbz wrcn uwtt woob",   // Should ideally be in env vars
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
     },
 });
 
@@ -35,7 +35,7 @@ exports.createInquiry = async (req, res) => {
 
         // Send email notification to User
         const mailOptions = {
-          from: "notmumbai@gmail.com",
+          from: process.env.EMAIL_USER,
           to: email, 
           subject: "Inquiry Received - ChaloKhelne",
           text: `Hi ${name},\n\We have received your inquiry regarding "${inquiryType}". Our team will review your request and get back to you shortly.\n\nBest Regards,\nChaloKhelne Team`,

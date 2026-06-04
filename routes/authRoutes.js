@@ -5,7 +5,21 @@ const User = require("../Modal/User");
 const { Manager } = require("../Modal/ClubManager");
 const DeviceToken = require("../Modal/DeviceToken");
 const Superadminmodel = require("../Modal/Superadminmodel");
+const nodemailer = require("nodemailer");
 require("dotenv").config();
+
+// Welcome-email transporter — reuses the same EMAIL_USER/EMAIL_PASS env vars as
+// the OTP and password-reset flows. Failures are fire-and-forget; they don't
+// block registration.
+const welcomeTransporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 const router = express.Router();
 const path = require("path");
 const fs = require("fs");
@@ -14,22 +28,66 @@ const {
   cleanupFile,
   uploadsDir,
   identityDocsDir,
+  certificatesDir,
 } = require("../middleware/uploads");
 const mongoose = require("mongoose");
+const { authenticate } = require("../middleware/authMiddleware");
+const { requireSelf, forceSelfBody } = require("../middleware/authz");
+const { signAccessToken, signAccessTokenFor, issueRefreshToken, rotateRefreshToken, revokeRefreshToken } = require("../utils/tokens");
+
+// ── Rate limiting (Phase 1) ──
+// Defensive require: server still boots if the package isn't installed yet.
+// Install with:  npm install express-rate-limit
+let rateLimit;
+try {
+  rateLimit = require("express-rate-limit");
+} catch (_e) {
+  console.warn(
+    "[auth] express-rate-limit not installed — auth rate limiting DISABLED. Run: npm install express-rate-limit"
+  );
+  rateLimit = () => (_req, _res, next) => next(); // no-op fallback
+}
+// Multi-instance-safe store when REDIS_URL is set; else per-process in-memory.
+const rateLimitStore = require("../middleware/rateLimitStore");
+const authStore = rateLimitStore("rl:auth:");
+const registerStore = rateLimitStore("rl:register:");
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 20, // generous: real users won't hit it, brute force will
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many attempts. Please try again later." },
+  ...(authStore ? { store: authStore } : {}),
+});
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: "Too many attempts. Please try again later." },
+  ...(registerStore ? { store: registerStore } : {}),
+});
 
 // Register a new user
-router.post("/register", async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
   const {
     name,
     email,
     mobile,
     password,
-    role,
+    role: rawRole,
     age,
+    dateOfBirth,
     website,
     members,
     clubName,
   } = req.body;
+
+  // Block privilege escalation via self-registration: only these roles may be
+  // self-assigned. Anything else (Manager, corporate_admin, superadmin, admin…)
+  // is coerced to Player. ClubAdmin/Organization stay approval-gated (isApproved:false below).
+  const SELF_REGISTER_ROLES = ["Player", "Trainer", "Referee", "ClubAdmin", "Organization"];
+  const role = SELF_REGISTER_ROLES.includes(rawRole) ? rawRole : "Player";
 
   try {
     let user = await User.findOne({ email });
@@ -55,6 +113,7 @@ router.post("/register", async (req, res) => {
       password,
       role,
       age,
+      dateOfBirth,
       website,
       members,
       clubName: role === "ClubAdmin" ? clubName?.trim() : undefined,
@@ -69,6 +128,19 @@ router.post("/register", async (req, res) => {
       user.clubId = user._id;
       await user.save();
     }
+
+    // Fire-and-forget welcome email — failures don't block registration.
+    const welcomeText = user.isApproved
+      ? `Hello ${user.name},\n\nWelcome to Sportszz! Your account is ready and you can sign in any time.\n\nIf you didn't create this account, please ignore this email.\n\n— The Sportszz Team`
+      : `Hello ${user.name},\n\nWelcome to Sportszz! Your account has been created and is pending admin approval. You'll be notified once it's active.\n\nIf you didn't create this account, please ignore this email.\n\n— The Sportszz Team`;
+    welcomeTransporter
+      .sendMail({
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: "Welcome to Sportszz",
+        text: welcomeText,
+      })
+      .catch((e) => console.error("[REGISTER] welcome email failed:", e.message));
 
     if (user.isApproved) {
       const payload = { userId: user.id };
@@ -91,7 +163,7 @@ router.post("/register", async (req, res) => {
 });
 
 // Login as User or Manager
-router.post("/login", async (req, res) => {
+router.post("/login", authLimiter, async (req, res) => {
   const email = (req.body.email || "").trim().toLowerCase();
   const password = (req.body.password || "").trim();
 
@@ -124,10 +196,16 @@ router.post("/login", async (req, res) => {
       const token = jwt.sign(
         { email, role: "superadmin", userId: superadmin._id },
         process.env.JWT_SECRET,
-        { expiresIn: "30d" }
+        { expiresIn: "30d" } // access lifetime unchanged (Phase 9: shorten once web panel adds refresh-on-401)
       );
+      const refreshToken = await issueRefreshToken(superadmin._id, {
+        principalType: "Superadmin",
+        singleSession: true,
+        userAgent: req.headers["user-agent"],
+      });
       return res.json({
         token,
+        refreshToken,
         user: {
           id: superadmin._id,
           _id: superadmin._id,
@@ -145,6 +223,26 @@ router.post("/login", async (req, res) => {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
+      // SA-controlled suspension/rejection — runs AFTER password verify so a
+      // wrong-password attempt still gets a generic "Invalid credentials" and
+      // can't be used to probe whether an account is suspended.
+      if (manager.status === "suspended") {
+        return res.status(403).json({
+          success: false,
+          code: "ACCOUNT_SUSPENDED",
+          message: "Your account has been suspended. Contact support.",
+          reason: manager.suspensionReason || null,
+        });
+      }
+      if (manager.status === "rejected") {
+        return res.status(403).json({
+          success: false,
+          code: "ACCOUNT_REJECTED",
+          message: "Your account has been rejected. Contact support.",
+          reason: manager.suspensionReason || null,
+        });
+      }
+
       if (!manager.isActive) {
         return res.status(403).json({ message: "Manager is not active" });
       }
@@ -152,8 +250,13 @@ router.post("/login", async (req, res) => {
       const token = jwt.sign(
         { id: manager._id, role: "Manager" },
         process.env.JWT_SECRET,
-        { expiresIn: "30d" }
+        { expiresIn: "30d" } // access lifetime unchanged (Phase 9: shorten once web panel adds refresh-on-401)
       );
+      const refreshToken = await issueRefreshToken(manager._id, {
+        principalType: "Manager",
+        singleSession: true,
+        userAgent: req.headers["user-agent"],
+      });
 
       // Check if the parent club is a corporate admin
       const parentUser = await User.findById(manager.clubId);
@@ -161,6 +264,7 @@ router.post("/login", async (req, res) => {
 
       return res.json({
         token,
+        refreshToken,
         user: {
           id: manager._id,
           email: manager.email,
@@ -181,13 +285,29 @@ router.post("/login", async (req, res) => {
       const match = await bcrypt.compare(password, user.password);
       if (!match) return res.status(401).json({ message: "Invalid credentials" });
 
-      const token = jwt.sign(
-        { id: user._id, role: user.role },
-        process.env.JWT_SECRET,
-        { expiresIn: "30d" }
-      );
+      // SA-controlled suspension/rejection — runs AFTER password verify.
+      if (user.status === "suspended") {
+        return res.status(403).json({
+          success: false,
+          code: "ACCOUNT_SUSPENDED",
+          message: "Your account has been suspended. Contact support.",
+          reason: user.suspensionReason || null,
+        });
+      }
+      if (user.status === "rejected") {
+        return res.status(403).json({
+          success: false,
+          code: "ACCOUNT_REJECTED",
+          message: "Your account has been rejected. Contact support.",
+          reason: user.suspensionReason || null,
+        });
+      }
+
+      const token = signAccessToken(user);
+      const refreshToken = await issueRefreshToken(user._id, { userAgent: req.headers["user-agent"] });
       return res.json({
         token,
+        refreshToken,
         user: {
           id: user._id,
           email: user.email,
@@ -209,7 +329,7 @@ router.post("/login", async (req, res) => {
 const otpStore = {};
 
 // Forgot password reset (unified endpoint)
-router.post("/forgot-password/reset", async (req, res) => {
+router.post("/forgot-password/reset", authLimiter, async (req, res) => {
   try {
     console.log("Received request body:", req.body); // Debug log
 
@@ -239,7 +359,7 @@ router.post("/forgot-password/reset", async (req, res) => {
 });
 
 // Legacy auth endpoint for backward compatibility
-router.post("/forgot-password/reset/auth", async (req, res) => {
+router.post("/forgot-password/reset/auth", authLimiter, async (req, res) => {
   try {
     console.log("Received request body:", req.body); // Debug log
 
@@ -269,7 +389,7 @@ router.post("/forgot-password/reset/auth", async (req, res) => {
 });
 
 // Superadmin login
-router.post("/superadminlogin", async (req, res) => {
+router.post("/superadminlogin", authLimiter, async (req, res) => {
   const { email, password } = req.body;
 
   try {
@@ -285,9 +405,15 @@ router.post("/superadminlogin", async (req, res) => {
       const token = jwt.sign({ email, userId: user._id }, process.env.JWT_SECRET, {
         expiresIn: "1h",
       });
+      const refreshToken = await issueRefreshToken(user._id, {
+        principalType: "Superadmin",
+        singleSession: true,
+        userAgent: req.headers["user-agent"],
+      });
       return res.json({
         success: true,
         token,
+        refreshToken,
         user: {
           id: user._id,
           _id: user._id,
@@ -307,7 +433,7 @@ router.post("/superadminlogin", async (req, res) => {
 });
 
 // Google Sign-In endpoint
-router.post("/google-login", async (req, res) => {
+router.post("/google-login", authLimiter, async (req, res) => {
   const { token, email, name, platform } = req.body;
 
   try {
@@ -320,6 +446,9 @@ router.post("/google-login", async (req, res) => {
     // The mobile app sends an idToken from @react-native-google-signin
     // Verify it using Google's tokeninfo endpoint
     const { OAuth2Client } = require("google-auth-library");
+    if (!process.env.GOOGLE_WEB_CLIENT_ID) {
+      console.error("[GOOGLE] GOOGLE_WEB_CLIENT_ID is not set in the server environment");
+    }
     const client = new OAuth2Client(process.env.GOOGLE_WEB_CLIENT_ID);
 
     try {
@@ -329,6 +458,9 @@ router.post("/google-login", async (req, res) => {
       });
       googleUserInfo = ticket.getPayload();
     } catch (idTokenError) {
+      // Diagnostic: surface exactly why idToken verification failed (audience
+      // mismatch, expired token, wrong client id, etc.) — see bug #28.
+      console.warn("[GOOGLE] idToken verify failed:", idTokenError?.message);
       // Fallback: try as access token (for web/legacy clients)
       try {
         const userInfoResponse = await fetch(
@@ -337,11 +469,13 @@ router.post("/google-login", async (req, res) => {
         );
 
         if (!userInfoResponse.ok) {
+          console.warn("[GOOGLE] userinfo fallback failed:", userInfoResponse.status);
           return res.status(401).json({ message: "Token verification failed. Please try again." });
         }
 
         googleUserInfo = await userInfoResponse.json();
       } catch (fallbackError) {
+        console.warn("[GOOGLE] userinfo fallback threw:", fallbackError?.message);
         return res.status(401).json({ message: "Token verification failed. Please try again." });
       }
     }
@@ -401,23 +535,31 @@ router.post("/google-login", async (req, res) => {
       }
     }
 
-    // Generate JWT — same 30d expiry as normal login
-    const jwtToken = jwt.sign(
-      {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        authProvider: "google",
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "30d",
-        algorithm: "HS256",
-      }
-    );
+    // SA-controlled suspension/rejection — even via Google auth.
+    if (user.status === "suspended") {
+      return res.status(403).json({
+        success: false,
+        code: "ACCOUNT_SUSPENDED",
+        message: "Your account has been suspended. Contact support.",
+        reason: user.suspensionReason || null,
+      });
+    }
+    if (user.status === "rejected") {
+      return res.status(403).json({
+        success: false,
+        code: "ACCOUNT_REJECTED",
+        message: "Your account has been rejected. Contact support.",
+        reason: user.suspensionReason || null,
+      });
+    }
+
+    // Short-lived access token + rotating refresh token (Phase 8.1).
+    const jwtToken = signAccessToken(user);
+    const refreshToken = await issueRefreshToken(user._id, { userAgent: req.headers["user-agent"] });
 
     res.json({
       token: jwtToken,
+      refreshToken,
       user: {
         id: user._id,
         _id: user._id,
@@ -439,7 +581,7 @@ router.post("/google-login", async (req, res) => {
 });
 
 // Update user profile
-router.put("/user/profile/:id", async (req, res) => {
+router.put("/user/profile/:id", authenticate, requireSelf("id"), async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) {
@@ -454,6 +596,7 @@ router.put("/user/profile/:id", async (req, res) => {
       "sex",
       "sports",
       "clubNames",
+      "clubName",
       "mobile",
       "emergencyContact",
       "email",
@@ -511,8 +654,11 @@ router.put("/user/profile/:id", async (req, res) => {
   }
 });
 
-// Get user profile
-router.get("/user/profile/:id", async (req, res) => {
+// Get user profile — returns PII (DOB, mobile, address, identityId, certs),
+// so requireSelf: a user may only fetch their own profile. Cross-user reads
+// (manager viewing a player for approval, etc.) should use a separate
+// safe-subset endpoint, not this one.
+router.get("/user/profile/:id", authenticate, requireSelf("id"), async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select("-password");
 
@@ -554,6 +700,8 @@ router.get("/user/profile/:id", async (req, res) => {
 // Profile image upload route
 router.post(
   "/user/profile/upload-image/:id",
+  authenticate,
+  requireSelf("id"),
   uploadMiddleware.single("profile-image"),
   async (req, res) => {
     try {
@@ -591,12 +739,54 @@ router.post(
   }
 );
 
+// Cover / banner image upload route
+router.post(
+  "/user/profile/upload-cover/:id",
+  authenticate,
+  requireSelf("id"),
+  uploadMiddleware.single("cover-image"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const user = await User.findById(req.params.id);
+      if (!user) {
+        await cleanupFile(req.file.path);
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Delete old cover image if exists
+      if (user.coverImage) {
+        const oldImagePath = path.join(uploadsDir, user.coverImage);
+        await cleanupFile(oldImagePath);
+      }
+
+      const relativePath = path
+        .join("profiles", path.basename(req.file.path))
+        .replace(/\\/g, "/");
+
+      user.coverImage = relativePath;
+      await user.save();
+
+      res.json({
+        message: "Cover image uploaded successfully",
+        imageUrl: relativePath,
+      });
+    } catch (error) {
+      if (req.file) await cleanupFile(req.file.path);
+      res.status(500).json({ message: error.message });
+    }
+  }
+);
+
 // Error handling middleware
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
-        message: "File size cannot exceed 5MB",
+        message: "File size cannot exceed 15MB",
       });
     }
     return res.status(400).json({
@@ -657,6 +847,8 @@ router.use((err, req, res, next) => {
 // Certificate deletion route
 router.delete(
   "/user/profile/certificate/:id/:certificateIndex",
+  authenticate,
+  requireSelf("id"),
   async (req, res) => {
     try {
       const user = await User.findById(req.params.id);
@@ -698,8 +890,9 @@ router.delete(
   }
 );
 
-// Certificate retrieval route
-router.get("/certificates/:filename", (req, res) => {
+// Certificate retrieval route — authenticated only (filenames are multer-random
+// so guessing is hard, but never serve PII certs over a public URL).
+router.get("/certificates/:filename", authenticate, (req, res) => {
   try {
     const filename = req.params.filename;
     const filepath = path.join(certificatesDir, filename);
@@ -819,7 +1012,7 @@ router.get("/certificates/:filename", (req, res) => {
 // );
 
 // Get identity document route
-router.get("/user/identity/:id", async (req, res) => {
+router.get("/user/identity/:id", authenticate, requireSelf("id"), async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user || !user.identityDocument || !user.identityDocument.path) {
@@ -875,7 +1068,7 @@ router.post("/check-token", async (req, res) => {
 });
 
 // register-device endpoint
-router.post("/register-device", async (req, res) => {
+router.post("/register-device", authenticate, forceSelfBody("userId"), async (req, res) => {
   try {
     console.log("[DEVICE_REGISTER] Received request:", req.body);
     const { userId, token, allowNotifications } = req.body;
@@ -943,7 +1136,7 @@ router.post("/register-device", async (req, res) => {
 });
 
 // Check device token endpoint
-router.get("/check-device-token/:userId", async (req, res) => {
+router.get("/check-device-token/:userId", authenticate, requireSelf("userId"), async (req, res) => {
   try {
     const userId = req.params.userId;
     const objectId = mongoose.Types.ObjectId.createFromHexString(userId);
@@ -967,7 +1160,7 @@ router.get("/check-device-token/:userId", async (req, res) => {
 });
 
 // Deregister device endpoint
-router.post("/deregister-device", async (req, res) => {
+router.post("/deregister-device", authenticate, forceSelfBody("userId"), async (req, res) => {
   const { userId, token } = req.body;
 
   try {
@@ -995,14 +1188,20 @@ router.get("/user/me", async (req, res) => {
     }
 
     const token = authHeader.replace("Bearer ", "");
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
 
     const user = await User.findById(decoded.id).select("-password");
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.json(user);
+    // Expose follower/following counts without dumping the full arrays.
+    const obj = user.toObject();
+    obj.followersCount = (user.followers || []).length;
+    obj.followingCount = (user.following || []).length;
+    delete obj.followers;
+    delete obj.following;
+    res.json(obj);
   } catch (error) {
     console.error("Error fetching current user:", error);
     res.status(401).json({ message: "Invalid token" });
@@ -1010,7 +1209,7 @@ router.get("/user/me", async (req, res) => {
 });
 
 // Check available roles for a user (based on which service profiles exist)
-router.get("/user/can-switch-role/:userId", async (req, res) => {
+router.get("/user/can-switch-role/:userId", authenticate, requireSelf("userId"), async (req, res) => {
   try {
     const user = await User.findById(req.params.userId);
     if (!user) {
@@ -1051,7 +1250,7 @@ router.post("/user/switch-role/:userId", async (req, res) => {
     }
 
     const token = authHeader.replace("Bearer ", "");
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
 
     if (decoded.id !== req.params.userId) {
       return res.status(403).json({ success: false, message: "Unauthorized" });
@@ -1075,12 +1274,8 @@ router.post("/user/switch-role/:userId", async (req, res) => {
     user.role = newRole;
     await user.save();
 
-    // Generate new token with updated role
-    const newToken = jwt.sign(
-      { id: user._id, email: user.email, role: newRole },
-      process.env.JWT_SECRET,
-      { expiresIn: "30d" }
-    );
+    // New short-lived access token with the updated role (refresh token unchanged).
+    const newToken = signAccessToken(user);
 
     res.json({
       success: true,
@@ -1098,6 +1293,47 @@ router.post("/user/switch-role/:userId", async (req, res) => {
     console.error("Error switching role:", error);
     res.status(500).json({ success: false, message: error.message });
   }
+});
+
+// ── Refresh / logout (Phase 8.1) ──────────────────────────────
+// Exchange a valid refresh token for a new access token, rotating the refresh
+// token. No access token required (the access token is expired by design).
+router.post("/auth/refresh", async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+    const result = await rotateRefreshToken(refreshToken, { userAgent: req.headers["user-agent"] });
+    if (result.error) {
+      // invalid | reuse | expired all collapse to a generic 401 → client re-logs-in.
+      return res.status(401).json({ success: false, message: "Invalid or expired refresh token" });
+    }
+    // Reload the principal from the correct collection for its type.
+    let principal = null;
+    if (result.principalType === "Manager") {
+      principal = await Manager.findById(result.principalId).select("_id email name");
+    } else if (result.principalType === "Superadmin") {
+      principal = await Superadminmodel.findById(result.principalId).select("_id email name");
+    } else {
+      principal = await User.findById(result.principalId).select("_id role email name clubName clubId");
+    }
+    if (!principal) {
+      return res.status(401).json({ success: false, message: "Invalid or expired refresh token" });
+    }
+    const token = signAccessTokenFor(principal, result.principalType);
+    return res.json({ token, refreshToken: result.refreshToken });
+  } catch (err) {
+    console.error("[auth/refresh]", err.message);
+    return res.status(500).json({ success: false, message: "Could not refresh session" });
+  }
+});
+
+// Revoke a refresh token (real server-side logout / kill-switch). Best-effort.
+router.post("/auth/logout", async (req, res) => {
+  try {
+    await revokeRefreshToken(req.body?.refreshToken);
+  } catch (err) {
+    console.error("[auth/logout]", err.message);
+  }
+  return res.json({ success: true });
 });
 
 module.exports = router;

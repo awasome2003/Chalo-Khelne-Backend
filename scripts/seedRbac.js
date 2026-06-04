@@ -6,13 +6,16 @@ const Role = require("../Modal/Role");
 // ═══════════════════════════════════════════════════════════════
 
 const DEFAULT_PERMISSIONS = [
-  // ── Tournament (6) ──
+  // ── Tournament (9) ──
   { key: "tournament:create", name: "Create Tournament", module: "tournament", action: "create" },
   { key: "tournament:read", name: "View Tournaments", module: "tournament", action: "read" },
   { key: "tournament:update", name: "Edit Tournament", module: "tournament", action: "update" },
   { key: "tournament:delete", name: "Delete Tournament", module: "tournament", action: "delete" },
-  { key: "tournament:manage", name: "Manage Tournament (Full)", module: "tournament", action: "manage" },
+  { key: "tournament:manage", name: "Manage Tournament (Bracket/Groups/Courts/Stage)", module: "tournament", action: "manage" },
+  { key: "tournament:score", name: "Score Tournament Matches", module: "tournament", action: "score" },
   { key: "tournament:export", name: "Export Tournament Data", module: "tournament", action: "export" },
+  { key: "tournament:register", name: "Self-register for a Tournament", module: "tournament", action: "register" },
+  { key: "tournament:bulk_register", name: "Bulk-register Players", module: "tournament", action: "bulk_register" },
 
   // ── Turf / Facility (4) ──
   { key: "turf:create", name: "Create Turf", module: "turf", action: "create" },
@@ -65,6 +68,11 @@ const DEFAULT_PERMISSIONS = [
 
   // ── Role & Permission (1) ──
   { key: "role:manage", name: "Manage Roles & Permissions", module: "role", action: "manage" },
+
+  // ── User lifecycle (3) — SuperAdmin-only ──
+  { key: "users:suspend", name: "Suspend or Reject Users", module: "users", action: "suspend", description: "Suspend or reject any user account" },
+  { key: "users:reactivate", name: "Reactivate Users", module: "users", action: "reactivate", description: "Reactivate a suspended or rejected user" },
+  { key: "users:view_suspended", name: "View Suspended Users", module: "users", action: "read", description: "View all suspended and rejected users" },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -92,7 +100,8 @@ const DEFAULT_ROLES = [
     icon: "building",
     isSystem: true,
     permissionKeys: [
-      "tournament:read", "tournament:manage", "tournament:export",
+      "tournament:read", "tournament:create", "tournament:update", "tournament:delete",
+      "tournament:manage", "tournament:export", "tournament:bulk_register",
       "turf:read", "turf:create", "turf:update", "turf:delete",
       "booking:read", "booking:approve",
       "player:read", "player:view_all",
@@ -114,7 +123,8 @@ const DEFAULT_ROLES = [
     icon: "briefcase",
     isSystem: true,
     permissionKeys: [
-      "tournament:create", "tournament:read", "tournament:update", "tournament:delete", "tournament:manage",
+      "tournament:create", "tournament:read", "tournament:update", "tournament:delete",
+      "tournament:manage", "tournament:score", "tournament:export", "tournament:bulk_register",
       "turf:create", "turf:read", "turf:update",
       "booking:read", "booking:approve", "booking:delete",
       "player:read",
@@ -134,7 +144,7 @@ const DEFAULT_ROLES = [
     icon: "dumbbell",
     isSystem: true,
     permissionKeys: [
-      "tournament:read",
+      "tournament:read", "tournament:register",
       "booking:create", "booking:read",
       "player:read",
       "social:create",
@@ -149,7 +159,7 @@ const DEFAULT_ROLES = [
     icon: "user",
     isSystem: true,
     permissionKeys: [
-      "tournament:read",
+      "tournament:read", "tournament:register",
       "turf:read",
       "booking:create", "booking:read", "booking:delete",
       "player:update",
@@ -165,7 +175,7 @@ const DEFAULT_ROLES = [
     icon: "flag",
     isSystem: true,
     permissionKeys: [
-      "tournament:read",
+      "tournament:read", "tournament:score",
       "referee:read",
       "player:read",
     ],

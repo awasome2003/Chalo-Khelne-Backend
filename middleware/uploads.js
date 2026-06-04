@@ -2,14 +2,20 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// Create directories with proper paths
-const uploadsDir = path.join(__dirname, "..", "uploads");
+// Create directories with proper paths.
+// UPLOADS_DIR lets ops point this at a mounted persistent disk (Render) without
+// touching code; defaults to <server>/uploads so dev/local is unchanged.
+const uploadsDir = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.join(__dirname, "..", "uploads");
 const profilesDir = path.join(uploadsDir, "profiles");
 const certificatesDir = path.join(uploadsDir, "certificates");
 const identityDocsDir = path.join(uploadsDir, "identity-docs");
 const tournamentsDir = path.join(uploadsDir, "tournaments");
 const eventsDir = path.join(uploadsDir, "events");
 const turfsDir = path.join(uploadsDir, "turfs");
+const storiesDir = path.join(uploadsDir, "stories");
+const equipmentDir = path.join(uploadsDir, "equipment");
 // Create upload path
 const uploadPath = path.join(process.cwd(), "uploads/qrcodes");
 if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
@@ -23,6 +29,8 @@ if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
   tournamentsDir,
   eventsDir,
   turfsDir,
+  storiesDir,
+  equipmentDir,
 ].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
@@ -59,7 +67,10 @@ const storage = multer.diskStorage({
     // Check fieldname to determine destination
     if (file.fieldname === "tournamentLogo") {
       cb(null, tournamentsDir);
-    } else if (file.fieldname === "profile-image") {
+    } else if (
+      file.fieldname === "profile-image" ||
+      file.fieldname === "cover-image"
+    ) {
       cb(null, profilesDir);
     } else if (file.fieldname === "certificate") {
       cb(null, certificatesDir);
@@ -71,6 +82,10 @@ const storage = multer.diskStorage({
     } else if (file.fieldname === "turfImages") {
       // Handle turf images
       cb(null, turfsDir);
+    } else if (file.fieldname === "storyImage") {
+      cb(null, storiesDir);
+    } else if (file.fieldname === "equipmentImages") {
+      cb(null, equipmentDir);
     } else {
       cb(null, uploadsDir);
     }
@@ -87,13 +102,18 @@ const fileFilter = (req, file, cb) => {
     file.fieldname === "tournamentLogo" ||
     file.fieldname === "playerImages" ||
     file.fieldname === "turfImages" ||
-    file.fieldname === "qrCodes"
+    file.fieldname === "qrCodes" ||
+    file.fieldname === "storyImage" ||
+    file.fieldname === "equipmentImages"
   ) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
       return cb(new Error("Invalid file type for images"), false);
     }
     cb(null, true);
-  } else if (file.fieldname === "profile-image") {
+  } else if (
+    file.fieldname === "profile-image" ||
+    file.fieldname === "cover-image"
+  ) {
     if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
       return cb(new Error("Invalid image type"), false);
     }
@@ -117,7 +137,10 @@ const uploadMiddleware = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
+    // 15MB. Modern phone photos routinely exceed 5MB; when they did, multer
+    // aborted the request mid-stream and the client saw "Network request
+    // failed" instead of a clean error. 15MB covers real-world camera images.
+    fileSize: 15 * 1024 * 1024,
   },
 });
 
@@ -130,6 +153,8 @@ module.exports = {
   identityDocsDir,
   eventsDir,
   turfsDir,
+  storiesDir,
+  equipmentDir,
   cleanupFile: async (filePath) => {
     try {
       if (filePath && fs.existsSync(filePath)) {

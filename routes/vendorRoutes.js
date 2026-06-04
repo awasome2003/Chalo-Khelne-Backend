@@ -1,15 +1,16 @@
 const express = require("express");
 const router = express.Router();
 const vendorController = require("../controllers/vendorController");
+const { requireSuperAdmin } = require("../middleware/authMiddleware");
 
-// ── Public routes ──
+// ── Public routes (read-only catalog + anonymous click tracking) ──
 router.get("/:id", vendorController.getEquipment);
 router.post("/vendor-click/:id", vendorController.trackClick);
 
-// ── SuperAdmin routes (no auth middleware for now — add RBAC later) ──
-router.get("/", vendorController.getAllEquipment);
-router.get("/vendor-links/list", vendorController.getLinkedEquipment);
-router.post("/vendor-link", vendorController.addVendorLink);
-router.delete("/vendor-link/:id", vendorController.removeVendorLink);
+// ── SuperAdmin-only routes (vendor-link management) ──
+router.get("/", requireSuperAdmin, vendorController.getAllEquipment);
+router.get("/vendor-links/list", requireSuperAdmin, vendorController.getLinkedEquipment);
+router.post("/vendor-link", requireSuperAdmin, vendorController.addVendorLink);
+router.delete("/vendor-link/:id", requireSuperAdmin, vendorController.removeVendorLink);
 
 module.exports = router;

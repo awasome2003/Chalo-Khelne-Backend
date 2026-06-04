@@ -255,6 +255,11 @@ addFactoryEnforcement(matchSchema);
 // Multi-sport scoping index. Non-unique — STEP 9a additive.
 matchSchema.index({ tournamentId: 1, sportId: 1 });
 
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId
+// (derived via tournamentId → Tournament.clubId by the backfill).
+const tenantScope = require("../utils/tenantScope");
+matchSchema.plugin(tenantScope, { field: "clubId", enforce: true });
+
 const Match = mongoose.model("Match", matchSchema);
 
 module.exports = Match;

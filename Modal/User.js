@@ -11,6 +11,28 @@ const UserSchema = new mongoose.Schema({
   age: { type: Number },
   sex: { type: String, enum: ["male", "female", "other"] },
 
+  // Set whenever the password changes; used to make password-reset tokens single-use.
+  passwordChangedAt: { type: Date },
+
+  // ── Account status (SuperAdmin-controlled via /api/roles/users/:userId/status) ──
+  // "active"     → normal use
+  // "suspended"  → SA-suspended; blocked at login + every API call
+  // "rejected"   → SA-rejected; blocked at login + every API call
+  // Orthogonal to `isApproved` (approval flow for ClubAdmin/Organization).
+  status: {
+    type: String,
+    enum: ["active", "suspended", "rejected"],
+    default: "active",
+    index: true,
+  },
+  suspensionReason: { type: String, default: null },
+  suspendedAt: { type: Date, default: null },
+  suspendedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "SuperAdmin",
+    default: null,
+  },
+
   // Sports and Clubs
   sports: [
     {
@@ -86,6 +108,13 @@ const UserSchema = new mongoose.Schema({
       return v ? v.replace(/\\/g, "/") : null;
     },
   },
+  coverImage: {
+    type: String,
+    default: null,
+    get: function (v) {
+      return v ? v.replace(/\\/g, "/") : null;
+    },
+  },
   certificates: [
     {
       path: { type: String, required: true },
@@ -98,6 +127,15 @@ const UserSchema = new mongoose.Schema({
   // Authentication & OAuth
   password: { type: String, required: true },
   role: { type: String, required: true },
+  // Multi-role support — a user may be Player, Trainer, and Umpire at once.
+  // `role` above stays as the primary/active role for backward compat.
+  roles: {
+    type: [String],
+    default: [],
+  },
+  // Social graph — Instagram-style public follow.
+  followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   isApproved: { type: Boolean, default: false },
   googleId: { type: String, sparse: true },
   authProvider: { type: String, enum: ["local", "google"], default: "local" },
@@ -185,5 +223,59 @@ UserSchema.index({ playerId: 1 }, { unique: true, sparse: true });
 UserSchema.index({ googleId: 1 }, { sparse: true });
 UserSchema.index({ role: 1 });
 UserSchema.index({ clubId: 1 }, { sparse: true });
+
+// Defense-in-depth: never serialize secrets, even if a query forgets to exclude
+// them. (Note: .lean() bypasses this — keep using `.select("-password")` there.)
+UserSchema.set("toJSON", {
+  transform: (_doc, ret) => {
+    delete ret.password;
+    if (ret.parentalControls) delete ret.parentalControls.pin;
+    return ret;
+  },
+});
+
+// ── Cascade cleanup (Phase 3) ──
+// When a User is deleted, remove the records they own / are linked to, so
+// queries don't return dangling references. Models are resolved lazily from
+// the registry (no imports → no circular deps); missing models are skipped.
+async function cascadeDeleteUser(userId) {
+  if (!userId) return;
+  const m = (n) => mongoose.models[n];
+  const ops = [];
+  if (m("ProfessionalProfile")) ops.push(m("ProfessionalProfile").deleteMany({ userId }));
+  if (m("JobApplication")) ops.push(m("JobApplication").deleteMany({ applicantId: userId }));
+  if (m("HireRequest"))
+    ops.push(m("HireRequest").deleteMany({ $or: [{ fromUserId: userId }, { toUserId: userId }] }));
+  if (m("Request"))
+    ops.push(m("Request").deleteMany({ $or: [{ trainerId: userId }, { playerId: userId }] }));
+  if (m("TrainerBatch")) ops.push(m("TrainerBatch").deleteMany({ trainerId: userId }));
+  if (m("ClubRequest")) ops.push(m("ClubRequest").deleteMany({ trainerId: userId }));
+  if (m("Invitation"))
+    ops.push(m("Invitation").deleteMany({ $or: [{ senderId: userId }, { receiverId: userId }] }));
+  if (m("Trainer")) {
+    const trainer = await m("Trainer").findOne({ userId }).select("_id").lean();
+    if (trainer && m("Session")) ops.push(m("Session").deleteMany({ trainerId: trainer._id }));
+    ops.push(m("Trainer").deleteMany({ userId }));
+  }
+  await Promise.all(ops);
+}
+
+// findByIdAndDelete + findOneAndDelete both trigger "findOneAndDelete".
+UserSchema.pre("findOneAndDelete", async function (next) {
+  try {
+    await cascadeDeleteUser((this.getFilter() || {})._id);
+  } catch (e) {
+    console.error("[User cascade] cleanup failed:", e.message);
+  }
+  next(); // never block the delete on cleanup failure
+});
+UserSchema.pre("deleteOne", { document: false, query: true }, async function (next) {
+  try {
+    await cascadeDeleteUser((this.getFilter() || {})._id);
+  } catch (e) {
+    console.error("[User cascade] cleanup failed:", e.message);
+  }
+  next();
+});
 
 module.exports = mongoose.model("User", UserSchema);

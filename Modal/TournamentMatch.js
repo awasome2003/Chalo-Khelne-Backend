@@ -36,6 +36,12 @@ const tournamentMatchSchema = new mongoose.Schema(
   { toJSON: { getters: true }, toObject: { getters: true } }
 );
 
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId
+// (derived via tournamentId → Tournament.clubId by the backfill). Flip to
+// enforce:true after backfill + verify.
+const tenantScope = require("../utils/tenantScope");
+tournamentMatchSchema.plugin(tenantScope, { field: "clubId", enforce: true });
+
 const TournamentMatch = mongoose.model(
   "TournamentMatch",
   tournamentMatchSchema

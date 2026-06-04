@@ -1,5 +1,6 @@
 const EquipmentListing = require("../Modal/EquipmentListing");
 const User = require("../Modal/User");
+const escapeRegex = require("../utils/escapeRegex");
 
 // POST /api/donations/list — Create equipment listing
 exports.createListing = async (req, res) => {
@@ -12,15 +13,22 @@ exports.createListing = async (req, res) => {
       condition,
       originalPrice,
       askingPrice,
-      images,
+      images: bodyImages,
       sellerLevel,
       sellerContact,
+      brand,
+      size,
+      color,
+      quantity,
+      usageDuration,
+      isDonation,
+      shippingAddress: rawShippingAddress,
     } = req.body;
 
-    if (!sport || !itemName || !description || !category || !condition) {
+    if (!itemName || !description || !category || !condition) {
       return res.status(400).json({
         success: false,
-        message: "Sport, item name, description, category, and condition are required.",
+        message: "Item name, description, category, and condition are required.",
       });
     }
 
@@ -30,22 +38,62 @@ exports.createListing = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found." });
     }
 
-    const price = Number(askingPrice) || 0;
+    // Uploaded files via multer come back on req.files; fall back to body URLs.
+    const uploadedImages =
+      Array.isArray(req.files) && req.files.length > 0
+        ? req.files.map((f) => `equipment/${f.filename}`)
+        : Array.isArray(bodyImages)
+        ? bodyImages
+        : [];
+
+    const donationFlag =
+      typeof isDonation === "string"
+        ? isDonation === "true"
+        : !!isDonation;
+    const price = donationFlag ? 0 : Number(askingPrice) || 0;
+
+    // shippingAddress may arrive as a JSON-stringified blob from multipart FormData
+    let shippingAddress = {};
+    if (rawShippingAddress) {
+      if (typeof rawShippingAddress === "string") {
+        try {
+          shippingAddress = JSON.parse(rawShippingAddress);
+        } catch {
+          shippingAddress = {};
+        }
+      } else if (typeof rawShippingAddress === "object") {
+        shippingAddress = rawShippingAddress;
+      }
+    }
 
     const listing = new EquipmentListing({
       seller: userId,
       sellerName: user.name,
       sellerLevel: sellerLevel || "club",
-      sport,
+      sport: sport || category, // fall back to category when sport isn't collected
       itemName,
       description,
       category,
+      brand: brand || "",
+      size: size || "",
+      color: color || "",
+      quantity: Number(quantity) > 0 ? Number(quantity) : 1,
+      usageDuration: usageDuration || "",
       condition,
       originalPrice: Number(originalPrice) || 0,
       askingPrice: price,
-      isDonation: price === 0,
-      images: images || [],
-      sellerContact: sellerContact || user.mobile || "",
+      isDonation: donationFlag || price === 0,
+      images: uploadedImages,
+      sellerContact:
+        sellerContact || shippingAddress.mobile || user.mobile || "",
+      shippingAddress: {
+        mobile: shippingAddress.mobile || "",
+        email: shippingAddress.email || "",
+        address: shippingAddress.address || "",
+        pincode: shippingAddress.pincode || "",
+        state: shippingAddress.state || "",
+        city: shippingAddress.city || "",
+      },
       status: "Active",
     });
 
@@ -167,9 +215,11 @@ exports.getListings = async (req, res) => {
       search,
     } = req.query;
 
-    const filter = { status: "Active" };
+    // Public store shows ONLY products the platform vendor has published
+    // (vendor middleman model) — no direct seller→buyer used-gear listings.
+    const filter = { vendorStatus: "listed" };
 
-    if (sport) filter.sport = { $regex: new RegExp(`^${sport}$`, "i") };
+    if (sport) filter.sport = { $regex: new RegExp(`^${escapeRegex(sport)}$`, "i") };
     if (category) filter.category = category;
     if (condition) filter.condition = condition;
     if (freeOnly === "true") filter.isDonation = true;
@@ -220,7 +270,12 @@ exports.getListingById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const listing = await EquipmentListing.findById(id)
+    // Atomic view bump + fetch in one round-trip
+    const listing = await EquipmentListing.findByIdAndUpdate(
+      id,
+      { $inc: { views: 1 } },
+      { new: true }
+    )
       .populate("seller", "name mobile sports")
       .populate("claimedBy", "name mobile")
       .lean();
@@ -314,6 +369,7 @@ exports.claimItem = async (req, res) => {
     listing.claimedAt = new Date();
     listing.buyerContact = buyerContact || user.mobile || "";
     listing.status = "Reserved";
+    listing.deliveryStatus = "confirmed";
 
     if (listing.isDonation) {
       // Free donation — no payment needed, directly reserved

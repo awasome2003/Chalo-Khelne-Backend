@@ -173,6 +173,11 @@ knockoutMatchSchema.post('save', async function(doc) {
   }
 });
 
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId
+// (derived via tournamentId → Tournament.clubId by the backfill).
+const tenantScope = require("../utils/tenantScope");
+knockoutMatchSchema.plugin(tenantScope, { field: "clubId", enforce: true });
+
 const KnockoutMatch = mongoose.model('Semifinals', knockoutMatchSchema);
 
 module.exports = KnockoutMatch;

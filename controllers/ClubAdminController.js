@@ -8,8 +8,8 @@ const transporter = nodemailer.createTransport({
   port: 465,
   secure: true,
   auth: {
-    user: "notmumbai@gmail.com",
-    pass: "djbz wrcn uwtt woob",
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
@@ -311,13 +311,13 @@ exports.onboardClubAdmin = async (req, res) => {
     });
     await newProfile.save();
 
-    const loginLink = `http://localhost:5173/login`;
+    const loginLink = `${process.env.FRONTEND_URL || "https://chalokhelne.com"}/login`;
 
     const mailOptions = {
-      from: "notmumbai@gmail.com",
+      from: process.env.EMAIL_USER,
       to: email,
       subject: "Welcome to Sportszz - Club Admin Credentials",
-      text: `Hello ${name},\n\nYour Club Admin account for ${clubName} has been created successfully.\n\nHere are your login credentials:\nEmail: ${email}\nPassword: ${generatedPassword}\n\nPlease login here: ${loginLink}\n\nBest Regards,\nSportszz Team`,
+      text: `Hello ${name},\n\nYour Club Admin account for ${clubName} has been created.\n\nTo set your password, open the login page and use "Forgot Password" with this email:\n${email}\n\nLogin link: ${loginLink}\n\nBest Regards,\nSportszz Team`,
     };
 
     transporter.sendMail(mailOptions, (error, info) => {
@@ -328,14 +328,12 @@ exports.onboardClubAdmin = async (req, res) => {
       }
     });
 
+    // Never return the generated password to the client — the new admin sets
+    // their own via the Forgot Password flow they received over email.
     res.status(201).json({
-      message: "Club Admin onboarded successfully and email sent.",
-      credentials: {
-        email,
-        password: generatedPassword
-      },
+      message: "Club Admin onboarded successfully. The new admin can set their password via Forgot Password.",
       user: newUser,
-      profile: newProfile
+      profile: newProfile,
     });
 
   } catch (error) {

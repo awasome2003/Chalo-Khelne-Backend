@@ -1,6 +1,35 @@
 const Role = require("../Modal/Role");
 const Permission = require("../Modal/Permission");
 const mongoose = require("mongoose");
+const User = require("../Modal/User");
+const { Manager } = require("../Modal/ClubManager");
+
+// ═══════════════════════════════════════════════════════════════
+// USER-LIFECYCLE HELPERS — suspend / reject / reactivate
+// ═══════════════════════════════════════════════════════════════
+
+// Maps the `userType` body field to the right collection. Anything that
+// isn't "manager" is a User document (Player / ClubAdmin / Trainer / Referee
+// / Corporate are all sub-roles inside the User collection).
+function resolveUserModel(userType) {
+  if (!userType) return User;
+  return String(userType).toLowerCase() === "manager" ? Manager : User;
+}
+
+// Returns a small DTO matching what the SA panel needs.
+function toUserDto(doc, userType) {
+  if (!doc) return null;
+  return {
+    id: doc._id,
+    name: doc.name,
+    email: doc.email,
+    role: userType || (doc.role ? doc.role : "manager"),
+    status: doc.status || "active",
+    suspensionReason: doc.suspensionReason || null,
+    suspendedAt: doc.suspendedAt || null,
+    suspendedBy: doc.suspendedBy || null,
+  };
+}
 
 const rbacController = {
   // ═══════════════════════════════════════════
@@ -63,6 +92,15 @@ const rbacController = {
         module: module.toLowerCase(),
         action: action.toLowerCase(),
       });
+
+      // Auto-grant new permissions to SuperAdmin so the role doc never drifts
+      // out of sync with the "SA has everything" guarantee. (SA still bypasses
+      // permission checks at runtime — this keeps the matrix view honest and
+      // any future permission-introspection consistent.)
+      await Role.updateOne(
+        { slug: "super_admin" },
+        { $addToSet: { permissions: permission._id } }
+      );
 
       res.status(201).json({ success: true, permission });
     } catch (err) {
@@ -433,6 +471,208 @@ const rbacController = {
       });
     } catch (err) {
       res.status(500).json({ success: false, message: err.message });
+    }
+  },
+  // ═══════════════════════════════════════════
+  // USER LIFECYCLE — suspend / reject / reactivate / list
+  // ═══════════════════════════════════════════
+
+  // PATCH /api/roles/users/:userId/status
+  // Body: { status: "active" | "suspended" | "rejected", reason: string, userType: "manager"|"player"|"club_admin"|"trainer"|"referee"|"corporate" }
+  // Protected by requireSuperAdmin (router-level).
+  updateUserStatus: async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { status, reason, userType } = req.body || {};
+
+      if (!["active", "suspended", "rejected"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid status. Must be one of: active, suspended, rejected.",
+        });
+      }
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({ success: false, message: "Invalid user id." });
+      }
+
+      const Model = resolveUserModel(userType);
+      const doc = await Model.findById(userId).select(
+        "name email role status suspensionReason suspendedAt suspendedBy"
+      );
+      if (!doc) {
+        return res.status(404).json({ success: false, message: "User not found." });
+      }
+
+      // ── Never allow SA to be suspended ──
+      // (SuperAdmin lives in a separate Superadminmodel collection, so a SA
+      // _id will never resolve via User/Manager. But if someone passed a real
+      // SA id with userType=anything, the lookup above would already have
+      // returned 404. This guard is belt-and-braces for any future model.)
+      if (doc.role === "superadmin" || userType === "superadmin" || userType === "super_admin") {
+        return res.status(400).json({
+          success: false,
+          message: "SuperAdmin accounts cannot be suspended or rejected.",
+        });
+      }
+
+      if (status === "active") {
+        doc.status = "active";
+        doc.suspensionReason = null;
+        doc.suspendedAt = null;
+        doc.suspendedBy = null;
+      } else {
+        doc.status = status;
+        doc.suspensionReason = (reason || "").trim() || null;
+        doc.suspendedAt = new Date();
+        doc.suspendedBy = req.superadminId || null;
+      }
+
+      await doc.save();
+
+      return res.json({
+        success: true,
+        message: "User status updated",
+        user: toUserDto(doc, userType),
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  // GET /api/roles/users/suspended
+  // Returns every suspended/rejected User + Manager.
+  listSuspendedUsers: async (req, res) => {
+    try {
+      const [users, managers] = await Promise.all([
+        User.find({ status: { $in: ["suspended", "rejected"] } })
+          .select("name email role status suspensionReason suspendedAt suspendedBy")
+          .sort({ suspendedAt: -1 })
+          .lean(),
+        Manager.find({ status: { $in: ["suspended", "rejected"] } })
+          .select("name email status suspensionReason suspendedAt suspendedBy")
+          .sort({ suspendedAt: -1 })
+          .lean(),
+      ]);
+
+      const items = [
+        ...users.map((u) => ({
+          id: u._id,
+          name: u.name,
+          email: u.email,
+          role: (u.role || "player").toLowerCase(),
+          userType: (u.role || "player").toLowerCase(),
+          status: u.status,
+          suspensionReason: u.suspensionReason || null,
+          suspendedAt: u.suspendedAt || null,
+          suspendedBy: u.suspendedBy || null,
+        })),
+        ...managers.map((m) => ({
+          id: m._id,
+          name: m.name,
+          email: m.email,
+          role: "manager",
+          userType: "manager",
+          status: m.status,
+          suspensionReason: m.suspensionReason || null,
+          suspendedAt: m.suspendedAt || null,
+          suspendedBy: m.suspendedBy || null,
+        })),
+      ].sort((a, b) => new Date(b.suspendedAt || 0) - new Date(a.suspendedAt || 0));
+
+      return res.json({ success: true, total: items.length, items });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  // GET /api/roles/users/:userId/status?userType=manager
+  getUserStatus: async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const userType = req.query.userType;
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({ success: false, message: "Invalid user id." });
+      }
+      const Model = resolveUserModel(userType);
+      const doc = await Model.findById(userId)
+        .select("name email role status suspensionReason suspendedAt suspendedBy")
+        .lean();
+      if (!doc) {
+        return res.status(404).json({ success: false, message: "User not found." });
+      }
+      return res.json({ success: true, user: toUserDto(doc, userType) });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  // GET /api/roles/users — list every user (active + suspended + rejected) for
+  // the SA "User Access" tab. Supports ?role= and ?status= filters and a
+  // basic ?search= match on name/email. Soft cap: 500 rows per request.
+  listUsers: async (req, res) => {
+    try {
+      const { role, status, search } = req.query;
+      const filter = {};
+      if (status && ["active", "suspended", "rejected"].includes(status)) {
+        filter.status = status;
+      }
+      const userFilter = { ...filter };
+      const managerFilter = { ...filter };
+      if (search) {
+        const rx = new RegExp(String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        userFilter.$or = [{ name: rx }, { email: rx }];
+        managerFilter.$or = [{ name: rx }, { email: rx }];
+      }
+      // Role filter — "manager" routes to Manager collection; everything else
+      // filters by the role field inside User. If no role specified, query both.
+      let users = [];
+      let managers = [];
+      const wantManager = !role || String(role).toLowerCase() === "manager";
+      const wantUser = !role || String(role).toLowerCase() !== "manager";
+      if (wantUser) {
+        const uf = { ...userFilter };
+        if (role && String(role).toLowerCase() !== "manager") {
+          uf.role = new RegExp(`^${role}$`, "i");
+        }
+        users = await User.find(uf)
+          .select("name email role status suspensionReason suspendedAt suspendedBy")
+          .limit(500)
+          .lean();
+      }
+      if (wantManager) {
+        managers = await Manager.find(managerFilter)
+          .select("name email status suspensionReason suspendedAt suspendedBy")
+          .limit(500)
+          .lean();
+      }
+      const items = [
+        ...users.map((u) => ({
+          id: u._id,
+          name: u.name,
+          email: u.email,
+          role: (u.role || "player").toLowerCase(),
+          userType: (u.role || "player").toLowerCase(),
+          status: u.status || "active",
+          suspensionReason: u.suspensionReason || null,
+          suspendedAt: u.suspendedAt || null,
+          suspendedBy: u.suspendedBy || null,
+        })),
+        ...managers.map((m) => ({
+          id: m._id,
+          name: m.name,
+          email: m.email,
+          role: "manager",
+          userType: "manager",
+          status: m.status || "active",
+          suspensionReason: m.suspensionReason || null,
+          suspendedAt: m.suspendedAt || null,
+          suspendedBy: m.suspendedBy || null,
+        })),
+      ].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+      return res.json({ success: true, total: items.length, items });
+    } catch (err) {
+      return res.status(500).json({ success: false, message: err.message });
     }
   },
 };
