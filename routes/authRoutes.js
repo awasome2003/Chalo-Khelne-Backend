@@ -89,6 +89,28 @@ router.post("/register", registerLimiter, async (req, res) => {
   const SELF_REGISTER_ROLES = ["Player", "Trainer", "Referee", "ClubAdmin", "Organization"];
   const role = SELF_REGISTER_ROLES.includes(rawRole) ? rawRole : "Player";
 
+  // Families Policy: under-13 users cannot self-register. They must be created
+  // and supervised by a parent/guardian account (parent-managed). Enforced here
+  // server-side so the rule holds regardless of the client.
+  const computeAge = (dob) => {
+    if (!dob) return null;
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return null;
+    const t = new Date();
+    let a = t.getFullYear() - d.getFullYear();
+    const m = t.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && t.getDate() < d.getDate())) a--;
+    return a;
+  };
+  const selfSignupAge = computeAge(dateOfBirth);
+  if (selfSignupAge != null && selfSignupAge < 13) {
+    return res.status(400).json({
+      code: "UNDER_13_SELF_SIGNUP",
+      message:
+        "Players under 13 can't create their own account. Ask a parent or guardian to create and manage it.",
+    });
+  }
+
   try {
     let user = await User.findOne({ email });
     if (user) {

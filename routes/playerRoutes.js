@@ -14,6 +14,7 @@ const { getClubId } = require("../utils/tenantContext");
 const { authenticate, managerAuth, allowUserOrManager, requireSuperAdmin } = require("../middleware/authMiddleware");
 const { requireSelf, requireOwner, forceSelfBody, requireTurfBookingOwner, requireTurfOwner } = require("../middleware/authz");
 const escapeRegex = require("../utils/escapeRegex");
+const { computeIsMinor } = require("../utils/contactGuard");
 
 
 // ===== TOURNAMENT BOOKING ROUTES =====
@@ -311,11 +312,18 @@ router.get("/player/:playerId", allowUserOrManager, async (req, res) => {
 
     console.log("Player found:", player);
 
+    // Families Policy: a minor's personal info (email/mobile) must not be
+    // shared with others without adult action. Redact it unless the requester
+    // is the player themselves. (Guardian access is handled in parental controls.)
+    const requesterId = String(req.user?.id || req.user?._id || "");
+    const isSelf = requesterId && requesterId === String(player._id);
+    const redactPII = computeIsMinor(player) && !isSelf;
+
     const playerData = {
       _id: player._id,
       name: player.name,
-      email: player.email,
-      mobile: player.mobile,
+      email: redactPII ? null : player.email,
+      mobile: redactPII ? null : player.mobile,
       sports: player.sports,
       rank: player.rank,
       profileImage: player.profileImage,

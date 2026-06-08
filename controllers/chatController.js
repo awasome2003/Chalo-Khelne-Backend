@@ -2,6 +2,8 @@ const Conversation = require("../Modal/Conversation");
 const Message = require("../Modal/Message");
 const User = require("../Modal/User");
 const mongoose = require("mongoose");
+const { conversationAllowed, computeIsMinor } = require("../utils/contactGuard");
+const { containsPII } = require("../utils/piiGuard");
 
 const chatController = {
   // GET /api/chat/conversations — list user's conversations
@@ -56,6 +58,17 @@ const chatController = {
       const otherUser = await User.findById(participantId).select("name profileImage role");
       if (!otherUser) {
         return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      // Families Policy: if either participant is a minor, they must be known
+      // contacts (mutual follow) to chat.
+      const guard = await conversationAllowed(userId, participantId);
+      if (!guard.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: "CONTACT_NOT_ALLOWED",
+          message: guard.reason,
+        });
       }
 
       // Check if conversation already exists
@@ -141,6 +154,32 @@ const chatController = {
 
       if (!conversation) {
         return res.status(404).json({ success: false, message: "Conversation not found" });
+      }
+
+      // Families Policy (defense in depth): re-check the contact rule at send
+      // time — a follow may have been revoked since the conversation was opened.
+      const otherParticipant = conversation.participants.find(
+        (p) => p.toString() !== userId
+      );
+      const guard = await conversationAllowed(userId, otherParticipant);
+      if (!guard.allowed) {
+        return res.status(403).json({
+          success: false,
+          code: "CONTACT_NOT_ALLOWED",
+          message: guard.reason,
+        });
+      }
+
+      // Families Policy: minors can't share personal info (phone/email) in chat
+      // without adult action. Block it server-side.
+      const senderDoc = await User.findById(userId).select("dateOfBirth isMinor");
+      if (computeIsMinor(senderDoc) && containsPII(text)) {
+        return res.status(403).json({
+          success: false,
+          code: "PII_BLOCKED",
+          message:
+            "For your safety, you can't share personal info like phone numbers or email addresses in chat.",
+        });
       }
 
       // Create message
@@ -280,13 +319,37 @@ const chatController = {
         return res.json({ success: true, players: [] });
       }
 
-      const players = await User.find({
+      const me = await User.findById(userId).select("isMinor dateOfBirth following");
+      const requesterIsMinor = computeIsMinor(me);
+      const myFollowing = new Set((me?.following || []).map(String));
+
+      const candidates = await User.find({
         _id: { $ne: userId },
         name: { $regex: query, $options: "i" },
         role: { $in: ["Player", "Trainer"] },
       })
-        .select("name profileImage role")
+        .select("name profileImage role following dateOfBirth isMinor")
         .limit(20);
+
+      // Families Policy: when a minor is involved (the searcher OR the result),
+      // only surface known contacts (mutual follow). This both stops minors from
+      // finding strangers and hides minors from non-contact strangers' search.
+      const players = candidates
+        .filter((p) => {
+          const involvesMinor = requesterIsMinor || computeIsMinor(p);
+          if (!involvesMinor) return true;
+          const iFollow = myFollowing.has(String(p._id));
+          const theyFollowMe = (p.following || []).some(
+            (id) => String(id) === String(userId)
+          );
+          return iFollow && theyFollowMe;
+        })
+        .map((p) => ({
+          _id: p._id,
+          name: p.name,
+          profileImage: p.profileImage,
+          role: p.role,
+        }));
 
       res.json({ success: true, players });
     } catch (error) {
