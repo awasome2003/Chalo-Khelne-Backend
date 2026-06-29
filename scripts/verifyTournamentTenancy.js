@@ -18,8 +18,8 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Tournament = require("../Modal/Tournament");
-const { Manager } = require("../Modal/ClubManager");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
 const { runWithTenant } = require("../utils/tenantContext");
 const tenantScope = require("../utils/tenantScope");
 

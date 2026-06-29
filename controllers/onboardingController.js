@@ -1,5 +1,5 @@
-const OnboardingStatus = require("../Modal/OnboardingStatus");
-const User = require("../Modal/User");
+const OnboardingStatus = require("../src/modules/identity/models/OnboardingStatus");
+const User = require("../src/modules/identity/models/User");
 
 const onboardingController = {
   // Check if device has completed onboarding (regardless of user)

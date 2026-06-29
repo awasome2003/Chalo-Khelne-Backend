@@ -22,12 +22,12 @@
  *   hasAnyResults: boolean
  * }
  */
-const Tournament = require("../Modal/Tournament");
-const GroupStandings = require("../Modal/GroupStandings");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-const KnockoutMatch = require("../Modal/KnockoutMatch");
-const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
-const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+const TeamKnockoutTeams = require("../src/modules/tournaments/models/TeamKnockoutTeams");
 
 // DirectKnockoutMatch.round is a string enum — map to an order + a label.
 const DK_ROUND_ORDER = {

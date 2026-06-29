@@ -1,5 +1,5 @@
-const EquipmentListing = require("../Modal/EquipmentListing");
-const User = require("../Modal/User");
+const EquipmentListing = require("../src/modules/commerce/models/EquipmentListing");
+const User = require("../src/modules/identity/models/User");
 const escapeRegex = require("../utils/escapeRegex");
 
 // POST /api/donations/list — Create equipment listing
@@ -20,6 +20,8 @@ exports.createListing = async (req, res) => {
       size,
       color,
       quantity,
+      sellUnit,
+      packSize,
       usageDuration,
       isDonation,
       shippingAddress: rawShippingAddress,
@@ -77,6 +79,9 @@ exports.createListing = async (req, res) => {
       brand: brand || "",
       size: size || "",
       color: color || "",
+      sellUnit: sellUnit === "pack" ? "pack" : "single",
+      packSize:
+        sellUnit === "pack" && Number(packSize) > 1 ? Number(packSize) : 1,
       quantity: Number(quantity) > 0 ? Number(quantity) : 1,
       usageDuration: usageDuration || "",
       condition,
@@ -139,6 +144,7 @@ exports.updateListing = async (req, res) => {
     const allowedFields = [
       "itemName", "description", "category", "condition", "sport",
       "originalPrice", "askingPrice", "images", "sellerLevel", "sellerContact",
+      "brand", "size", "color", "quantity", "sellUnit", "packSize", "usageDuration",
     ];
 
     allowedFields.forEach((field) => {
@@ -217,7 +223,10 @@ exports.getListings = async (req, res) => {
 
     // Public store shows ONLY products the platform vendor has published
     // (vendor middleman model) — no direct seller→buyer used-gear listings.
-    const filter = { vendorStatus: "listed" };
+    // status "Active" excludes items already Reserved/Sold/Withdrawn — otherwise
+    // a reserved item lingered in the store and failed checkout with
+    // "This item is no longer available."
+    const filter = { vendorStatus: "listed", status: "Active" };
 
     if (sport) filter.sport = { $regex: new RegExp(`^${escapeRegex(sport)}$`, "i") };
     if (category) filter.category = category;

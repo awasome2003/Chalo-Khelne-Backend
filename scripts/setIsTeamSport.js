@@ -8,7 +8,7 @@
 
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Sport = require("../Modal/Sport");
+const Sport = require("../src/modules/catalog/models/Sport");
 
 (async () => {
   const uri = process.env.MONGO_URI;

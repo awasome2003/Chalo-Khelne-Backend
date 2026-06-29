@@ -3,7 +3,7 @@
 // is a MUTUAL FOLLOW (both users follow each other). This is enforced
 // server-side so the rule holds regardless of the client.
 
-const User = require("../Modal/User");
+const User = require("../src/modules/identity/models/User");
 
 // Robust minor check. The pre-save hook computes User.isMinor from DOB, but
 // legacy docs created before that hook may not have it set — so we recompute

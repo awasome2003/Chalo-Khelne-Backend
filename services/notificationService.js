@@ -1,7 +1,7 @@
 const { Expo } = require("expo-server-sdk");
-const User = require("../Modal/User");
-const { Manager } = require("../Modal/ClubManager");
-const DeviceToken = require("../Modal/DeviceToken");
+const User = require("../src/modules/identity/models/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
+const DeviceToken = require("../src/modules/identity/models/DeviceToken");
 
 class NotificationService {
   constructor() {

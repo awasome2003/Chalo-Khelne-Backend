@@ -9,8 +9,8 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Booking = require("../Modal/BookingModel");
-const Tournament = require("../Modal/Tournament");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
 const MISSING = { $or: [{ clubId: null }, { clubId: { $exists: false } }] };
 

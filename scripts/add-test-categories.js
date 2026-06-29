@@ -30,7 +30,7 @@
 
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Tournament = require("../Modal/Tournament");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
 const TARGET_ID = "69f340cfb16abf19e2875e52"; // Summer Championship (Badminton + Table Tennis)
 const REVERT_ID = "69d8864388862c5c342ed1d3"; // Wrong target from the first run

@@ -25,7 +25,11 @@ const SPORT_SCORING_TYPES = {
   "Hockey": "time",
   "Kabaddi": "time",
   "Chess": "single",
-  "Carrom": "single",
+  "Carrom": "board",
+  // Foosball is scored as goals within games (best-of-N games, each to a goal
+  // target) — structurally identical to a racquet "sets" match, so it reuses the
+  // proven set scorer with "goals" standing in for "points".
+  "Foosball": "sets",
 };
 
 function getScoringType(sportName) {
@@ -64,6 +68,12 @@ const FIELD_WHITELIST = {
   single: [
     "totalSets", // boards/rounds
   ],
+  board: [
+    "totalSets",      // total boards container
+    "boardsToWin",    // boards needed to win the match (best-of-N)
+    "pointsPerBoard", // optional first-to-points target per board
+    "queenValue",     // queen bonus points
+  ],
 };
 
 // Fields that should NEVER be user-input (always derived server-side)
@@ -94,10 +104,14 @@ const SAFE_DEFAULTS = {
   serviceAlternate: null,
   oversCount: null,
   inningsCount: null,
+  superOver: null,
   halvesCount: null,
   halvesDuration: null,
   quartersCount: null,
   quartersDuration: null,
+  boardsToWin: null,
+  pointsPerBoard: null,
+  queenValue: null,
   scoringType: null,
   formatVersion: 1,
 };
@@ -194,6 +208,18 @@ function validateCustomRules(sportName, config) {
     }
   }
 
+  if (scoringType === "board") {
+    if (config.boardsToWin != null && (config.boardsToWin < 1 || config.boardsToWin > 10)) {
+      errors.push("boardsToWin must be 1-10");
+    }
+    if (config.pointsPerBoard != null && (config.pointsPerBoard < 1 || config.pointsPerBoard > 100)) {
+      errors.push("pointsPerBoard must be 1-100");
+    }
+    if (config.queenValue != null && (config.queenValue < 0 || config.queenValue > 20)) {
+      errors.push("queenValue must be 0-20");
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -239,12 +265,20 @@ function normalizeMatchFormat(sportName, rawConfig, sportRulesFormat) {
     // Innings-based fields (null if not applicable)
     oversCount: ov.oversCount ?? rf.oversCount ?? null,
     inningsCount: ov.inningsCount ?? rf.inningsCount ?? null,
+    superOver: ov.superOver ?? rf.superOver ?? (scoringType === "innings" ? true : null),
 
     // Time-based fields (null if not applicable)
     halvesCount: ov.halvesCount ?? rf.halvesCount ?? null,
     halvesDuration: ov.halvesDuration ?? rf.halvesDuration ?? null,
     quartersCount: ov.quartersCount ?? rf.quartersCount ?? null,
     quartersDuration: ov.quartersDuration ?? rf.quartersDuration ?? null,
+
+    // Board-based fields (Carrom) — null if not applicable.
+    // `rf` (locked rulebook) expresses best-of-N via scoring.winCondition.value
+    // and points via format.pointsPerSet; callers map those into these keys.
+    boardsToWin: ov.boardsToWin ?? rf.boardsToWin ?? (scoringType === "board" ? Math.ceil((totalSets || 3) / 2) : null),
+    pointsPerBoard: ov.pointsPerBoard ?? rf.pointsPerBoard ?? rf.pointsPerSet ?? null,
+    queenValue: ov.queenValue ?? rf.queenValue ?? (scoringType === "board" ? 3 : null),
 
     // Meta
     scoringType,
@@ -285,10 +319,14 @@ function freezeMatchFormat(tournamentMatchFormat) {
     serviceAlternate: tmf.serviceAlternate ?? null,
     oversCount: tmf.oversCount ?? null,
     inningsCount: tmf.inningsCount ?? null,
+    superOver: tmf.superOver ?? (scoringType === "innings" ? true : null),
     halvesCount: tmf.halvesCount ?? null,
     halvesDuration: tmf.halvesDuration ?? null,
     quartersCount: tmf.quartersCount ?? null,
     quartersDuration: tmf.quartersDuration ?? null,
+    boardsToWin: tmf.boardsToWin ?? (scoringType === "board" ? Math.ceil((tmf.totalSets || 3) / 2) : null),
+    pointsPerBoard: tmf.pointsPerBoard ?? null,
+    queenValue: tmf.queenValue ?? (scoringType === "board" ? 3 : null),
     scoringType,
     formatVersion: tmf.formatVersion ?? 1,
   };
@@ -364,6 +402,13 @@ function validateMatchFormat(format) {
     }
   }
   // Non-set sports: pointsToWinGame and marginToWin can be null — no validation needed
+
+  // Board-based sports (Carrom): need a sensible boards-to-win target
+  if (scoringType === "board") {
+    if (format.boardsToWin == null || format.boardsToWin < 1) {
+      errors.push("boardsToWin must be >= 1 for board-based sports");
+    }
+  }
 
   return { valid: errors.length === 0, errors };
 }

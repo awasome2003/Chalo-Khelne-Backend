@@ -12,8 +12,8 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Turf = require("../Modal/Turf");
-const TurfBooking = require("../Modal/TurfBooking");
+const Turf = require("../src/modules/org/models/Turf");
+const TurfBooking = require("../src/modules/org/models/TurfBooking");
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const MISSING = { $or: [{ clubId: null }, { clubId: { $exists: false } }] };

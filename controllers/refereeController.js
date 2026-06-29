@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
-const Referee = require("../Modal/Referee");
-const User = require("../Modal/User");
-const TeamKnockout = require("../Modal/TeamKnockoutMatches"); // Updated to use TeamKnockout instead of Match
-const Assignment = require("../Modal/Assignment");
+const Referee = require("../src/modules/catalog/models/Referee");
+const User = require("../src/modules/identity/models/User");
+const TeamKnockout = require("../src/modules/tournaments/models/TeamKnockoutMatches"); // Updated to use TeamKnockout instead of Match
+const Assignment = require("../src/modules/tournaments/models/Assignment");
 const { cleanupFile } = require("../middleware/uploads");
 const path = require("path");
 
@@ -374,7 +374,7 @@ exports.getTournamentApplicants = async (req, res) => {
       return res.status(400).json({ message: "Invalid tournamentId" });
     }
 
-    const Tournament = require("../Modal/Tournament");
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
     const tournament = await Tournament.findById(tournamentId).select(
       "title sportsType"
     );
@@ -382,7 +382,7 @@ exports.getTournamentApplicants = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    const StaffApplication = require("../Modal/StaffApplication");
+    const StaffApplication = require("../src/modules/social/models/StaffApplication");
 
     const statusFilter = includeAll
       ? { $in: ["pending", "accepted"] }
@@ -469,8 +469,8 @@ exports.assignUmpireToMatch = async (req, res) => {
     }
 
     // Load match from whichever schema holds it
-    const Match = require("../Modal/Tournnamentmatch");
-    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+    const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+    const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
     let match = await Match.findById(matchId);
     let matchKind = "Match";
     if (!match) {
@@ -517,7 +517,7 @@ exports.assignUmpireToMatch = async (req, res) => {
     }
 
     // Tournament for assignment title
-    const Tournament = require("../Modal/Tournament");
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
     const tournament = await Tournament.findById(match.tournamentId).select(
       "title"
     );
@@ -565,7 +565,7 @@ exports.assignUmpireToMatch = async (req, res) => {
     // Silent on "no application" — managers may assign umpires directly without prior application.
     let staffApplicationUpdated = false;
     try {
-      const StaffApplication = require("../Modal/StaffApplication");
+      const StaffApplication = require("../src/modules/social/models/StaffApplication");
       const result = await StaffApplication.updateOne(
         {
           userId: refereeUserId,
@@ -619,7 +619,7 @@ exports.getMyAuthorizations = async (req, res) => {
     }
 
     // Stage-level grant via accepted StaffApplication
-    const StaffApplication = require("../Modal/StaffApplication");
+    const StaffApplication = require("../src/modules/social/models/StaffApplication");
     const staffApp = await StaffApplication.findOne({
       userId,
       tournamentId,

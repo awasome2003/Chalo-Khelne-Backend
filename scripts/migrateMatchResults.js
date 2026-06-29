@@ -21,11 +21,11 @@ const args = process.argv.slice(2);
 const DRY_RUN = !args.includes("--execute");
 const VERBOSE = args.includes("--verbose");
 
-// ── Load models ──
-const Match = require(path.join(__dirname, "../Modal/Tournnamentmatch"));
-const DirectKnockoutMatch = require(path.join(__dirname, "../Modal/DirectKnockoutMatch"));
-const SuperMatch = require(path.join(__dirname, "../Modal/SuperMatch"));
-const Tournament = require(path.join(__dirname, "../Modal/Tournament"));
+// ── Load models ── (Phase 5b: models moved to src/modules/tournaments/models/)
+const Match = require(path.join(__dirname, "../src/modules/tournaments/models/Tournnamentmatch"));
+const DirectKnockoutMatch = require(path.join(__dirname, "../src/modules/tournaments/models/DirectKnockoutMatch"));
+const SuperMatch = require(path.join(__dirname, "../src/modules/tournaments/models/SuperMatch"));
+const Tournament = require(path.join(__dirname, "../src/modules/tournaments/models/Tournament"));
 const { getScoringType } = require(path.join(__dirname, "../utils/matchFormatUtils"));
 
 // ── Stats ──

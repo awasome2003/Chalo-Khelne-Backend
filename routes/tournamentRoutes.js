@@ -3,7 +3,7 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const multer = require("multer");
 const path = require("path");
-const Match = require("../Modal/Tournnamentmatch");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
 const tournamentController = require("../controllers/tournamentController");
 const exportController = require("../controllers/exportController");
 const bookingController = require("../controllers/BookingController");
@@ -19,7 +19,7 @@ const {
   createTopPlayerGroup,
   getTopPlayerGroups,
 } = require("../controllers/topPlayerGroupsController");
-const KnockoutMatch = require("../Modal/semifinal");
+const KnockoutMatch = require("../src/modules/tournaments/models/semifinal");
 const teamKnockoutController = require("../controllers/teamKnockoutController");
 const tournamentLeaderboardController = require("../controllers/tournamentLeaderboardController");
 const { allowUserOrManager, authenticate } = require("../middleware/authMiddleware");
@@ -117,7 +117,7 @@ router.get("/getRegisteredPlayers", async (req, res) => {
     if (!tournamentId) {
       return res.status(400).json({ message: "tournamentId is required", bookings: [] });
     }
-    const Booking = require("../Modal/BookingModel");
+    const Booking = require("../src/modules/tournaments/models/BookingModel");
     const bookings = await Booking.find({ tournamentId }).lean();
     return res.json({ bookings });
   } catch (err) {
@@ -430,6 +430,17 @@ router.post(
   groupStageScoreboardController.completeGame
 );
 
+// ── Cricket (innings) incremental scoring ──
+router.post("/matches/:matchId/cricket/setup", allowUserOrManager, requirePermission("tournament:score"), groupStageScoreboardController.setupCricketInnings);
+router.post("/matches/:matchId/cricket/lineup", allowUserOrManager, requirePermission("tournament:score"), groupStageScoreboardController.updateCricketLineup);
+router.post("/matches/:matchId/cricket/ball", allowUserOrManager, requirePermission("tournament:score"), groupStageScoreboardController.submitCricketBall);
+router.post("/matches/:matchId/cricket/undo", allowUserOrManager, requirePermission("tournament:score"), groupStageScoreboardController.undoCricketBall);
+router.post("/matches/:matchId/cricket/innings-switch", allowUserOrManager, requirePermission("tournament:score"), groupStageScoreboardController.switchCricketInnings);
+router.post("/matches/:matchId/cricket/finish", allowUserOrManager, requirePermission("tournament:score"), groupStageScoreboardController.finishCricketMatch);
+
+// ── Carrom (board) incremental scoring ──
+router.post("/matches/:matchId/carrom/board", allowUserOrManager, requirePermission("tournament:score"), groupStageScoreboardController.submitCarromBoard);
+
 // Reset match (admin function)
 router.post("/matches/:matchId/reset", requirePermission("tournament:manage"), groupStageScoreboardController.resetMatch);
 
@@ -460,7 +471,7 @@ router.get("/standings/:tournamentId/:groupId", groupStageScoreboardController.g
 router.get("/:tournamentId/debug-matches", async (req, res) => {
   try {
     const { tournamentId } = req.params;
-    const Match = require("../Modal/Tournnamentmatch");
+    const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
 
     const matches = await Match.find({ tournamentId });
 
@@ -602,18 +613,15 @@ router.post(
 );
 
 // Tournament Stage Progression
-router.post(
-  "/:tournamentId/generate-qualifier-knockout",
-  requirePermission("tournament:manage"),
-  requireTournamentOwner({ idParam: "tournamentId" }),
-  tournamentController.generateQualifierKnockout
-);
-router.post(
-  "/:tournamentId/generate-main-knockout",
-  requirePermission("tournament:manage"),
-  requireTournamentOwner({ idParam: "tournamentId" }),
-  tournamentController.generateMainKnockout
-);
+// QUARANTINED (2026-06-20): the legacy KnockoutMatch-based group→knockout path
+// (generateQualifierKnockout / generateMainKnockout → generateKnockoutBracket)
+// is dead and broken — it never wires nextMatch.matchId, so winners never
+// auto-advance, and generateNextRound re-pairs winners by array order, losing
+// bracket position. The web client uses the live SuperMatch path
+// (/api/tournaments/knockout/generate) instead. Routes disabled so they 404;
+// controllers + Modal/KnockoutMatch.js are kept one release, then deleted.
+// router.post("/:tournamentId/generate-qualifier-knockout", requirePermission("tournament:manage"), requireTournamentOwner({ idParam: "tournamentId" }), tournamentController.generateQualifierKnockout);
+// router.post("/:tournamentId/generate-main-knockout", requirePermission("tournament:manage"), requireTournamentOwner({ idParam: "tournamentId" }), tournamentController.generateMainKnockout);
 
 // Tournament Status and Progression
 router.get("/:tournamentId/progression", tournamentController.getTournamentProgression);

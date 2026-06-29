@@ -1,5 +1,5 @@
-const CategoryTemplate = require("../Modal/CategoryTemplate");
-const Tournament = require("../Modal/Tournament");
+const CategoryTemplate = require("../src/modules/tournaments/models/CategoryTemplate");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
 // Starter templates shipped with the system. Re-running the seed is a no-op
 // for templates that already exist (matched by code) — it will NOT overwrite

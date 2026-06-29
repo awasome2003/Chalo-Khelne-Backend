@@ -1,5 +1,5 @@
-const Permission = require("../Modal/Permission");
-const Role = require("../Modal/Role");
+const Permission = require("../src/modules/identity/models/Permission");
+const Role = require("../src/modules/identity/models/Role");
 
 // ═══════════════════════════════════════════════════════════════
 // 34 DEFAULT PERMISSIONS ACROSS 13 MODULES

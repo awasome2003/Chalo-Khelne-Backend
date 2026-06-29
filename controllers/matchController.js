@@ -1,9 +1,9 @@
 const mongoose = require("mongoose");
-const Match = require("../Modal/Tournnamentmatch");
-const Tournament = require("../Modal/Tournament");
-const BookingGroup = require("../Modal/bookinggroup");
-const Booking = require("../Modal/BookingModel");
-const Referee = require("../Modal/Referee");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Referee = require("../src/modules/catalog/models/Referee");
 const { freezeMatchFormat, getScoringType } = require("../utils/matchFormatUtils");
 const { createGroupStageMatch } = require("../factories/MatchFactory");
 const { assertGroupHasSport, handleSportContextError } = require("../middleware/requireSportContext");
@@ -645,7 +645,7 @@ const transitionToKnockout = async (req, res) => {
 
     // Get standings for each group and pick top N.
     // STEP 17b.iv — qualifyPerGroup read per-sport from track.
-    const GroupStandings = require("../Modal/GroupStandings");
+    const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
     const { getQualifyPerGroup } = require("../utils/sportTrackUtils");
     const qualifyPerGroup = getQualifyPerGroup(tournament, sportId);
     const qualifiedPlayers = [];
@@ -742,10 +742,10 @@ const updateMatchCourt = async (req, res) => {
     // Lazy-require — the cycle of imports between controllers can produce
     // undefined references at module load time when match models are re-
     // imported across siblings. require() on demand avoids the issue.
-    const SuperMatch = require("../Modal/SuperMatch");
-    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-    const KnockoutMatch = require("../Modal/KnockoutMatch");
-    const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
+    const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+    const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+    const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+    const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
 
     const collections = [
       { Model: Match,                label: "Match" },

@@ -1,8 +1,8 @@
-const Sport = require("../Modal/Sport");
+const Sport = require("../src/modules/catalog/models/Sport");
 const escapeRegex = require("../utils/escapeRegex");
-const Tournament = require("../Modal/Tournament");
-const Turf = require("../Modal/Turf");
-const Session = require("../Modal/Session");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const Turf = require("../src/modules/org/models/Turf");
+const Session = require("../src/modules/org/models/Session");
 const { sportPresets } = require("../Config/sportPresets");
 
 // 1. Create a new sport
@@ -31,6 +31,9 @@ exports.createSport = async (req, res) => {
       name,
       category,
       scoringType,
+      // Team-vs-individual booking axis is derived from category so it is
+      // never left at the schema default (false) for team sports like Cricket.
+      isTeamSport: category === "Team",
       matchFormat: matchFormat || {},
       displayConfig: displayConfig || {},
     });
@@ -60,7 +63,10 @@ exports.updateSport = async (req, res) => {
     }
 
     if (name !== undefined) sport.name = name;
-    if (category !== undefined) sport.category = category;
+    if (category !== undefined) {
+      sport.category = category;
+      sport.isTeamSport = category === "Team";
+    }
     if (scoringType !== undefined) sport.scoringType = scoringType;
     if (isActive !== undefined) sport.isActive = isActive;
 
@@ -237,6 +243,7 @@ exports.seedSports = async (req, res) => {
           // stays the same.
           existing.category = preset.category;
           existing.scoringType = preset.scoringType;
+          existing.isTeamSport = preset.category === "Team";
           existing.matchFormat = preset.defaultMatchFormat;
           existing.displayConfig = preset.displayConfig;
           existing.isPreset = true;
@@ -249,6 +256,9 @@ exports.seedSports = async (req, res) => {
           const sport = new Sport({
             ...rest,
             matchFormat: defaultMatchFormat,
+            // Derive booking axis from category so Cricket et al. are not
+            // left at the isTeamSport=false default after seeding.
+            isTeamSport: preset.category === "Team",
             isPreset: true,
             isActive: true,
           });

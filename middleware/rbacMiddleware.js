@@ -1,8 +1,8 @@
 const jwt = require("jsonwebtoken");
-const User = require("../Modal/User");
-const { Manager } = require("../Modal/ClubManager");
-const Superadminmodel = require("../Modal/Superadminmodel");
-const Role = require("../Modal/Role");
+const User = require("../src/modules/identity/models/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
+const Superadminmodel = require("../src/modules/identity/models/Superadminmodel");
+const Role = require("../src/modules/identity/models/Role");
 
 // ═══════════════════════════════════════════════════════════════
 // UNIFIED AUTH — Resolves token → user/manager/superadmin + role

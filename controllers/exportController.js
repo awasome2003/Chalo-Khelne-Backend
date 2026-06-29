@@ -10,8 +10,8 @@
 
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
-const Booking = require("../Modal/BookingModel");
-const Tournament = require("../Modal/Tournament");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 const { gatherTournamentResults } = require("../utils/tournamentResults");
 
 // Properly escape a value for a single CSV cell.

@@ -14,8 +14,8 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const User = require("../Modal/User");
-const EquipmentListing = require("../Modal/EquipmentListing");
+const User = require("../src/modules/identity/models/User");
+const EquipmentListing = require("../src/modules/commerce/models/EquipmentListing");
 
 // Default player (seller) ids — used when none are passed as arguments.
 const DEFAULT_PLAYER_IDS = [

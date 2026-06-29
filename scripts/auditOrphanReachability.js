@@ -18,11 +18,11 @@ async function main() {
   if (!uri) { console.error("MONGO_URI not set"); process.exit(1); }
   await mongoose.connect(uri);
 
-  const Tournament = require("../Modal/Tournament");
-  const Match = require("../Modal/Tournnamentmatch");
-  const BookingGroup = require("../Modal/bookinggroup");
-  const TopPlayers = require("../Modal/TopPlayers");
-  const GroupStandings = require("../Modal/GroupStandings");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
+  const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+  const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+  const TopPlayers = require("../src/modules/tournaments/models/TopPlayers");
+  const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
 
   // Collect surviving tournament _ids.
   const aliveTournaments = await Tournament.find({}).select("_id").lean();

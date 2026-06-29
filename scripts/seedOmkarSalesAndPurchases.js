@@ -11,8 +11,8 @@
 
 const mongoose = require("mongoose");
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
-const EquipmentListing = require("../Modal/EquipmentListing");
-const User = require("../Modal/User");
+const EquipmentListing = require("../src/modules/commerce/models/EquipmentListing");
+const User = require("../src/modules/identity/models/User");
 
 const OMKAR_ID = "6943a037944d899a354224a5";
 const SEED_TAG = "seed:omkar-sales-purchases";

@@ -1,4 +1,4 @@
-const News = require("../Modal/News");
+const News = require("../src/modules/social/models/News");
 const escapeRegex = require("../utils/escapeRegex");
 
 // POST /api/news/create — Create news (Admin/Manager)

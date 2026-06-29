@@ -1,0 +1,54 @@
+name: CI
+
+# Runs on every push and PR. Solo-dev friendly: one job, fast, no matrix.
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Cache the mongod binary that mongodb-memory-server downloads on first
+      # run, so CI doesn't re-download ~150MB every push.
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongo-mem-${{ runner.os }}
+
+      - name: Install deps
+        run: npm ci
+
+      # Lint runs but does NOT block the build yet — the legacy tree predates
+      # any lint config, so a clean baseline doesn't exist on day one. Flip
+      # `continue-on-error` to false (or delete this line) once the codebase is
+      # warning-clean. Until then, lint output is informational on every push.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      # Module boundaries (Phase 4) — IS a gate. The 287 existing violations are
+      # baselined in .dependency-cruiser-known-violations.json; this only fails
+      # on NEW boundary breaks (a module importing models directly, a cross-module
+      # import, or a new controller→model import), so the debt can't grow.
+      - name: Module boundaries (dependency-cruiser)
+        run: npm run boundaries
+
+      # Tests ARE the gate. A red test fails the build.
+      - name: Integration tests
+        run: npm test
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci_test_secret_at_least_32_chars_long_000

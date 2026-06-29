@@ -39,7 +39,7 @@ async function main() {
   console.log("[SPOTCHECK] Connecting...");
   await mongoose.connect(uri);
 
-  const Tournament = require("../Modal/Tournament");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
 
   const argId = process.argv[2];
   let doc;

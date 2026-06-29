@@ -3,7 +3,7 @@
  * Relationship is stored as two arrays on User: `following` and `followers`.
  */
 const mongoose = require("mongoose");
-const User = require("../Modal/User");
+const User = require("../src/modules/identity/models/User");
 
 const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
 

@@ -1,6 +1,6 @@
-const Invitation = require("../Modal/Invitation");
-const User = require("../Modal/User");
-const Tournament = require("../Modal/Tournament");
+const Invitation = require("../src/modules/social/models/Invitation");
+const User = require("../src/modules/identity/models/User");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 const mongoose = require("mongoose");
 const { parsePagination } = require("../utils/pagination");
 

@@ -1,12 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const { allowUserOrManager } = require("../middleware/authMiddleware");
-const Tournament = require("../Modal/Tournament");
-const Turf = require("../Modal/Turf");
-const Trainer = require("../Modal/Trainer");
-const News = require("../Modal/News");
-const Coupon = require("../Modal/Coupon");
-const User = require("../Modal/User");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const Turf = require("../src/modules/org/models/Turf");
+const Trainer = require("../src/modules/org/models/Trainer");
+const News = require("../src/modules/social/models/News");
+const Coupon = require("../src/modules/commerce/models/Coupon");
+const User = require("../src/modules/identity/models/User");
 
 const PER_TYPE_LIMIT = 5;
 const ABS_MAX_LIMIT = 10;

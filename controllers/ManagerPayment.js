@@ -1,11 +1,11 @@
-const ManagerPayment = require("../Modal/managerPaymentSchema");
+const ManagerPayment = require("../src/modules/commerce/models/managerPaymentSchema");
 const mongoose = require("mongoose");
 const path = require("path");
 const { getRelativePath } = require("../middleware/uploads"); // adjust path if needed
 const fs = require("fs");
-const User = require('../Modal/User')
-const Tournament = require('../Modal/Tournament')
-const Notification = require('../Modal/Notification')
+const User = require('../src/modules/identity/models/User')
+const Tournament = require('../src/modules/tournaments/models/Tournament')
+const Notification = require('../src/modules/social/models/Notification')
 
 exports.getQrCodes = async (req, res) => {
     try {

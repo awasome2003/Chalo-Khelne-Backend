@@ -1,8 +1,8 @@
-const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
-const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
-const TeamKnockout = require("../Modal/TeamKnockout");
-const Booking = require("../Modal/BookingModel");
-const Tournament = require("../Modal/Tournament");
+const TeamKnockoutTeams = require("../src/modules/tournaments/models/TeamKnockoutTeams");
+const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+const TeamKnockout = require("../src/modules/tournaments/models/TeamKnockout");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 const mongoose = require("mongoose");
 const { getFormat, resolveSetPlayers } = require("../Config/teamKnockoutFormats");
 const { readMatchResult } = require("../utils/matchUtils");
@@ -296,6 +296,7 @@ const teamKnockoutController = {
         tournamentType,
         setCount,
         cleanedTeamData, // NEW: Get cleaned data from frontend
+        sportId: sportIdRaw, // multi-sport: which sport-track this team-KO is for
       } = req.body;
 
       if (!tournamentId || !selectedBookingIds || !scheduleDetails) {
@@ -305,12 +306,13 @@ const teamKnockoutController = {
         });
       }
 
-      // Load tournament to get matchFormat (derived from sportRules at creation)
-      // TODO: multi-sport team knockout — thread sportId when supported.
-      // Currently single-sport implicit; uses sports[0] default.
+      // Load tournament + resolve the sport track. Multi-sport tournaments must
+      // read THIS sport's format, not sports[0]. resolveSportId falls back to
+      // sports[0] for single-sport / legacy tournaments.
       const tournament = await Tournament.findById(tournamentId).lean();
-      const { getMatchFormat: _gmf } = require("../utils/sportTrackUtils");
-      const tf = _gmf(tournament) || {};
+      const { getMatchFormat: _gmf, getDavisCupFormatId: _gdcf, resolveSportId: _rsid } = require("../utils/sportTrackUtils");
+      const sportId = _rsid(tournament, sportIdRaw);
+      const tf = _gmf(tournament, sportId) || {};
       const gameRulesFromTournament = {
         gamesPerSet: tf.totalGames || null,
         gamesToWin: tf.gamesToWin || null,
@@ -517,10 +519,7 @@ const teamKnockoutController = {
           );
 
           // Use config-driven format if davisCupFormatId is set, otherwise derive from legacy params.
-          // TODO: multi-sport team knockout — thread sportId when supported.
-          // Uses sports[0] default for now.
-          const { getDavisCupFormatId: _gdcf1 } = require("../utils/sportTrackUtils");
-          const formatId = _gdcf1(tournament) || deriveFormatId(tournamentType, validSetCount, createdTeams);
+          const formatId = _gdcf(tournament, sportId) || deriveFormatId(tournamentType, validSetCount, createdTeams);
           let formatConfig;
           try {
             formatConfig = getFormat(formatId);
@@ -562,9 +561,7 @@ const teamKnockoutController = {
           console.log(`Creating odd-team bye match for: ${team1.teamName}`);
 
           // BYE matches still need a valid formatId to satisfy schema validation.
-          // TODO: multi-sport team knockout — thread sportId when supported.
-          const { getDavisCupFormatId: _gdcf2 } = require("../utils/sportTrackUtils");
-          const byeFormatId = _gdcf2(tournament) || deriveFormatId(tournamentType, validSetCount, createdTeams);
+          const byeFormatId = _gdcf(tournament, sportId) || deriveFormatId(tournamentType, validSetCount, createdTeams);
           let byeFormatName = `${tournamentType} - ${validSetCount} Sets`;
           try { byeFormatName = getFormat(byeFormatId).name; } catch {}
 
@@ -590,9 +587,7 @@ const teamKnockoutController = {
       }
 
       // Create bye matches for pre-assigned bye teams.
-      // TODO: multi-sport team knockout — thread sportId when supported.
-      const { getDavisCupFormatId: _gdcf3 } = require("../utils/sportTrackUtils");
-      const preAssignedByeFormatId = _gdcf3(tournament) || deriveFormatId(tournamentType, validSetCount, createdTeams);
+      const preAssignedByeFormatId = _gdcf(tournament, sportId) || deriveFormatId(tournamentType, validSetCount, createdTeams);
       let preAssignedByeFormatName = `${tournamentType} - ${validSetCount} Sets`;
       try { preAssignedByeFormatName = getFormat(preAssignedByeFormatId).name; } catch {}
 
@@ -635,6 +630,10 @@ const teamKnockoutController = {
           });
         }
       });
+
+      // Stamp the resolved sportId on every match so multi-sport reads/queries
+      // can scope by sport-track (and the format resolved above is consistent).
+      for (const m of matches) { if (sportId && !m.sportId) m.sportId = sportId; }
 
       const createdMatches = await TeamKnockoutMatches.insertMany(matches, {
         session,
@@ -750,11 +749,11 @@ const teamKnockoutController = {
         });
       }
 
-      // Load tournament for game rules.
-      // TODO: multi-sport team knockout — thread sportId when supported.
+      // Load tournament for game rules — resolve the sport-track for multi-sport.
       const tournament = await Tournament.findById(tournamentId).lean();
-      const { getMatchFormat: _gmf2 } = require("../utils/sportTrackUtils");
-      const tf = _gmf2(tournament) || {};
+      const { getMatchFormat: _gmf2, getDavisCupFormatId: _gdcf4, resolveSportId: _rsid2 } = require("../utils/sportTrackUtils");
+      const sportId = _rsid2(tournament, req.body.sportId);
+      const tf = _gmf2(tournament, sportId) || {};
       const gameRulesFromTournament = {
         gamesPerSet: tf.totalGames || null,
         gamesToWin: tf.gamesToWin || null,
@@ -780,9 +779,7 @@ const teamKnockoutController = {
       if (useTwoPlayerFormat) effectiveFormat += " (2 Players)";
 
       // Resolve formatId (required by schema). Prefer per-sport davisCupFormatId, else derive.
-      // TODO: multi-sport team knockout — thread sportId when supported.
-      const { getDavisCupFormatId: _gdcf4 } = require("../utils/sportTrackUtils");
-      const rrFormatId = _gdcf4(tournament) || deriveFormatId(tournamentType, validSetCount, teams);
+      const rrFormatId = _gdcf4(tournament, sportId) || deriveFormatId(tournamentType, validSetCount, teams);
       let rrFormatName = effectiveFormat;
       try { rrFormatName = getFormat(rrFormatId).name; } catch {}
 
@@ -846,6 +843,8 @@ const teamKnockoutController = {
           matchIndex++;
         }
       }
+
+      for (const m of matches) { if (sportId && !m.sportId) m.sportId = sportId; }
 
       // Insert all round robin matches
       const createdMatches = await TeamKnockoutMatches.insertMany(matches, {
@@ -1505,11 +1504,11 @@ const teamKnockoutController = {
         });
       }
 
-      // Load tournament to get matchFormat for gameRules.
-      // TODO: multi-sport team knockout — thread sportId when supported.
+      // Load tournament to get matchFormat for gameRules — resolve sport-track.
       const tournament = await Tournament.findById(tournamentId).lean();
-      const { getMatchFormat: _gmf3 } = require("../utils/sportTrackUtils");
-      const tf = _gmf3(tournament) || {};
+      const { getMatchFormat: _gmf3, getDavisCupFormatId: _gdcf5, resolveSportId: _rsid3 } = require("../utils/sportTrackUtils");
+      const sportId = _rsid3(tournament, req.body.sportId);
+      const tf = _gmf3(tournament, sportId) || {};
       const gameRulesFromTournament = {
         gamesPerSet: tf.totalGames || null,
         gamesToWin: tf.gamesToWin || null,
@@ -1542,19 +1541,20 @@ const teamKnockoutController = {
       // Reconstruct the format string to ensure it's ALWAYS valid (matches enum: "Singles - 3 Sets", etc.)
       const format = `${standardizedPlayFormat} - ${validatedSetCount} Sets`;
 
-      // Resolve formatId for the schema (required field)
-      const nextRoundFormatId = tournament?.davisCupFormatId || deriveFormatId(standardizedPlayFormat, validatedSetCount, []);
+      // Resolve formatId for the schema (required field) — per-sport, not root.
+      const nextRoundFormatId = _gdcf5(tournament, sportId) || tournament?.davisCupFormatId || deriveFormatId(standardizedPlayFormat, validatedSetCount, []);
       let nextRoundFormatName = format;
       try { nextRoundFormatName = getFormat(nextRoundFormatId).name; } catch {}
 
       console.log(`Setting match format to: "${format}" (derived from playFormat: "${playFormat}", setCount: "${setCount}")`);
 
-      // Get completed matches from previous round
+      // Get completed matches from previous round — ORDERED BY bracketPosition
+      // so winners advance in bracket order (preserves seeding/structure).
       const previousRoundMatches = await TeamKnockoutMatches.find({
         tournamentId,
         round: currentRound - 1,
         status: { $in: ["COMPLETED", "BYE"] },
-      }).session(session);
+      }).sort({ bracketPosition: 1 }).session(session);
 
       if (previousRoundMatches.length === 0) {
         return res.status(400).json({
@@ -1589,8 +1589,11 @@ const teamKnockoutController = {
         });
       }
 
-      // Shuffle winners
-      const shuffledWinners = [...winners].sort(() => 0.5 - Math.random());
+      // Preserve bracket order — winners already sorted by previous-round
+      // bracketPosition above, so adjacent bracket winners meet (standard
+      // single-elimination progression). NO random reshuffle: a random
+      // re-pairing each round destroys seeding and bracket integrity.
+      const shuffledWinners = winners;
 
       // Get winner team details
       const winnerTeams = await TeamKnockoutTeams.find({
@@ -1692,6 +1695,8 @@ const teamKnockoutController = {
         },
         { session }
       );
+
+      for (const m of matches) { if (sportId && !m.sportId) m.sportId = sportId; }
 
       const createdMatches = await TeamKnockoutMatches.insertMany(matches, {
         session,
@@ -2485,6 +2490,18 @@ const teamKnockoutController = {
 
           if (match.isBye) {
             errors.push({ matchId, error: "Cannot score a bye match" });
+            await session.abortTransaction();
+            session.endSession();
+            continue;
+          }
+
+          // Sport-aware guard: team-KO bulk collects per-SET scores, so it only
+          // fits set-based team events (racquet doubles / Davis Cup). A non-set
+          // team match (cricket innings, football goals) would silently record
+          // fake sets — reject cleanly so it's scored with the live scorer.
+          const _tkScoringType = (match.scoringType || "sets").toLowerCase();
+          if (_tkScoringType !== "sets") {
+            errors.push({ matchId, error: `Bulk score upload isn't available for ${_tkScoringType} scoring. Use the live scorer.` });
             await session.abortTransaction();
             session.endSession();
             continue;

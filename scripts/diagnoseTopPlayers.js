@@ -15,11 +15,11 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 
-const Tournament = require("../Modal/Tournament");
-const BookingGroup = require("../Modal/bookinggroup");
-const Match = require("../Modal/Tournnamentmatch");
-const TopPlayers = require("../Modal/TopPlayers");
-const GroupStandings = require("../Modal/GroupStandings");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+const TopPlayers = require("../src/modules/tournaments/models/TopPlayers");
+const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
 
 const TOURNAMENT_ID = "69f340cfb16abf19e2875e52";
 const SPORT_NAME = "Table Tennis";

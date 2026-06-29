@@ -1,6 +1,6 @@
-const SportRuleBook = require("../Modal/SportRuleBook");
+const SportRuleBook = require("../src/modules/catalog/models/SportRuleBook");
 const escapeRegex = require("../utils/escapeRegex");
-const Sport = require("../Modal/Sport");
+const Sport = require("../src/modules/catalog/models/Sport");
 const { sportRulePresets, LEVELS } = require("../Config/sportRulePresets");
 
 // 1. Seed all rule book presets into DB

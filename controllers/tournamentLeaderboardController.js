@@ -1,11 +1,11 @@
 // TOURNAMENT LEADERBOARD CONTROLLER
-const Tournament = require('../Modal/Tournament');
-const SuperMatch = require('../Modal/SuperMatch');
-const DirectKnockoutMatch = require('../Modal/DirectKnockoutMatch');
-const TournamentMatch = require('../Modal/Tournnamentmatch');
-const TeamKnockoutMatches = require('../Modal/TeamKnockoutMatches');
-const TeamKnockoutTeams = require('../Modal/TeamKnockoutTeams');
-const Booking = require('../Modal/BookingModel');
+const Tournament = require('../src/modules/tournaments/models/Tournament');
+const SuperMatch = require('../src/modules/tournaments/models/SuperMatch');
+const DirectKnockoutMatch = require('../src/modules/tournaments/models/DirectKnockoutMatch');
+const TournamentMatch = require('../src/modules/tournaments/models/Tournnamentmatch');
+const TeamKnockoutMatches = require('../src/modules/tournaments/models/TeamKnockoutMatches');
+const TeamKnockoutTeams = require('../src/modules/tournaments/models/TeamKnockoutTeams');
+const Booking = require('../src/modules/tournaments/models/BookingModel');
 const {
   getSportName,
   getTournamentType,
@@ -201,7 +201,11 @@ const getGroupStagePlayersLeaderboard = async (req, res) => {
       });
     }
 
-    // 2. Fetch All Match Data Based on Tournament Mode
+    // 2. Fetch All Match Data Based on Tournament Mode.
+    // MULTI-SPORT: when a sportId is provided, scope every match query to that
+    // sport-track — otherwise a multi-sport tournament mixes all sports into one
+    // combined leaderboard on every tab.
+    const matchFilter = sportId ? { tournamentId, sportId } : { tournamentId };
     let tournamentMatches = [];
     let superMatches = [];
     let directMatches = [];
@@ -209,21 +213,21 @@ const getGroupStagePlayersLeaderboard = async (req, res) => {
     if (tournament.roundTwoMode === 'round2-plus-knockout') {
       // CORRECTED FLOW: TournamentMatch (Round 1 & 2) + SuperMatch (Knockout)
       [tournamentMatches, superMatches] = await Promise.all([
-        TournamentMatch.find({ tournamentId }).lean(),
-        SuperMatch.find({ tournamentId }).lean()
+        TournamentMatch.find(matchFilter).lean(),
+        SuperMatch.find(matchFilter).lean()
       ]);
     } else if (tournament.roundTwoMode === 'direct-knockout') {
       // CORRECTED FLOW: TournamentMatch (Round 1) + DirectKnockoutMatch (Final)
       [tournamentMatches, directMatches] = await Promise.all([
-        TournamentMatch.find({ tournamentId }).lean(),
-        DirectKnockoutMatch.find({ tournamentId }).lean()
+        TournamentMatch.find(matchFilter).lean(),
+        DirectKnockoutMatch.find(matchFilter).lean()
       ]);
     } else {
       // Fallback: Fetch all match types for compatibility
       [tournamentMatches, superMatches, directMatches] = await Promise.all([
-        TournamentMatch.find({ tournamentId }).lean(),
-        SuperMatch.find({ tournamentId }).lean(),
-        DirectKnockoutMatch.find({ tournamentId }).lean()
+        TournamentMatch.find(matchFilter).lean(),
+        SuperMatch.find(matchFilter).lean(),
+        DirectKnockoutMatch.find(matchFilter).lean()
       ]);
     }
 
@@ -248,7 +252,7 @@ const getGroupStagePlayersLeaderboard = async (req, res) => {
 
       // Create player leaderboard entries with zero stats
       const registeredPlayers = Array.from(uniquePlayers).map((playerId, index) => {
-        const booking = bookings.find(b => b.userId.toString() === playerId);
+        const booking = bookings.find(b => b.userId && b.userId.toString() === playerId);
         return {
           playerId: playerId,
           playerName: booking?.userName || 'Unknown Player',

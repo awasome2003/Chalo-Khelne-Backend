@@ -12,16 +12,16 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const { runWithTenant } = require("../utils/tenantContext");
 const tenantScope = require("../utils/tenantScope");
-const Score = require("../Modal/Score");
+const Score = require("../src/modules/tournaments/models/Score");
 
 const MATCH_MODELS = [
-  require("../Modal/Tournnamentmatch"),
-  require("../Modal/TournamentMatch"),
-  require("../Modal/KnockoutMatch"),
-  require("../Modal/DirectKnockoutMatch"),
-  require("../Modal/SuperMatch"),
-  require("../Modal/TeamKnockoutMatches"),
-  require("../Modal/semifinal"),
+  require("../src/modules/tournaments/models/Tournnamentmatch"),
+  require("../src/modules/tournaments/models/TournamentMatch"),
+  require("../src/modules/tournaments/models/KnockoutMatch"),
+  require("../src/modules/tournaments/models/DirectKnockoutMatch"),
+  require("../src/modules/tournaments/models/SuperMatch"),
+  require("../src/modules/tournaments/models/TeamKnockoutMatches"),
+  require("../src/modules/tournaments/models/semifinal"),
 ];
 
 async function run() {

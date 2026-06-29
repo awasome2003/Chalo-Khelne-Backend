@@ -10,20 +10,51 @@
  *   const winner = getWinner(match);
  */
 
-const Match = require("../Modal/Tournnamentmatch");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-const SuperMatch = require("../Modal/SuperMatch");
-const TeamKnockoutMatch = require("../Modal/TeamKnockoutMatches");
-const KnockoutMatch = require("../Modal/KnockoutMatch");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+const TeamKnockoutMatch = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+const SemifinalMatch = require("../src/modules/tournaments/models/semifinal"); // model "Semifinals" (team-based legacy)
 
-// All match models in search priority order
+// Canonical match-kind labels — the single LOGICAL "polymorphic matchType" for
+// the whole system. Physical collections stay separate (Phase 2 decision: the
+// 6 schemas have hard field-type conflicts), but THIS registry is the one place
+// that knows every match model. Any "scan/normalize across all matches" path
+// goes through MATCH_MODELS, so adding a new match type here propagates to every
+// adapter consumer (finders, leaderboards) automatically — no more divergence.
+const MATCH_KINDS = Object.freeze({
+  GROUP_STAGE: "GROUP_STAGE",
+  DIRECT_KNOCKOUT: "DIRECT_KNOCKOUT",
+  SUPER: "SUPER",
+  TEAM_KNOCKOUT: "TEAM_KNOCKOUT",
+  KNOCKOUT: "KNOCKOUT",
+  SEMIFINAL: "SEMIFINAL",
+});
+
+// All match models in search priority order.
+// FIX (Phase 2): the Semifinals model was previously omitted, so findMatchById /
+// findMatchesByTournament silently could NOT find those matches — a textbook
+// "logic diverges across paths" bug. It is now part of the single registry.
 const MATCH_MODELS = [
-  { model: Match, name: "Match" },
-  { model: DirectKnockoutMatch, name: "DirectKnockoutMatch" },
-  { model: SuperMatch, name: "SuperMatch" },
-  { model: TeamKnockoutMatch, name: "TeamKnockoutMatch" },
-  { model: KnockoutMatch, name: "KnockoutMatch" },
+  { model: Match, name: "Match", kind: MATCH_KINDS.GROUP_STAGE },
+  { model: DirectKnockoutMatch, name: "DirectKnockoutMatch", kind: MATCH_KINDS.DIRECT_KNOCKOUT },
+  { model: SuperMatch, name: "SuperMatch", kind: MATCH_KINDS.SUPER },
+  { model: TeamKnockoutMatch, name: "TeamKnockoutMatch", kind: MATCH_KINDS.TEAM_KNOCKOUT },
+  { model: KnockoutMatch, name: "KnockoutMatch", kind: MATCH_KINDS.KNOCKOUT },
+  { model: SemifinalMatch, name: "Semifinals", kind: MATCH_KINDS.SEMIFINAL },
 ];
+
+// schemaName → kind, derived from the single registry above. Keyed by BOTH the
+// registry label and the real Mongoose modelName, because getSchemaName returns
+// the registry label from its field-detection fallback but the actual
+// constructor.modelName for hydrated docs (e.g. "TeamKnockoutMatch" vs the
+// real model name "TeamKnockoutMatches").
+const SCHEMA_TO_KIND = MATCH_MODELS.reduce((m, e) => {
+  m[e.name] = e.kind;
+  if (e.model && e.model.modelName) m[e.model.modelName] = e.kind;
+  return m;
+}, {});
 
 /**
  * Find a match by _id across all schemas.
@@ -96,6 +127,11 @@ const getWinner = (match) => {
       playerName: null, // team knockout stores team ID, not player
       isTeam: true,
     };
+  }
+
+  // Semifinals (team-based legacy) → winner is a team-name String
+  if (typeof match.winner === "string" && match.winner) {
+    return { playerId: null, playerName: match.winner, isTeam: true };
   }
 
   return null;
@@ -179,8 +215,11 @@ const readMatchResult = (match, opts = {}) => {
 
   // ── LEGACY PATH: extract from old schema fields ──
   // This path is used for non-migrated matches and in-progress matches
+  // matchFormat.scoringType is stripped by the Match subschema, so prefer the
+  // canonical top-level match.scoringType before falling back to the sport map.
   const scoringType = match.matchFormat?.scoringType
-    || getScoringType(match.sportsType || opts.tournament?.sportsType)
+    || match.scoringType
+    || getScoringType(match.sportName || match.sportsType || opts.tournament?.sportsType)
     || null;
 
   if (!scoringType) {
@@ -227,6 +266,8 @@ function _getLabels(scoringType) {
       return { round: "Period", subRound: null, score: "Goals", result: "Score" };
     case "innings":
       return { round: "Innings", subRound: "Over", score: "Runs", result: "Score" };
+    case "board":
+      return { round: "Board", subRound: null, score: "Points", result: "Boards" };
     case "single":
       return { round: "Game", subRound: null, score: "Result", result: "Result" };
     default:
@@ -241,6 +282,31 @@ function _getLabels(scoringType) {
  */
 function _extractDetails(match, scoringType) {
   const sets = match.sets || [];
+
+  // Cricket — per-innings summary from result.innings
+  if (scoringType === "innings") {
+    const innings = match.result?.innings || [];
+    return innings.map((i) => ({
+      inningsNumber: i.inningsNumber,
+      battingSide: i.battingSide,
+      runs: i.runs || 0,
+      wickets: i.wickets || 0,
+      overs: `${i.oversBowled || 0}.${i.ballsBowled || 0}`,
+      target: i.target ?? null,
+    }));
+  }
+
+  // Carrom — per-board breakdown from result.boards
+  if (scoringType === "board") {
+    const boards = match.result?.boards || [];
+    return boards.map((b) => ({
+      boardNumber: b.boardNumber,
+      player1Score: b.player1Points || 0,
+      player2Score: b.player2Points || 0,
+      winner: b.winner || null,
+      queenPocketedBy: b.queenPocketedBy || null,
+    }));
+  }
 
   if (scoringType === "sets") {
     // Full set→game breakdown
@@ -308,12 +374,21 @@ const getSchemaName = (match) => {
   if (match.mode === "direct-knockout") return "DirectKnockoutMatch";
   if (match.loser !== undefined) return "SuperMatch";
   if (match.nextMatch?.position) return "KnockoutMatch";
+  if (Array.isArray(match.teams) && match.matchStage !== undefined) return "Semifinals";
   if (match.groupId) return "Match";
   return "Unknown";
 };
 
+/**
+ * Normalized match-kind label for any match document.
+ * Returns one of MATCH_KINDS (GROUP_STAGE, DIRECT_KNOCKOUT, …) or null.
+ * This is the LOGICAL "matchType" — use it instead of re-detecting per controller.
+ */
+const getMatchKind = (match) => SCHEMA_TO_KIND[getSchemaName(match)] || null;
+
 module.exports = {
   MATCH_MODELS,
+  MATCH_KINDS,
   findMatchById,
   findMatchesByTournament,
   getWinner,
@@ -322,6 +397,7 @@ module.exports = {
   getScore,
   getNextMatchId,
   getSchemaName,
+  getMatchKind,
   // Multi-sport abstraction
   readMatchResult,
   getScoreDisplay,

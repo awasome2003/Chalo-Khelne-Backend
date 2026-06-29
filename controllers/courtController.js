@@ -9,7 +9,7 @@
 // not an ObjectId reference (see Open Q1 + Q10 in the plan).
 
 const mongoose = require("mongoose");
-const Tournament = require("../Modal/Tournament");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
 // Helper — returns 400 + early-exit when tournamentId is malformed.
 function _validTournamentId(req, res) {
@@ -303,11 +303,11 @@ exports.getCourtUtilization = async (req, res) => {
 
     // Lazy-require the match models so we don't pull them in until this
     // endpoint is actually hit.
-    const Match = require("../Modal/Tournnamentmatch");
-    const SuperMatch = require("../Modal/SuperMatch");
-    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-    const KnockoutMatch = require("../Modal/KnockoutMatch");
-    const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
+    const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+    const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+    const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+    const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+    const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
 
     // Lean projections — only the two fields we tally on. Single round-trip
     // fan-out via Promise.all.

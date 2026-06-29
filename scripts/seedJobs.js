@@ -13,9 +13,9 @@
 const mongoose = require("mongoose");
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 
-const JobPosting = require("../Modal/JobPosting");
-const ProfessionalProfile = require("../Modal/ProfessionalProfile");
-const User = require("../Modal/User");
+const JobPosting = require("../src/modules/social/models/JobPosting");
+const ProfessionalProfile = require("../src/modules/social/models/ProfessionalProfile");
+const User = require("../src/modules/identity/models/User");
 
 const JOBS = [
   {

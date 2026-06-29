@@ -5,16 +5,16 @@
  * Calculates: total matches, wins, losses, draws, win rate, rank, sport-wise breakdown.
  */
 
-const Match = require("../Modal/Tournnamentmatch");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-const KnockoutMatch = require("../Modal/KnockoutMatch");
-const SuperMatch = require("../Modal/SuperMatch");
-const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
-const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
-const Booking = require("../Modal/BookingModel");
-const Tournament = require("../Modal/Tournament");
-const GroupStandings = require("../Modal/GroupStandings");
-const User = require("../Modal/User");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+const TeamKnockoutTeams = require("../src/modules/tournaments/models/TeamKnockoutTeams");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
+const User = require("../src/modules/identity/models/User");
 
 /**
  * GET /player-stats/:userId
@@ -420,8 +420,8 @@ exports.getClubRankings = async (req, res) => {
       }
     }
 
-    const Manager = require("../Modal/ClubManager").Manager;
-    const Tournament = require("../Modal/Tournament");
+    const Manager = require("../src/modules/identity/models/ClubManager").Manager;
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
 
     const clubs = await User.find({ role: "ClubAdmin" })
       .select("name clubName profileImage")

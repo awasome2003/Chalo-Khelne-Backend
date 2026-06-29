@@ -23,12 +23,12 @@ const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const { runWithTenant } = require("../utils/tenantContext");
 
-const Tournament = require("../Modal/Tournament");
-const Booking = require("../Modal/BookingModel");
-const Payment = require("../Modal/Payments");
-const Match = require("../Modal/Tournnamentmatch"); // model "Match" — the live group-stage match collection
-const Turf = require("../Modal/Turf");
-const TurfBooking = require("../Modal/TurfBooking");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Payment = require("../src/modules/commerce/models/Payments");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch"); // model "Match" — the live group-stage match collection
+const Turf = require("../src/modules/org/models/Turf");
+const TurfBooking = require("../src/modules/org/models/TurfBooking");
 
 const clubA = new mongoose.Types.ObjectId();
 const clubB = new mongoose.Types.ObjectId();

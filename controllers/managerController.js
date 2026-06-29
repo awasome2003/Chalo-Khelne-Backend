@@ -1,7 +1,7 @@
 const bcrypt = require("bcrypt");
 const nodemailer = require("nodemailer");
-const { Manager, Group } = require("../Modal/ClubManager");
-const User = require("../Modal/User");
+const { Manager, Group } = require("../src/modules/identity/models/ClubManager");
+const User = require("../src/modules/identity/models/User");
 
 // Create a Nodemailer transporter
 const transporter = nodemailer.createTransport({

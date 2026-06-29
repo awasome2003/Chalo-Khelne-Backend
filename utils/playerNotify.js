@@ -18,8 +18,8 @@
  *   await notifyPlayers(req.app, [userId1, userId2], { ... });
  */
 
-const PlayerNotification = require("../Modal/PlayerNotification");
-const User = require("../Modal/User");
+const PlayerNotification = require("../src/modules/social/models/PlayerNotification");
+const User = require("../src/modules/identity/models/User");
 
 async function notifyPlayer(app, userId, notification) {
   try {

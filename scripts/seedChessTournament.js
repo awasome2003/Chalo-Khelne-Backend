@@ -11,9 +11,9 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-const User = require("../Modal/User");
-const Booking = require("../Modal/BookingModel");
-const BookingGroup = require("../Modal/bookinggroup");
+const User = require("../src/modules/identity/models/User");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
 
 const TOURNAMENT_ID = "69b80633629e3ecc6f36a22d";
 const TOURNAMENT_NAME = "chess tournament";
@@ -55,7 +55,7 @@ async function seed() {
     console.log("Connected to MongoDB");
 
     // Check tournament exists
-    const Tournament = require("../Modal/Tournament");
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
     const tournament = await Tournament.findById(TOURNAMENT_ID);
     if (!tournament) {
       console.error("Tournament not found! Check the ID.");

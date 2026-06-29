@@ -59,6 +59,9 @@ function validateMatchResult(matchFormat, result, opts = {}) {
     case "single":
       return _validateSingle(p1, p2, result, errors);
 
+    case "board":
+      return _validateBoard(p1, p2, errors);
+
     default:
       errors.push(`Unknown scoringType: "${scoringType}"`);
       return { valid: false, errors };
@@ -95,10 +98,12 @@ function _validateTime(p1, p2, errors) {
 }
 
 // ── INNINGS VALIDATION ──
+// Ties (equal runs) ARE allowed here — cricket can tie and is resolved by
+// super-over/rule downstream; never reject equal run totals.
 function _validateInnings(p1, p2, result, errors) {
   if (p1 < 0 || p2 < 0) errors.push("Run scores cannot be negative");
 
-  // If details include wickets, validate them
+  // If details include wickets/overs, validate them
   if (result.details && Array.isArray(result.details)) {
     for (const d of result.details) {
       if (d.player1Wickets !== undefined && (d.player1Wickets < 0 || d.player1Wickets > 10)) {
@@ -110,6 +115,15 @@ function _validateInnings(p1, p2, result, errors) {
     }
   }
 
+  return { valid: errors.length === 0, errors };
+}
+
+// ── BOARD VALIDATION (Carrom) ──
+// Aggregate board points per side. Higher total wins; equal totals are rejected
+// (a Carrom match cannot end level).
+function _validateBoard(p1, p2, errors) {
+  if (p1 < 0 || p2 < 0) errors.push("Board points cannot be negative");
+  if (p1 === p2) errors.push(`Board totals cannot be tied (${p1}-${p2})`);
   return { valid: errors.length === 0, errors };
 }
 
@@ -148,12 +162,14 @@ function validateGameScore(p1, p2, matchFormat) {
   }
 
   // For non-set sports, any score where someone wins is valid
+  // (innings ties are allowed and resolved downstream by super-over/rule).
   if (scoringType === "time" || scoringType === "innings") {
     return { valid: true, errors: [] };
   }
 
-  if (scoringType === "single") {
-    if (p1 === p2) return { valid: true, errors: [] }; // Draw allowed
+  if (scoringType === "single" || scoringType === "board") {
+    // Per-board (carrom) or single-result point entry — any non-negative
+    // numbers are acceptable; the win condition is enforced by the engine.
     return { valid: true, errors: [] };
   }
 
@@ -161,14 +177,18 @@ function validateGameScore(p1, p2, matchFormat) {
   const ptw = matchFormat?.pointsToWinGame;
   const margin = matchFormat?.marginToWin;
   const deuce = matchFormat?.deuceRule;
+  // Hard cap (e.g. Badminton 30): at the cap, win-by-1 is legal — a 30-29
+  // finish must NOT be rejected for "margin < 2". Coalesce both field names.
+  const cap = matchFormat?.maxPointsPerGame || matchFormat?.maxPointsCap || null;
 
   if (ptw && margin) {
     const maxScore = Math.max(p1, p2);
     const diff = Math.abs(p1 - p2);
+    const atCap = cap && maxScore >= cap;
 
     if (maxScore < ptw) {
       errors.push(`Neither player reached ${ptw} points (got ${p1}-${p2})`);
-    } else if (deuce && diff < margin) {
+    } else if (deuce && diff < margin && !atCap) {
       errors.push(`Score ${p1}-${p2} does not satisfy margin of ${margin}`);
     }
   }

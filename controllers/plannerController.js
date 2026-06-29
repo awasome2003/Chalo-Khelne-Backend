@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
-const PlannerNote = require("../Modal/PlannerNote");
-const TurfBooking = require("../Modal/TurfBooking");
-const Booking = require("../Modal/BookingModel");
+const PlannerNote = require("../src/modules/social/models/PlannerNote");
+const TurfBooking = require("../src/modules/org/models/TurfBooking");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -122,9 +122,16 @@ function tournamentBookingToActivity(b) {
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
+// Substitute writes are stored against the coach's id so notes survive the
+// substitution and the coach sees them in their own planner.
+const resolveOwnerId = (req) => {
+  if (req.userRole === "Substitute" && req.user?.coachId) return req.user.coachId;
+  return req.body.userId || req.user?._id || req.user?.id;
+};
+
 exports.createNote = async (req, res) => {
   try {
-    const userId = req.body.userId || req.user?._id || req.user?.id;
+    const userId = resolveOwnerId(req);
     if (!userId) {
       return res.status(400).json({ success: false, message: "userId is required" });
     }
@@ -164,7 +171,7 @@ exports.updateNote = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid note id" });
     }
 
-    const userId = req.user?._id || req.user?.id;
+    const userId = resolveOwnerId(req);
     const note = await PlannerNote.findById(id);
     if (!note) {
       return res.status(404).json({ success: false, message: "Note not found" });
@@ -212,7 +219,7 @@ exports.deleteNote = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid note id" });
     }
 
-    const userId = req.user?._id || req.user?.id;
+    const userId = resolveOwnerId(req);
     const note = await PlannerNote.findById(id);
     if (!note) {
       return res.status(404).json({ success: false, message: "Note not found" });

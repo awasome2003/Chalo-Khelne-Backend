@@ -2,12 +2,12 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 const upload = multer();
-const Player = require("../Modal/Player");
-const ClubManager = require("../Modal/ClubManager");
-const ClubAdmin = require("../Modal/ClubAdmin");
-const Organizer = require("../Modal/Organizermodel");
-const User = require("../Modal/User");
-const Inquiry = require("../Modal/Inquiry");
+const Player = require("../src/modules/identity/models/Player");
+const ClubManager = require("../src/modules/identity/models/ClubManager");
+const ClubAdmin = require("../src/modules/identity/models/ClubAdmin");
+const Organizer = require("../src/modules/tournaments/models/Organizermodel");
+const User = require("../src/modules/identity/models/User");
+const Inquiry = require("../src/modules/commerce/models/Inquiry");
 const { requireSuperAdmin } = require("../middleware/authMiddleware");
 
 // Every route in this file is a SuperAdmin control-plane action (approve/

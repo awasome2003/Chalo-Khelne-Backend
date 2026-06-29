@@ -1,30 +1,30 @@
-const Tournament = require("../Modal/Tournament");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 const escapeRegex = require("../utils/escapeRegex");
-const Booking = require("../Modal/BookingModel");
-const BookingGroup = require("../Modal/bookinggroup");
-const Score = require("../Modal/Score");
-const Match = require("../Modal/Tournnamentmatch");
-const KnockoutMatch = require("../Modal/KnockoutMatch");
-const SuperMatch = require("../Modal/SuperMatch");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+const Score = require("../src/modules/tournaments/models/Score");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
 // Additional models for full tournament-delete cascade.
-const GroupStandings = require("../Modal/GroupStandings");
-const TeamKnockout = require("../Modal/TeamKnockout");
-const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
-const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
-const PlayerPayment = require("../Modal/playerPaymentSchema");
-const User = require("../Modal/User");
-const SportRuleBook = require("../Modal/SportRuleBook");
+const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
+const TeamKnockout = require("../src/modules/tournaments/models/TeamKnockout");
+const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+const TeamKnockoutTeams = require("../src/modules/tournaments/models/TeamKnockoutTeams");
+const PlayerPayment = require("../src/modules/commerce/models/playerPaymentSchema");
+const User = require("../src/modules/identity/models/User");
+const SportRuleBook = require("../src/modules/catalog/models/SportRuleBook");
 const { sanitizeBySportType, validateCustomRules, normalizeMatchFormat, getScoringType } = require("../utils/matchFormatUtils");
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
-const Turf = require('../Modal/Turf')
+const Turf = require('../src/modules/org/models/Turf')
 const { uploadsDir } = require("../middleware/uploads");
 const notificationController = require("./notificationController");
-const TopPlayers = require("../Modal/TopPlayers");
-const SuperPlayers = require("../Modal/SuperPlayers");
-const Sport = require("../Modal/Sport");
+const TopPlayers = require("../src/modules/tournaments/models/TopPlayers");
+const SuperPlayers = require("../src/modules/tournaments/models/SuperPlayers");
+const Sport = require("../src/modules/catalog/models/Sport");
 const { createSuperMatch, createLegacyKnockoutMatch } = require("../factories/MatchFactory");
 const { sanitizeMatchFormat, validateMatchFormat: validateSportMatchFormat } = require("../utils/sportFieldConfig");
 const { assertNonEmptySports, assertSportInTournament, assertGroupHasSport, handleSportContextError } = require("../middleware/requireSportContext");
@@ -303,7 +303,7 @@ exports.identifySuperPlayers = async (req, res) => {
     // wins, then rounds-won as tiebreakers). Falls back to group.players[0]
     // only when standings haven't been recorded yet (groups with no completed
     // matches) — logged so the fallback is visible in ops.
-    const GroupStandings = require("../Modal/GroupStandings");
+    const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
     for (let group of round2Groups) {
       const standingsDoc = await GroupStandings.findOne({ groupId: group._id }).lean();
       const sorted = (standingsDoc?.standings || []).slice().sort(
@@ -446,7 +446,7 @@ exports.resetRound2Progress = async (req, res) => {
     // Delete matches belonging to Round 2 groups
     let deletedMatches = 0;
     if (round2GroupIds.length > 0) {
-      const Match = require("../Modal/Tournnamentmatch");
+      const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
       const matchFilter = sportId
         ? { tournamentId, sportId, groupId: { $in: round2GroupIds } }
         : { tournamentId, groupId: { $in: round2GroupIds } };
@@ -465,7 +465,7 @@ exports.resetRound2Progress = async (req, res) => {
     await TopPlayers.deleteMany(topPlayersFilter);
 
     // Also delete DirectKnockoutMatch if Round 2 was knockout mode (strict).
-    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+    const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
     const dkFilter = sportId ? { tournamentId, sportId } : { tournamentId };
     const dkResult = await DirectKnockoutMatch.deleteMany(dkFilter);
 
@@ -578,6 +578,16 @@ exports.createTournament = async (req, res) => {
         if (!Array.isArray(parsedManagerId)) throw new Error();
       } catch {
         return res.status(400).json({ message: "Invalid managerId format" });
+      }
+    }
+    // Ensure the creating manager always OWNS their tournament. The frontend
+    // managerId list only carries staff the creator explicitly assigned, so
+    // without this the creator is absent from managerId and gets locked out of
+    // scoring/managing their own event (manager auth checks managerId membership).
+    const creatorMgrId = req.user?._id?.toString() || req.user?.id?.toString();
+    if ((req.userRole === "Manager" || req.accountType === "Manager") && creatorMgrId) {
+      if (!parsedManagerId.some((id) => String(id) === creatorMgrId)) {
+        parsedManagerId.push(creatorMgrId);
       }
     }
 
@@ -747,7 +757,7 @@ exports.createTournament = async (req, res) => {
     // lookup → fuzzy regex → placeholder Sport doc (mirrors the migration
     // script's behaviour so unresolved sport names don't block creation).
     {
-      const SportModel = require("../Modal/Sport");
+      const SportModel = require("../src/modules/catalog/models/Sport");
       const slugify = (s) => String(s || "").toLowerCase().replace(/\s+/g, "_");
       const escapeRegex = (s) => String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -827,6 +837,11 @@ exports.createTournament = async (req, res) => {
 
     // --- Save tournament ---
     const newTournament = new Tournament(tournamentData);
+    // Phase 5a finding: createTournament is a SINGLE-document write (one
+    // Tournament). A single save is atomic on its own — wrapping it in a
+    // transaction adds a replica-set requirement for zero benefit (and breaks
+    // standalone Mongo). The genuinely multi-document tournament writes are the
+    // group/match GENERATION endpoints; those are the real transaction targets.
     await newTournament.save();
 
     // STEP 16b — single-sport synthesis block removed; sports[] is now
@@ -835,7 +850,7 @@ exports.createTournament = async (req, res) => {
     // --- Notify all players about new tournament ---
     try {
       const { notifyPlayers } = require("../utils/playerNotify");
-      const User = require("../Modal/User");
+      const User = require("../src/modules/identity/models/User");
       const allPlayers = await User.find({ role: "Player" }).select("_id").lean();
       const playerIds = allPlayers.map(p => p._id.toString());
 
@@ -915,7 +930,7 @@ exports.getTournamentsByManager = async (req, res) => {
     }
 
     // 1. Get the manager to find their parent clubId
-    const { Manager } = require("../Modal/ClubManager");
+    const { Manager } = require("../src/modules/identity/models/ClubManager");
     const manager = await Manager.findById(managerId);
 
     const searchIds = [new mongoose.Types.ObjectId(managerId)];
@@ -980,7 +995,7 @@ exports.updateTournamentWhitelist = async (req, res) => {
       validatedWhitelist.push(emp);
     }
 
-    const Tournament = require("../Modal/Tournament");
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
     const tournament = await Tournament.findByIdAndUpdate(
       tournamentId,
       { whitelist: validatedWhitelist },
@@ -1010,7 +1025,7 @@ exports.getTournamentsByCorporate = async (req, res) => {
     const { corporateId } = req.params;
 
     // 1. Find all managers belonging to this Corporate Admin
-    const { Manager } = require("../Modal/ClubManager");
+    const { Manager } = require("../src/modules/identity/models/ClubManager");
     const managers = await Manager.find({ clubId: corporateId });
 
     // Extract manager IDs
@@ -1289,7 +1304,7 @@ exports.editTournament = async (req, res) => {
     }
 
     if (isMultiSportEdit) {
-      const SportModelMS = require("../Modal/Sport");
+      const SportModelMS = require("../src/modules/catalog/models/Sport");
       const slugifyMS = (s) => String(s || "").toLowerCase().replace(/\s+/g, "_");
       const escapeRegexMS = (s) => String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -1384,11 +1399,11 @@ exports.editTournament = async (req, res) => {
       const removedSportIds = existingSportIds.filter((id) => !newSportIds.has(id));
 
       if (removedSportIds.length > 0) {
-        const MatchM = require("../Modal/Tournnamentmatch");
-        const KnockoutMatchM = require("../Modal/KnockoutMatch");
-        const SuperMatchM = require("../Modal/SuperMatch");
-        const DirectKnockoutMatchM = require("../Modal/DirectKnockoutMatch");
-        const BookingGroupM = require("../Modal/bookinggroup");
+        const MatchM = require("../src/modules/tournaments/models/Tournnamentmatch");
+        const KnockoutMatchM = require("../src/modules/tournaments/models/KnockoutMatch");
+        const SuperMatchM = require("../src/modules/tournaments/models/SuperMatch");
+        const DirectKnockoutMatchM = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+        const BookingGroupM = require("../src/modules/tournaments/models/bookinggroup");
 
         for (const removedId of removedSportIds) {
           const [matches, kos, superMs, dks, bgs, tps] = await Promise.all([
@@ -2149,7 +2164,7 @@ async function computeTopPlayersData(tournamentId, sportId = null) {
 
   // Seeded TopPlayers docs use a synthetic groupId like "seeded_open" — skip
   // those when querying GroupStandings (no real BookingGroup behind them).
-  const GroupStandings = require("../Modal/GroupStandings");
+  const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
   const isSeededGroupId = (gid) => typeof gid === "string" && gid.startsWith("seeded_");
   const realGroupIds = [
     ...new Set(
@@ -3090,7 +3105,7 @@ function validateMatchFormat(matchFormat) {
   }
 
   // Validate points configuration
-  if (matchFormat.pointsToWinGame && kmatchFormat.pointsToWinGame < 1) {
+  if (matchFormat.pointsToWinGame && matchFormat.pointsToWinGame < 1) {
     errors.push("pointsToWinGame must be at least 1");
   }
 
@@ -3992,9 +4007,9 @@ exports.deleteAllKnockoutMatches = async (req, res) => {
     // tournament's flow (group->KO via SuperMatch, standalone DirectKnockout,
     // or legacy qualifier_knockout KnockoutMatch). Clear all three so the
     // Knockout tab is actually empty afterward.
-    const SuperMatch = require("../Modal/SuperMatch");
-    const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-    const KnockoutMatch = require("../Modal/KnockoutMatch");
+    const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+    const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+    const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
 
     const [sm, dk, km] = await Promise.all([
       SuperMatch.deleteMany({ tournamentId }),
@@ -5030,8 +5045,8 @@ exports.getGroupsWithoutMatches = async (req, res) => {
     }
 
     // Import models
-    const BookingGroup = require("../Modal/bookinggroup");
-    const Match = require("../Modal/Tournnamentmatch");
+    const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+    const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
 
     // Get all groups for the tournament
     const allGroups = await BookingGroup.find({ tournamentId })

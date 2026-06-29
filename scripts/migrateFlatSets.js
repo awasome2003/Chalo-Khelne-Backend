@@ -39,8 +39,8 @@ const mongoose = require("mongoose");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 // Require models so their collection names are registered with Mongoose.
-const Match = require("../Modal/Tournnamentmatch");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
 
 // --- Config ---------------------------------------------
 const FLAT_SET_SPORTS = [

@@ -13,8 +13,8 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const User = require("../Modal/User");
-const VendorProfile = require("../Modal/VendorProfile");
+const User = require("../src/modules/identity/models/User");
+const VendorProfile = require("../src/modules/commerce/models/VendorProfile");
 
 const EMAIL = "testvendor@chalokhelne.com";
 const PASSWORD = "Vendor@12345";

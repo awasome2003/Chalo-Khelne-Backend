@@ -11,13 +11,13 @@
 const mongoose = require("mongoose");
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 
-const Trainer = require("../Modal/Trainer");
-const Session = require("../Modal/Session");
-const Request = require("../Modal/Request");
-const Club = require("../Modal/Club");
-const ClubRequest = require("../Modal/ClubRequest");
-const TrainerBatch = require("../Modal/TrainerBatch");
-const User = require("../Modal/User");
+const Trainer = require("../src/modules/org/models/Trainer");
+const Session = require("../src/modules/org/models/Session");
+const Request = require("../src/modules/org/models/Request");
+const Club = require("../src/modules/org/models/Club");
+const ClubRequest = require("../src/modules/org/models/ClubRequest");
+const TrainerBatch = require("../src/modules/org/models/TrainerBatch");
+const User = require("../src/modules/identity/models/User");
 
 const CLUBS = [
   {

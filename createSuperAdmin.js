@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const Superadminmodel = require("./Modal/Superadminmodel");
+const Superadminmodel = require("./src/modules/identity/models/Superadminmodel");
 require("dotenv").config();
 
 const createSuperAdmin = async () => {

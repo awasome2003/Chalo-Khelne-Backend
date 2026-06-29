@@ -1,4 +1,4 @@
-const EquipmentListing = require("../Modal/EquipmentListing");
+const EquipmentListing = require("../src/modules/commerce/models/EquipmentListing");
 const mongoose = require("mongoose");
 
 // URL validation regex

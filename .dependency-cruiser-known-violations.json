@@ -1,0 +1,4062 @@
+[
+  {
+    "type": "dependency",
+    "from": "controllers/booking groupcontroller.js",
+    "to": "src/modules/tournaments/models/bookinggroup.js",
+    "unresolvedTo": "../src/modules/tournaments/models/bookinggroup",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/booking groupcontroller.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/booking groupcontroller.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/booking groupcontroller.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/BookingController.js",
+    "to": "src/modules/commerce/models/Payments.js",
+    "unresolvedTo": "../src/modules/commerce/models/Payments",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/BookingController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/BookingController.js",
+    "to": "src/modules/social/models/Notification.js",
+    "unresolvedTo": "../src/modules/social/models/Notification",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/BookingController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/BookingController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/bulkResultUploadController.js",
+    "to": "src/modules/tournaments/models/SuperMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/bulkResultUploadController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutMatches.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutMatches",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/bulkResultUploadController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutTeams.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutTeams",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/bulkResultUploadController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/categoryTemplateController.js",
+    "to": "src/modules/tournaments/models/CategoryTemplate.js",
+    "unresolvedTo": "../src/modules/tournaments/models/CategoryTemplate",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/categoryTemplateController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/chatController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/chatController.js",
+    "to": "src/modules/social/models/Conversation.js",
+    "unresolvedTo": "../src/modules/social/models/Conversation",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/chatController.js",
+    "to": "src/modules/social/models/Message.js",
+    "unresolvedTo": "../src/modules/social/models/Message",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/chatController.js",
+    "to": "src/modules/social/models/PlayerNotification.js",
+    "unresolvedTo": "../src/modules/social/models/PlayerNotification",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/ClubAdminController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/ClubAdminController.js",
+    "to": "src/modules/org/models/ClubAdminProfile.js",
+    "unresolvedTo": "../src/modules/org/models/ClubAdminProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/clubAdminFinanceController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/clubAdminFinanceController.js",
+    "to": "src/modules/org/models/Turf.js",
+    "unresolvedTo": "../src/modules/org/models/Turf",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/clubAdminFinanceController.js",
+    "to": "src/modules/org/models/TurfBooking.js",
+    "unresolvedTo": "../src/modules/org/models/TurfBooking",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/clubAdminFinanceController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/clubAdminFinanceController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/CorporateController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/CorporateController.js",
+    "to": "src/modules/identity/models/CorporateClubAdmin.js",
+    "unresolvedTo": "../src/modules/identity/models/CorporateClubAdmin",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/CorporateController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/couponController.js",
+    "to": "src/modules/commerce/models/Coupon.js",
+    "unresolvedTo": "../src/modules/commerce/models/Coupon",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/couponController.js",
+    "to": "src/modules/commerce/models/CouponUsage.js",
+    "unresolvedTo": "../src/modules/commerce/models/CouponUsage",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/courtController.js",
+    "to": "src/modules/tournaments/models/DirectKnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/DirectKnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/courtController.js",
+    "to": "src/modules/tournaments/models/KnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/KnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/courtController.js",
+    "to": "src/modules/tournaments/models/SuperMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/courtController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutMatches.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutMatches",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/courtController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/courtController.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/directKnockoutController.js",
+    "to": "src/modules/tournaments/models/bookinggroup.js",
+    "unresolvedTo": "../src/modules/tournaments/models/bookinggroup",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/directKnockoutController.js",
+    "to": "src/modules/tournaments/models/DirectKnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/DirectKnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/directKnockoutController.js",
+    "to": "src/modules/tournaments/models/TopPlayers.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TopPlayers",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/directKnockoutController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/donationController.js",
+    "to": "src/modules/commerce/models/EquipmentListing.js",
+    "unresolvedTo": "../src/modules/commerce/models/EquipmentListing",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/donationController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/expenseController.js",
+    "to": "src/modules/commerce/models/Expense.js",
+    "unresolvedTo": "../src/modules/commerce/models/Expense",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/expenseController.js",
+    "to": "src/modules/commerce/models/ExpenseCategory.js",
+    "unresolvedTo": "../src/modules/commerce/models/ExpenseCategory",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/expenseController.js",
+    "to": "src/modules/commerce/models/ExpensePayment.js",
+    "unresolvedTo": "../src/modules/commerce/models/ExpensePayment",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/exportController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/exportController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/favoriteController.js",
+    "to": "src/modules/org/models/Turf.js",
+    "unresolvedTo": "../src/modules/org/models/Turf",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/favoriteController.js",
+    "to": "src/modules/social/models/Favorite.js",
+    "unresolvedTo": "../src/modules/social/models/Favorite",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/followController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/tournaments/models/bookinggroup.js",
+    "unresolvedTo": "../src/modules/tournaments/models/bookinggroup",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/tournaments/models/DirectKnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/DirectKnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/tournaments/models/GroupStandings.js",
+    "unresolvedTo": "../src/modules/tournaments/models/GroupStandings",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/tournaments/models/KnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/KnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/tournaments/models/Score.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Score",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/tournaments/models/SuperMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/groupStageScoreboardController.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/InquiryController.js",
+    "to": "src/modules/commerce/models/Inquiry.js",
+    "unresolvedTo": "../src/modules/commerce/models/Inquiry",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/invitationController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/invitationController.js",
+    "to": "src/modules/social/models/Invitation.js",
+    "unresolvedTo": "../src/modules/social/models/Invitation",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/invitationController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/jobsController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/jobsController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/jobsController.js",
+    "to": "src/modules/social/models/HireRequest.js",
+    "unresolvedTo": "../src/modules/social/models/HireRequest",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/jobsController.js",
+    "to": "src/modules/social/models/JobApplication.js",
+    "unresolvedTo": "../src/modules/social/models/JobApplication",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/jobsController.js",
+    "to": "src/modules/social/models/JobPosting.js",
+    "unresolvedTo": "../src/modules/social/models/JobPosting",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/jobsController.js",
+    "to": "src/modules/social/models/ProfessionalProfile.js",
+    "unresolvedTo": "../src/modules/social/models/ProfessionalProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/knockoutController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/knockoutController.js",
+    "to": "src/modules/tournaments/models/KnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/KnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/knockoutController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/managerController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/managerController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/ManagerPayment.js",
+    "to": "src/modules/commerce/models/managerPaymentSchema.js",
+    "unresolvedTo": "../src/modules/commerce/models/managerPaymentSchema",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/ManagerPayment.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/ManagerPayment.js",
+    "to": "src/modules/social/models/Notification.js",
+    "unresolvedTo": "../src/modules/social/models/Notification",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/ManagerPayment.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/managerPaymentController.js",
+    "to": "src/modules/commerce/models/managerPaymentSchema.js",
+    "unresolvedTo": "../src/modules/commerce/models/managerPaymentSchema",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/managerPaymentController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/managerPaymentController.js",
+    "to": "src/modules/social/models/Notification.js",
+    "unresolvedTo": "../src/modules/social/models/Notification",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/catalog/models/Referee.js",
+    "unresolvedTo": "../src/modules/catalog/models/Referee",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/bookinggroup.js",
+    "unresolvedTo": "../src/modules/tournaments/models/bookinggroup",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/DirectKnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/DirectKnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/GroupStandings.js",
+    "unresolvedTo": "../src/modules/tournaments/models/GroupStandings",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/KnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/KnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/SuperMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutMatches.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutMatches",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/matchController.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/newsController.js",
+    "to": "src/modules/social/models/News.js",
+    "unresolvedTo": "../src/modules/social/models/News",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/notificationController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/notificationController.js",
+    "to": "src/modules/org/models/Trainer.js",
+    "unresolvedTo": "../src/modules/org/models/Trainer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/notificationController.js",
+    "to": "src/modules/social/models/Notification.js",
+    "unresolvedTo": "../src/modules/social/models/Notification",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/onboardingController.js",
+    "to": "src/modules/identity/models/OnboardingStatus.js",
+    "unresolvedTo": "../src/modules/identity/models/OnboardingStatus",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/onboardingController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/plannerController.js",
+    "to": "src/modules/org/models/TurfBooking.js",
+    "unresolvedTo": "../src/modules/org/models/TurfBooking",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/plannerController.js",
+    "to": "src/modules/social/models/PlannerNote.js",
+    "unresolvedTo": "../src/modules/social/models/PlannerNote",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/plannerController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerPaymentController.js",
+    "to": "src/modules/commerce/models/playerPaymentSchema.js",
+    "unresolvedTo": "../src/modules/commerce/models/playerPaymentSchema",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerPaymentController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerPaymentController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/DirectKnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/DirectKnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/GroupStandings.js",
+    "unresolvedTo": "../src/modules/tournaments/models/GroupStandings",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/KnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/KnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/SuperMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutMatches.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutMatches",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutTeams.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutTeams",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/playerStatsController.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/postController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/postController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/postController.js",
+    "to": "src/modules/social/models/Post.js",
+    "unresolvedTo": "../src/modules/social/models/Post",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/postController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/rbacController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/rbacController.js",
+    "to": "src/modules/identity/models/Permission.js",
+    "unresolvedTo": "../src/modules/identity/models/Permission",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/rbacController.js",
+    "to": "src/modules/identity/models/Role.js",
+    "unresolvedTo": "../src/modules/identity/models/Role",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/rbacController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refereeController.js",
+    "to": "src/modules/catalog/models/Referee.js",
+    "unresolvedTo": "../src/modules/catalog/models/Referee",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refereeController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refereeController.js",
+    "to": "src/modules/social/models/StaffApplication.js",
+    "unresolvedTo": "../src/modules/social/models/StaffApplication",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refereeController.js",
+    "to": "src/modules/tournaments/models/Assignment.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Assignment",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refereeController.js",
+    "to": "src/modules/tournaments/models/DirectKnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/DirectKnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refereeController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutMatches.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutMatches",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refereeController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refereeController.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/refreerequestController.js",
+    "to": "src/modules/catalog/models/refreerequestModel.js",
+    "unresolvedTo": "../src/modules/catalog/models/refreerequestModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/sportController.js",
+    "to": "src/modules/catalog/models/Sport.js",
+    "unresolvedTo": "../src/modules/catalog/models/Sport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/sportController.js",
+    "to": "src/modules/org/models/Session.js",
+    "unresolvedTo": "../src/modules/org/models/Session",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/sportController.js",
+    "to": "src/modules/org/models/Turf.js",
+    "unresolvedTo": "../src/modules/org/models/Turf",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/sportController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/sportLibraryController.js",
+    "to": "src/modules/catalog/models/SportLibrary.js",
+    "unresolvedTo": "../src/modules/catalog/models/SportLibrary",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/sportRuleBookController.js",
+    "to": "src/modules/catalog/models/Sport.js",
+    "unresolvedTo": "../src/modules/catalog/models/Sport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/sportRuleBookController.js",
+    "to": "src/modules/catalog/models/SportRuleBook.js",
+    "unresolvedTo": "../src/modules/catalog/models/SportRuleBook",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/staffApplicationController.js",
+    "to": "src/modules/catalog/models/Referee.js",
+    "unresolvedTo": "../src/modules/catalog/models/Referee",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/staffApplicationController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/staffApplicationController.js",
+    "to": "src/modules/org/models/Trainer.js",
+    "unresolvedTo": "../src/modules/org/models/Trainer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/staffApplicationController.js",
+    "to": "src/modules/social/models/StaffApplication.js",
+    "unresolvedTo": "../src/modules/social/models/StaffApplication",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/staffApplicationController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/storyController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/storyController.js",
+    "to": "src/modules/social/models/Story.js",
+    "unresolvedTo": "../src/modules/social/models/Story",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/superMatchController.js",
+    "to": "src/modules/tournaments/models/bookinggroup.js",
+    "unresolvedTo": "../src/modules/tournaments/models/bookinggroup",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/superMatchController.js",
+    "to": "src/modules/tournaments/models/SuperMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/superMatchController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/teamKnockoutController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/teamKnockoutController.js",
+    "to": "src/modules/tournaments/models/TeamKnockout.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockout",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/teamKnockoutController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutMatches.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutMatches",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/teamKnockoutController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutTeams.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutTeams",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/teamKnockoutController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/topPlayerGroupsController.js",
+    "to": "src/modules/tournaments/models/BookingGroupTop.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingGroupTop",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/catalog/models/Sport.js",
+    "unresolvedTo": "../src/modules/catalog/models/Sport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/catalog/models/SportRuleBook.js",
+    "unresolvedTo": "../src/modules/catalog/models/SportRuleBook",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/commerce/models/playerPaymentSchema.js",
+    "unresolvedTo": "../src/modules/commerce/models/playerPaymentSchema",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/org/models/Turf.js",
+    "unresolvedTo": "../src/modules/org/models/Turf",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/bookinggroup.js",
+    "unresolvedTo": "../src/modules/tournaments/models/bookinggroup",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/DirectKnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/DirectKnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/GroupStandings.js",
+    "unresolvedTo": "../src/modules/tournaments/models/GroupStandings",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/KnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/KnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/Score.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Score",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/SuperMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/SuperPlayers.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperPlayers",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/TeamKnockout.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockout",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutMatches.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutMatches",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutTeams.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutTeams",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/TopPlayers.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TopPlayers",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentController.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentLeaderboardController.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentLeaderboardController.js",
+    "to": "src/modules/tournaments/models/DirectKnockoutMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/DirectKnockoutMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentLeaderboardController.js",
+    "to": "src/modules/tournaments/models/SuperMatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/SuperMatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentLeaderboardController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutMatches.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutMatches",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentLeaderboardController.js",
+    "to": "src/modules/tournaments/models/TeamKnockoutTeams.js",
+    "unresolvedTo": "../src/modules/tournaments/models/TeamKnockoutTeams",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentLeaderboardController.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/tournamentLeaderboardController.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/coaching/models/TrainingSchedule.js",
+    "unresolvedTo": "../src/modules/coaching/models/TrainingSchedule",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/identity/models/Substitute.js",
+    "unresolvedTo": "../src/modules/identity/models/Substitute",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/org/models/Club.js",
+    "unresolvedTo": "../src/modules/org/models/Club",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/org/models/ClubRequest.js",
+    "unresolvedTo": "../src/modules/org/models/ClubRequest",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/org/models/ClubSport.js",
+    "unresolvedTo": "../src/modules/org/models/ClubSport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/org/models/Request.js",
+    "unresolvedTo": "../src/modules/org/models/Request",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/org/models/Session.js",
+    "unresolvedTo": "../src/modules/org/models/Session",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/org/models/Trainer.js",
+    "unresolvedTo": "../src/modules/org/models/Trainer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/org/models/TrainerBatch.js",
+    "unresolvedTo": "../src/modules/org/models/TrainerBatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerConsoleController.js",
+    "to": "src/modules/social/models/PlannerNote.js",
+    "unresolvedTo": "../src/modules/social/models/PlannerNote",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerController.js",
+    "to": "src/modules/org/models/Request.js",
+    "unresolvedTo": "../src/modules/org/models/Request",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerController.js",
+    "to": "src/modules/org/models/Session.js",
+    "unresolvedTo": "../src/modules/org/models/Session",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerController.js",
+    "to": "src/modules/org/models/Trainer.js",
+    "unresolvedTo": "../src/modules/org/models/Trainer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerController.js",
+    "to": "src/modules/org/models/TrainerClubApplication.js",
+    "unresolvedTo": "../src/modules/org/models/TrainerClubApplication",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/trainerController.js",
+    "to": "src/modules/org/models/Turf.js",
+    "unresolvedTo": "../src/modules/org/models/Turf",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/turfController.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/turfController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/turfController.js",
+    "to": "src/modules/org/models/Turf.js",
+    "unresolvedTo": "../src/modules/org/models/Turf",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/turfController.js",
+    "to": "src/modules/org/models/TurfBooking.js",
+    "unresolvedTo": "../src/modules/org/models/TurfBooking",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/vendorAccountController.js",
+    "to": "src/modules/commerce/models/VendorProfile.js",
+    "unresolvedTo": "../src/modules/commerce/models/VendorProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/vendorAccountController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/vendorController.js",
+    "to": "src/modules/commerce/models/EquipmentListing.js",
+    "unresolvedTo": "../src/modules/commerce/models/EquipmentListing",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/vendorStoreController.js",
+    "to": "src/modules/commerce/models/EquipmentListing.js",
+    "unresolvedTo": "../src/modules/commerce/models/EquipmentListing",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/vendorStoreController.js",
+    "to": "src/modules/commerce/models/VendorProfile.js",
+    "unresolvedTo": "../src/modules/commerce/models/VendorProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/authRoutes.js",
+    "to": "src/modules/catalog/models/Referee.js",
+    "unresolvedTo": "../src/modules/catalog/models/Referee",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/authRoutes.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/authRoutes.js",
+    "to": "src/modules/identity/models/DeviceToken.js",
+    "unresolvedTo": "../src/modules/identity/models/DeviceToken",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/authRoutes.js",
+    "to": "src/modules/identity/models/Substitute.js",
+    "unresolvedTo": "../src/modules/identity/models/Substitute",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/authRoutes.js",
+    "to": "src/modules/identity/models/Superadminmodel.js",
+    "unresolvedTo": "../src/modules/identity/models/Superadminmodel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/authRoutes.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/authRoutes.js",
+    "to": "src/modules/org/models/Trainer.js",
+    "unresolvedTo": "../src/modules/org/models/Trainer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/bulkUpload.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/clubSportsRoutes.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/clubSportsRoutes.js",
+    "to": "src/modules/org/models/ClubAdminProfile.js",
+    "unresolvedTo": "../src/modules/org/models/ClubAdminProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/clubSportsRoutes.js",
+    "to": "src/modules/org/models/ClubSport.js",
+    "unresolvedTo": "../src/modules/org/models/ClubSport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/couponRoutes.js",
+    "to": "src/modules/commerce/models/Coupon.js",
+    "unresolvedTo": "../src/modules/commerce/models/Coupon",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/debugRoutes.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/emailverification.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/emailverification.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/eventRoutes.js",
+    "to": "src/modules/tournaments/models/EventModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/EventModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/forumChatRoutes.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/forumChatRoutes.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/forumChatRoutes.js",
+    "to": "src/modules/social/models/ForumMessage.js",
+    "unresolvedTo": "../src/modules/social/models/ForumMessage",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/forumChatRoutes.js",
+    "to": "src/modules/social/models/ForumRoom.js",
+    "unresolvedTo": "../src/modules/social/models/ForumRoom",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/groupChatRoutes.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/groupChatRoutes.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/groupChatRoutes.js",
+    "to": "src/modules/social/models/GroupChat.js",
+    "unresolvedTo": "../src/modules/social/models/GroupChat",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/groupChatRoutes.js",
+    "to": "src/modules/social/models/GroupChatMessage.js",
+    "unresolvedTo": "../src/modules/social/models/GroupChatMessage",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerPaymentRoutes.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerPaymentRoutes.js",
+    "to": "src/modules/social/models/Notification_Booking.js",
+    "unresolvedTo": "../src/modules/social/models/Notification_Booking",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerPaymentRoutes.js",
+    "to": "src/modules/social/models/Notification.js",
+    "unresolvedTo": "../src/modules/social/models/Notification",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerPaymentRoutes.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerRoute.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerRoute.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerRoute.js",
+    "to": "src/modules/org/models/activityLog.js",
+    "unresolvedTo": "../src/modules/org/models/activityLog",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerRoute.js",
+    "to": "src/modules/org/models/ClubAdminProfile.js",
+    "unresolvedTo": "../src/modules/org/models/ClubAdminProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerRoute.js",
+    "to": "src/modules/org/models/TrainerClubApplication.js",
+    "unresolvedTo": "../src/modules/org/models/TrainerClubApplication",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/managerRoute.js",
+    "to": "src/modules/org/models/TurfBooking.js",
+    "unresolvedTo": "../src/modules/org/models/TurfBooking",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/notificationRoutes.js",
+    "to": "src/modules/social/models/PlayerNotification.js",
+    "unresolvedTo": "../src/modules/social/models/PlayerNotification",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/passwordReset.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/playerRoutes.js",
+    "to": "src/modules/commerce/models/Payments.js",
+    "unresolvedTo": "../src/modules/commerce/models/Payments",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/playerRoutes.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/playerRoutes.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/playerRoutes.js",
+    "to": "src/modules/org/models/Turf.js",
+    "unresolvedTo": "../src/modules/org/models/Turf",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/playerRoutes.js",
+    "to": "src/modules/org/models/TurfBooking.js",
+    "unresolvedTo": "../src/modules/org/models/TurfBooking",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/playerRoutes.js",
+    "to": "src/modules/social/models/Notification_Booking.js",
+    "unresolvedTo": "../src/modules/social/models/Notification_Booking",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/playerRoutes.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/playerRoutes.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/progressRoutes.js",
+    "to": "src/modules/coaching/models/ProgressHistory.js",
+    "unresolvedTo": "../src/modules/coaching/models/ProgressHistory",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/progressRoutes.js",
+    "to": "src/modules/coaching/models/ProgressSubmission.js",
+    "unresolvedTo": "../src/modules/coaching/models/ProgressSubmission",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/progressRoutes.js",
+    "to": "src/modules/coaching/models/Student.js",
+    "unresolvedTo": "../src/modules/coaching/models/Student",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/progressRoutes.js",
+    "to": "src/modules/coaching/models/StudentProgress.js",
+    "unresolvedTo": "../src/modules/coaching/models/StudentProgress",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/progressRoutes.js",
+    "to": "src/modules/coaching/models/SyllabusEntry.js",
+    "unresolvedTo": "../src/modules/coaching/models/SyllabusEntry",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/progressRoutes.js",
+    "to": "src/modules/org/models/ClubAdminProfile.js",
+    "unresolvedTo": "../src/modules/org/models/ClubAdminProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/progressRoutes.js",
+    "to": "src/modules/org/models/ClubSport.js",
+    "unresolvedTo": "../src/modules/org/models/ClubSport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/search.js",
+    "to": "src/modules/commerce/models/Coupon.js",
+    "unresolvedTo": "../src/modules/commerce/models/Coupon",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/search.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/search.js",
+    "to": "src/modules/org/models/Trainer.js",
+    "unresolvedTo": "../src/modules/org/models/Trainer",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/search.js",
+    "to": "src/modules/org/models/Turf.js",
+    "unresolvedTo": "../src/modules/org/models/Turf",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/search.js",
+    "to": "src/modules/social/models/News.js",
+    "unresolvedTo": "../src/modules/social/models/News",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/search.js",
+    "to": "src/modules/tournaments/models/Tournament.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournament",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/substituteRoutes.js",
+    "to": "src/modules/identity/models/Substitute.js",
+    "unresolvedTo": "../src/modules/identity/models/Substitute",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/substituteRoutes.js",
+    "to": "src/modules/org/models/ClubAdminProfile.js",
+    "unresolvedTo": "../src/modules/org/models/ClubAdminProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/syllabusRoutes.js",
+    "to": "src/modules/coaching/models/SportsSyllabus.js",
+    "unresolvedTo": "../src/modules/coaching/models/SportsSyllabus",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/syllabusRoutes.js",
+    "to": "src/modules/coaching/models/SyllabusEntry.js",
+    "unresolvedTo": "../src/modules/coaching/models/SyllabusEntry",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/syllabusRoutes.js",
+    "to": "src/modules/coaching/models/TrainingSchedule.js",
+    "unresolvedTo": "../src/modules/coaching/models/TrainingSchedule",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/syllabusRoutes.js",
+    "to": "src/modules/org/models/ClubAdminProfile.js",
+    "unresolvedTo": "../src/modules/org/models/ClubAdminProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/syllabusRoutes.js",
+    "to": "src/modules/org/models/ClubSport.js",
+    "unresolvedTo": "../src/modules/org/models/ClubSport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/tournamentRoutes.js",
+    "to": "src/modules/tournaments/models/BookingModel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/BookingModel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/tournamentRoutes.js",
+    "to": "src/modules/tournaments/models/semifinal.js",
+    "unresolvedTo": "../src/modules/tournaments/models/semifinal",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/tournamentRoutes.js",
+    "to": "src/modules/tournaments/models/Tournnamentmatch.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Tournnamentmatch",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/trainingScheduleRoutes.js",
+    "to": "src/modules/coaching/models/TrainingSchedule.js",
+    "unresolvedTo": "../src/modules/coaching/models/TrainingSchedule",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/trainingScheduleRoutes.js",
+    "to": "src/modules/org/models/ClubAdminProfile.js",
+    "unresolvedTo": "../src/modules/org/models/ClubAdminProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/trainingScheduleRoutes.js",
+    "to": "src/modules/org/models/ClubSport.js",
+    "unresolvedTo": "../src/modules/org/models/ClubSport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/updateRoutes.js",
+    "to": "src/modules/commerce/models/Inquiry.js",
+    "unresolvedTo": "../src/modules/commerce/models/Inquiry",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/updateRoutes.js",
+    "to": "src/modules/identity/models/ClubAdmin.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubAdmin",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/updateRoutes.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../src/modules/identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/updateRoutes.js",
+    "to": "src/modules/identity/models/Player.js",
+    "unresolvedTo": "../src/modules/identity/models/Player",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/updateRoutes.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/updateRoutes.js",
+    "to": "src/modules/tournaments/models/Organizermodel.js",
+    "unresolvedTo": "../src/modules/tournaments/models/Organizermodel",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "routes/vendorStoreRoutes.js",
+    "to": "src/modules/commerce/models/VendorProfile.js",
+    "unresolvedTo": "../src/modules/commerce/models/VendorProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/coaching/coaching.repository.js",
+    "to": "src/modules/identity/models/ClubManager.js",
+    "unresolvedTo": "../identity/models/ClubManager",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-cross-module-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/coaching/coaching.repository.js",
+    "to": "src/modules/org/models/ClubAdminProfile.js",
+    "unresolvedTo": "../org/models/ClubAdminProfile",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-cross-module-imports"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "src/modules/coaching/coaching.repository.js",
+    "to": "src/modules/org/models/ClubSport.js",
+    "unresolvedTo": "../org/models/ClubSport",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-cross-module-imports"
+    }
+  }
+]

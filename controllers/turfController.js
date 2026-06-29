@@ -1,7 +1,7 @@
-const Turf = require("../Modal/Turf");
-const User = require("../Modal/User");
+const Turf = require("../src/modules/org/models/Turf");
+const User = require("../src/modules/identity/models/User");
 const escapeRegex = require("../utils/escapeRegex");
-const { Manager } = require("../Modal/ClubManager");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
 const { cleanupFile, turfsDir } = require("../middleware/uploads");
 const path = require("path");
 
@@ -609,24 +609,24 @@ const turfController = {
   // Get all turfs owned by the current user
   getUserTurfs: async (req, res) => {
     try {
-      // Scope to the authenticated caller — turfs they own, manage, or that
-      // belong to their ClubAdmin. Ignores any client-supplied userId.
+      // Scope to the authenticated caller. Ignores any client-supplied userId.
       const me = req.user?.id || req.user?._id;
       if (!me) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const manager = await Manager.findById(me).select("clubId").lean();
-      const ownerIds = [me];
-      if (manager?.clubId) ownerIds.push(manager.clubId);
 
-      const turfs = await Turf.find({
-        $or: [
-          { owner: { $in: ownerIds } },
-          { assignedManagers: me },
-        ],
-      })
-        .sort({ createdAt: -1 })
-        .lean();
+      // A Manager sees ONLY the turfs assigned to them (Turf.assignedManagers) —
+      // NOT the whole club's turfs. A club owner (ClubAdmin / corporate_admin —
+      // not present in the Manager collection) sees every turf they own.
+      // Unassigned turfs therefore stay club-only: their bookings surface to the
+      // club, never to a manager.
+      const manager = await Manager.findById(me).select("_id").lean();
+
+      const query = manager
+        ? { $or: [{ owner: me }, { assignedManagers: me }] }
+        : { owner: me };
+
+      const turfs = await Turf.find(query).sort({ createdAt: -1 }).lean();
 
       res.json(turfs);
     } catch (error) {
@@ -817,7 +817,7 @@ const turfController = {
   // for all active turfs based on today's TurfBooking docs.
   getTodaysAvailability: async (req, res) => {
     try {
-      const TurfBooking = require("../Modal/TurfBooking");
+      const TurfBooking = require("../src/modules/org/models/TurfBooking");
 
       const now = new Date();
       const todayStart = new Date(

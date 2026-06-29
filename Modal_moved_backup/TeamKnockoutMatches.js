@@ -1,0 +1,178 @@
+/**
+ * TeamKnockoutMatches — Team-based knockout match schema.
+ *
+ * All match creation MUST go through MatchFactory.createTeamKnockoutMatch().
+ * All score reads MUST go through readMatchResult(match).
+ *
+ * Required fields for multi-sport: scoringType, matchResult
+ */
+const mongoose = require("mongoose");
+const { getAllFormatIds } = require("../Config/teamKnockoutFormats");
+const { addFactoryEnforcement } = require("./shared/BaseMatchFields");
+
+const gameSchema = new mongoose.Schema(
+  {
+    gameNumber: { type: Number, required: true },
+    homePoints: { type: Number, default: 0 },
+    awayPoints: { type: Number, default: 0 },
+    winner: { type: String, enum: ["home", "away"], default: null },
+    status: {
+      type: String,
+      enum: ["PENDING", "IN_PROGRESS", "COMPLETED"],
+      default: "PENDING",
+    },
+    startTime: { type: Date, default: null },
+    endTime: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
+const setSchema = new mongoose.Schema(
+  {
+    setNumber: { type: Number, required: true },
+    type: { type: String, required: true }, // "Singles A-B", "Doubles AB-AB"
+    homePlayer: { type: String, default: null },
+    awayPlayer: { type: String, default: null },
+    homePlayerB: { type: String, default: null }, // 2nd home player (doubles)
+    awayPlayerB: { type: String, default: null }, // 2nd away player (doubles)
+    homePlayerC: { type: String, default: null }, // 3rd home player (3-player formats)
+    awayPlayerC: { type: String, default: null }, // 3rd away player (3-player formats)
+    // Captain's doubles pairing selection (for requiresSelection sets)
+    selectionId: { type: String, default: null },
+    status: {
+      type: String,
+      enum: ["PENDING", "IN_PROGRESS", "COMPLETED"],
+      default: "PENDING",
+    },
+    games: [gameSchema],
+    gamesWon: {
+      home: { type: Number, default: 0 },
+      away: { type: Number, default: 0 },
+    },
+    setWinner: { type: String, enum: ["home", "away"], default: null },
+  },
+  { _id: false }
+);
+
+const teamKnockoutMatchesSchema = new mongoose.Schema(
+  {
+    tournamentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tournament",
+      required: true,
+    },
+    round: { type: Number, required: true },
+    bracketPosition: { type: Number, required: true },
+
+    team1Id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TeamKnockoutTeams",
+      required: true,
+    },
+    team2Id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TeamKnockoutTeams",
+      default: null,
+    },
+    winnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TeamKnockoutTeams",
+      default: null,
+    },
+
+    status: {
+      type: String,
+      enum: ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "BYE", "CANCELLED"],
+      default: "SCHEDULED",
+    },
+
+    // Config-driven format ID (e.g. "singles_bo5", "doubles_3p_bo7")
+    formatId: {
+      type: String,
+      required: true,
+      validate: {
+        validator: (v) => getAllFormatIds().includes(v),
+        message: (props) => `"${props.value}" is not a valid format ID`,
+      },
+    },
+
+    // Legacy format string (kept for backward compat, auto-set from formatId)
+    format: { type: String, default: null },
+
+    isBye: { type: Boolean, default: false },
+    matchDate: { type: Date, required: true },
+    matchEndTime: { type: Date, default: null },
+    courtNumber: { type: String, default: "TBD" },
+
+    liveState: {
+      currentSetNumber: { type: Number, default: 1 },
+      currentGameNumber: { type: Number, default: 1 },
+      currentPoints: {
+        home: { type: Number, default: 0 },
+        away: { type: Number, default: 0 },
+      },
+      lastUpdated: { type: Date, default: Date.now },
+    },
+
+    gameRules: {
+      gamesPerSet: { type: Number, default: null },
+      gamesToWin: { type: Number, default: null },
+      pointsToWinGame: { type: Number, default: null },
+      marginToWin: { type: Number, default: null },
+      deuceRule: { type: Boolean, default: false },
+      maxPointsCap: { type: Number, default: null },
+    },
+
+    sets: [setSchema],
+
+    setsWon: {
+      home: { type: Number, default: 0 },
+      away: { type: Number, default: 0 },
+    },
+
+    matchWinner: {
+      type: String,
+      enum: ["home", "away"],
+      default: null,
+    },
+
+    completedAt: { type: Date, default: null },
+
+    // Multi-sport fields
+    // Sport identification
+    sportName: { type: String, default: null },
+    // sportId — scopes a team-KO match to its sport-track in multi-sport
+    // tournaments (previously _stamp wrote this to a non-existent path).
+    sportId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sport",
+      default: null,
+      index: true,
+    },
+
+    scoringType: {
+      type: String,
+      default: null,
+    },
+    matchResult: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+  },
+  { timestamps: true }
+);
+
+// Runtime enforcement: blocks direct instantiation (must use MatchFactory)
+addFactoryEnforcement(teamKnockoutMatchesSchema);
+
+// Hot path (Phase 5): bracket queries during a tournament. Previously this
+// collection had NO indexes → scans on every bracket read.
+teamKnockoutMatchesSchema.index({ tournamentId: 1, clubId: 1 });
+teamKnockoutMatchesSchema.index({ tournamentId: 1, round: 1 });
+
+// Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId
+// (derived via tournamentId → Tournament.clubId by the backfill).
+const tenantScope = require("../utils/tenantScope");
+teamKnockoutMatchesSchema.plugin(tenantScope, { field: "clubId", enforce: true });
+
+module.exports = mongoose.model("TeamKnockoutMatches", teamKnockoutMatchesSchema);

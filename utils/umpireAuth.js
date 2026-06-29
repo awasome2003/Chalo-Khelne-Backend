@@ -15,8 +15,8 @@
 
 "use strict";
 
-const Assignment = require("../Modal/Assignment");
-const StaffApplication = require("../Modal/StaffApplication");
+const Assignment = require("../src/modules/tournaments/models/Assignment");
+const StaffApplication = require("../src/modules/social/models/StaffApplication");
 
 /**
  * Pure helper: derives the stage name from a match document.

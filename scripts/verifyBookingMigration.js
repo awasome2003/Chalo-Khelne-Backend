@@ -58,8 +58,8 @@ async function main() {
   console.log(`[VERIFY-BOOKING] Connecting to MongoDB...`);
   await mongoose.connect(uri);
 
-  const Booking = require("../Modal/BookingModel");
-  const Tournament = require("../Modal/Tournament");
+  const Booking = require("../src/modules/tournaments/models/BookingModel");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
 
   const log = {
     startedAt: new Date().toISOString(),

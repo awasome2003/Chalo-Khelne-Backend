@@ -1,5 +1,5 @@
-const ClubAdmin = require("../Modal/ClubAdminProfile");
-const User = require("../Modal/User");
+const ClubAdmin = require("../src/modules/org/models/ClubAdminProfile");
+const User = require("../src/modules/identity/models/User");
 const bcrypt = require("bcryptjs");
 const nodemailer = require("nodemailer");
 
@@ -258,8 +258,11 @@ exports.onboardClubAdmin = async (req, res) => {
     address,
     city,
     area,
-    sports
+    sports,
+    orgType,
   } = req.body;
+
+  const validOrgType = ["club", "school", "organization"].includes(orgType) ? orgType : "club";
 
   if (!name || !email || !clubName) {
     return res.status(400).json({ message: "Required fields missing." });
@@ -292,6 +295,7 @@ exports.onboardClubAdmin = async (req, res) => {
     const newProfile = new ClubAdmin({
       clubID: generatedClubID,
       clubName: clubName,
+      orgType: validOrgType,
       address: address || "TBD",
       area: area || "TBD",
       city: city || "TBD",
@@ -317,23 +321,28 @@ exports.onboardClubAdmin = async (req, res) => {
       from: process.env.EMAIL_USER,
       to: email,
       subject: "Welcome to Sportszz - Club Admin Credentials",
-      text: `Hello ${name},\n\nYour Club Admin account for ${clubName} has been created.\n\nTo set your password, open the login page and use "Forgot Password" with this email:\n${email}\n\nLogin link: ${loginLink}\n\nBest Regards,\nSportszz Team`,
+      text: `Hello ${name},\n\nYour Club Admin account for ${clubName} has been created.\n\nEmail: ${email}\nTemporary password: ${generatedPassword}\n\nPlease sign in and change your password from your profile.\n\nLogin link: ${loginLink}\n\nBest Regards,\nSportszz Team`,
     };
 
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        console.error("Error sending email:", error);
-      } else {
-        console.log("Email sent:", info.response);
-      }
-    });
+    // Email is best-effort — credentials may be unconfigured, or the address may
+    // be unreachable. It must never block onboarding (the password is also
+    // returned below so the SuperAdmin can hand it over directly).
+    try {
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) console.error("Error sending email:", error.message);
+        else console.log("Email sent:", info.response);
+      });
+    } catch (e) {
+      console.error("Error sending email:", e.message);
+    }
 
-    // Never return the generated password to the client — the new admin sets
-    // their own via the Forgot Password flow they received over email.
+    // Return the generated temporary password so the SuperAdmin can share it
+    // with the new club admin directly (don't rely on email delivery).
     res.status(201).json({
-      message: "Club Admin onboarded successfully. The new admin can set their password via Forgot Password.",
+      message: "Club Admin onboarded successfully.",
       user: newUser,
       profile: newProfile,
+      tempPassword: generatedPassword,
     });
 
   } catch (error) {

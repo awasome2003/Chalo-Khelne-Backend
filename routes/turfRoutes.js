@@ -39,10 +39,13 @@ router.post(
   turfController.registerTurf
 );
 
-// Create a new turf (club/manager flow — auto-approved)
+// Create a new turf (club/manager flow — auto-approved).
+// allowUserOrManager so BOTH a ClubAdmin (a User) and a club Manager can add a
+// turf — managerAuth alone rejected ClubAdmins with 401. The owner is taken
+// from the body's ownerId by the controller.
 router.post(
   "/",
-  managerAuth,
+  allowUserOrManager,
   uploadMiddleware.array("turfImages", 3), // Allow up to 3 images
   turfController.createTurf
 );
@@ -50,20 +53,27 @@ router.post(
 // SuperAdmin: approve / unapprove a turf for the public marketplace
 router.patch("/:id/approve", requireSuperAdmin, turfController.approveTurf);
 
-// Update a turf
+// Update a turf. allowUserOrManager (ClubAdmin or Manager); the controller
+// authorizes the caller against the turf owner via callerOwnsTurf().
 router.put(
   "/:id",
-  managerAuth,
+  allowUserOrManager,
   uploadMiddleware.array("turfImages", 3),
   turfController.updateTurf
 );
 
-// Delete a turf
-router.delete("/:id", managerAuth, turfController.deleteTurf);
+// Delete a turf. allowUserOrManager — ownership verified by callerOwnsTurf().
+router.delete("/:id", allowUserOrManager, turfController.deleteTurf);
 
 // Add a review to a turf (any authenticated user or manager)
 router.post("/:id/reviews", allowUserOrManager, turfController.addReview);
 
-router.patch("/:id/toggle-status", managerAuth, turfController.toggleTurfStatus);
+// Toggle active/inactive. allowUserOrManager — ownership verified in controller.
+router.patch("/:id/toggle-status", allowUserOrManager, turfController.toggleTurfStatus);
+
+// Assign / remove a manager on a turf (club owner manages turf staff). The
+// controllers existed but were never routed → the frontend got 404s.
+router.post("/:id/assign-manager", allowUserOrManager, turfController.assignManager);
+router.delete("/:id/remove-manager/:managerId", allowUserOrManager, turfController.removeManager);
 
 module.exports = router;

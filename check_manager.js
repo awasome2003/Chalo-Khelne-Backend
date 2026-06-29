@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 require("dotenv").config();
-const User = require("./Modal/User");
-const { Manager } = require("./Modal/ClubManager");
+const User = require("./src/modules/identity/models/User");
+const { Manager } = require("./src/modules/identity/models/ClubManager");
 
 const checkManager = async () => {
     try {

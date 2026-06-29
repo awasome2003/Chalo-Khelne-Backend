@@ -1,5 +1,5 @@
 const express = require("express");
-const Event = require("../Modal/EventModel"); // Ensure the path is correct
+const Event = require("../src/modules/tournaments/models/EventModel"); // Ensure the path is correct
 const router = express.Router();
 const { uploadMiddleware, cleanupFile } = require("../middleware/uploads");
 const { authenticate } = require("../middleware/authMiddleware");

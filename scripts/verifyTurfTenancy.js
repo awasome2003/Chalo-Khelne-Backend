@@ -13,8 +13,8 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const { runWithTenant } = require("../utils/tenantContext");
 const tenantScope = require("../utils/tenantScope");
-const Turf = require("../Modal/Turf");
-const TurfBooking = require("../Modal/TurfBooking");
+const Turf = require("../src/modules/org/models/Turf");
+const TurfBooking = require("../src/modules/org/models/TurfBooking");
 
 async function proveScoping(Model, name, clubCounts) {
   const distinct = [...clubCounts.keys()];

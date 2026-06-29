@@ -7,7 +7,7 @@ const pdfParse = require("pdf-parse");
 const mammoth = require("mammoth");
 const { readSheetRows, writeAoaToFile } = require("../utils/excelUtils");
 
-const User = require("../Modal/User");
+const User = require("../src/modules/identity/models/User");
 const { miniAIMatch } = require("../utils/miniAIMapper");
 const { requireSuperAdmin } = require("../middleware/authMiddleware");
 

@@ -9,7 +9,7 @@
  */
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const RefreshToken = require("../Modal/RefreshToken");
+const RefreshToken = require("../src/modules/identity/models/RefreshToken");
 
 const ACCESS_TTL = "1h";
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days

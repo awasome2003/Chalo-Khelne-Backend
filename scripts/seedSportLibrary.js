@@ -9,7 +9,7 @@
 
 const mongoose = require("mongoose");
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
-const SportLibrary = require("../Modal/SportLibrary");
+const SportLibrary = require("../src/modules/catalog/models/SportLibrary");
 
 const SPORTS = [
   {

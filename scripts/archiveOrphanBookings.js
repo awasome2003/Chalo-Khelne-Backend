@@ -19,8 +19,8 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Booking = require("../Modal/BookingModel");
-const Tournament = require("../Modal/Tournament");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ARCHIVE_COLLECTION = "bookings_archive";

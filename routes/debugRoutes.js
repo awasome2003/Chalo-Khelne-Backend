@@ -6,7 +6,7 @@ const { findMatchById, readMatchResult, getSchemaName } = require("../utils/matc
 // Debug endpoints expose internal match/tournament state — superadmin only.
 router.use(requireSuperAdmin);
 const { getScoringType } = require("../utils/matchFormatUtils");
-const Tournament = require("../Modal/Tournament");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
 /**
  * GET /api/debug/match/:id

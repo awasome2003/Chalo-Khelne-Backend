@@ -15,16 +15,16 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Score = require("../Modal/Score");
+const Score = require("../src/modules/tournaments/models/Score");
 
 const MATCH_MODELS = [
-  require("../Modal/Tournnamentmatch"), // "Match"
-  require("../Modal/TournamentMatch"),
-  require("../Modal/KnockoutMatch"),
-  require("../Modal/DirectKnockoutMatch"),
-  require("../Modal/SuperMatch"),
-  require("../Modal/TeamKnockoutMatches"),
-  require("../Modal/semifinal"), // "Semifinals"
+  require("../src/modules/tournaments/models/Tournnamentmatch"), // "Match"
+  require("../src/modules/tournaments/models/TournamentMatch"),
+  require("../src/modules/tournaments/models/KnockoutMatch"),
+  require("../src/modules/tournaments/models/DirectKnockoutMatch"),
+  require("../src/modules/tournaments/models/SuperMatch"),
+  require("../src/modules/tournaments/models/TeamKnockoutMatches"),
+  require("../src/modules/tournaments/models/semifinal"), // "Semifinals"
 ];
 
 const DRY_RUN = process.argv.includes("--dry-run");

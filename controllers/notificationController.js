@@ -1,6 +1,6 @@
-const Notification = require("../Modal/Notification");
-const User = require("../Modal/User");
-const Trainer = require("../Modal/Trainer");
+const Notification = require("../src/modules/social/models/Notification");
+const User = require("../src/modules/identity/models/User");
+const Trainer = require("../src/modules/org/models/Trainer");
 const { Expo } = require("expo-server-sdk");
 const expo = new Expo();
 const mongoose = require("mongoose");

@@ -1,6 +1,6 @@
-const KnockoutMatch = require("../Modal/KnockoutMatch");
-const Tournament = require("../Modal/Tournament");
-const User = require("../Modal/User");
+const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const User = require("../src/modules/identity/models/User");
 const mongoose = require("mongoose");
 const { createLegacyKnockoutMatch } = require("../factories/MatchFactory");
 const { assertSportInTournament, handleSportContextError } = require("../middleware/requireSportContext");

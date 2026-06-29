@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-const Tournament = require("../Modal/Tournament");
-const TopPlayers = require("../Modal/TopPlayers");
-const BookingGroup = require("../Modal/bookinggroup");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const TopPlayers = require("../src/modules/tournaments/models/TopPlayers");
+const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
 const { readMatchFormat } = require("../utils/matchFormatUtils");
 const { createKnockoutMatch, resolveMatchFormat } = require("../factories/MatchFactory");
 const { getSeedOrder, buildR1SlotAssignment } = require("../utils/seedingUtils");
@@ -1103,7 +1103,9 @@ const createStandaloneKnockout = async (req, res) => {
 const completeGame = async (req, res) => {
   try {
     const { matchId } = req.params;
-    const { player1Score, player2Score } = req.body;
+    // penaltyWinner ("player1"|"player2") decides a LEVEL knockout match for
+    // time-based sports (Football) — a penalty shootout.
+    const { player1Score, player2Score, penaltyWinner = null } = req.body;
 
     const match = await DirectKnockoutMatch.findOne({ matchId });
     if (!match) return res.status(404).json({ success: false, message: "Match not found" });
@@ -1119,7 +1121,7 @@ const completeGame = async (req, res) => {
 
     let authorized = false;
     if (req.userRole === "Manager") {
-      const TournamentModel = require("../Modal/Tournament");
+      const TournamentModel = require("../src/modules/tournaments/models/Tournament");
       const tournamentDoc = await TournamentModel.findById(match.tournamentId)
         .select("managerId")
         .lean();
@@ -1142,7 +1144,10 @@ const completeGame = async (req, res) => {
       });
     }
 
-    if (player1Score === player2Score) {
+    // Time/innings/single sports (Football, Cricket, Chess) CAN end level —
+    // resolved by a tie-break winner below. Set/board sports can't tie.
+    const _earlySt = (match.scoringType || match.matchFormat?.scoringType || "sets").toLowerCase();
+    if (player1Score === player2Score && !["time", "innings", "single"].includes(_earlySt)) {
       return res.status(400).json({ success: false, message: "Scores cannot be tied" });
     }
 
@@ -1182,7 +1187,24 @@ const completeGame = async (req, res) => {
       scoringType === "time" || scoringType === "innings" || scoringType === "single";
 
     if (isNonSetSport) {
-      const matchWinner = player1Score > player2Score ? match.player1 : match.player2;
+      // A knockout match can't end level. Time/innings ties are decided by the
+      // manager-entered penalty-shootout winner (Football penalties, cricket
+      // super-over). Without it, reject so the UI can prompt.
+      let matchWinner;
+      let shootout = false;
+      if (player1Score === player2Score) {
+        if (penaltyWinner !== "player1" && penaltyWinner !== "player2") {
+          return res.status(400).json({
+            success: false,
+            needsTiebreak: true,
+            message: "Knockout match ended level — enter a penalty-shootout winner to decide it.",
+          });
+        }
+        matchWinner = penaltyWinner === "player1" ? match.player1 : match.player2;
+        shootout = true;
+      } else {
+        matchWinner = player1Score > player2Score ? match.player1 : match.player2;
+      }
 
       // Record one completed "set/game" so the stored shape stays consistent
       // with set-based matches (audit + UI), but the decisive values are the
@@ -1215,6 +1237,7 @@ const completeGame = async (req, res) => {
         player1Score,
         player2Score,
         winner: { playerId: matchWinner.playerId, playerName: matchWinner.playerName },
+        ...(shootout ? { tiebreak: { type: "penalties", winner: penaltyWinner } } : {}),
         completedAt: new Date(),
       };
 
@@ -1407,7 +1430,8 @@ const bulkUploadScores = async (req, res) => {
         const byeFmt = readMatchFormat(match);
         const bulkScoringType = (match.scoringType || byeFmt.scoringType || "sets").toLowerCase();
         const bulkIsNonSet =
-          bulkScoringType === "time" || bulkScoringType === "innings" || bulkScoringType === "single";
+          bulkScoringType === "time" || bulkScoringType === "innings" ||
+          bulkScoringType === "single" || bulkScoringType === "board";
 
         // ═══ Non-set sports: a single decisive final score completes the match ═══
         if (bulkIsNonSet) {
@@ -1636,11 +1660,15 @@ const giveBye = async (req, res) => {
   }
 };
 
-// Reset direct knockout bracket for a tournament
+// Reset direct knockout bracket for a tournament.
+// Multi-sport: when a sportId is supplied, only that sport's bracket is wiped
+// so resetting one sport never destroys another sport's matches.
 const resetBracket = async (req, res) => {
   try {
     const { tournamentId } = req.params;
-    const deleted = await DirectKnockoutMatch.deleteMany({ tournamentId });
+    const sportId = req.query.sportId || req.body?.sportId || null;
+    const filter = sportId ? { tournamentId, sportId } : { tournamentId };
+    const deleted = await DirectKnockoutMatch.deleteMany(filter);
     return res.json({
       success: true,
       message: `Deleted ${deleted.deletedCount} matches`,

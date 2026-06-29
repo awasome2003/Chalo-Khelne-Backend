@@ -30,7 +30,7 @@ router.get("/available", authenticate, async (req, res) => {
       ];
     }
 
-    const coupons = await require("../Modal/Coupon").find(filter)
+    const coupons = await require("../src/modules/commerce/models/Coupon").find(filter)
       .select("code discountType discountValue applicableTo applicableName minAmount maxDiscount description expiryDate usageLimit usedCount")
       .sort({ discountValue: -1 })
       .limit(10)

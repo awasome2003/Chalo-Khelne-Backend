@@ -38,7 +38,7 @@ router.get("/proofs/pending/:managerId", managerAuth, requireSelf("managerId"), 
 router.patch("/proofs/:paymentId/verify", managerAuth, verifyPayment);
 router.get("/:managerId/booking-notifications", managerAuth, requireSelf("managerId"), async (req, res) => {
   try {
-    const BookingNotification = require("../Modal/Notification_Booking");
+    const BookingNotification = require("../src/modules/social/models/Notification_Booking");
     const { managerId } = req.params;
     const notifications = await BookingNotification.find({ managerId })
       .populate("userId", "_id name email mobile profileImage")
@@ -64,9 +64,9 @@ router.post("/:managerId/:tournamentId/notify", allowUserOrManager, async (req, 
     const { managerId, tournamentId } = req.params;
     const { userId, amount, registrationId, paymentMethod } = req.body;
 
-    const Notification = require("../Modal/Notification");
-    const User = require("../Modal/User");
-    const Tournament = require("../Modal/Tournament");
+    const Notification = require("../src/modules/social/models/Notification");
+    const User = require("../src/modules/identity/models/User");
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
 
     const user = await User.findById(userId).select("name").lean();
     const tournament = await Tournament.findById(tournamentId).select("title").lean();

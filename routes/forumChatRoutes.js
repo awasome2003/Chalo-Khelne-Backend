@@ -3,8 +3,8 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const ForumRoom = require("../Modal/ForumRoom");
-const ForumMessage = require("../Modal/ForumMessage");
+const ForumRoom = require("../src/modules/social/models/ForumRoom");
+const ForumMessage = require("../src/modules/social/models/ForumMessage");
 
 // File upload config
 const uploadsDir = path.join(__dirname, "../uploads/forum");
@@ -18,8 +18,8 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 1
 // ════════════════════════════════════
 // SEARCH USERS (for adding members)
 // ════════════════════════════════════
-const User = require("../Modal/User");
-const { Manager } = require("../Modal/ClubManager");
+const User = require("../src/modules/identity/models/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
 
 router.get("/search-users", async (req, res) => {
   try {

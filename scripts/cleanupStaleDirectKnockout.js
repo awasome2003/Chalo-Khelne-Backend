@@ -26,8 +26,8 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 
-const Tournament = require("../Modal/Tournament");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
 
 const args = process.argv.slice(2);
 const APPLY = args.includes("--apply");

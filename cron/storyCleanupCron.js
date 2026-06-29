@@ -8,7 +8,7 @@
 const cron = require("node-cron");
 const path = require("path");
 const fs = require("fs");
-const Story = require("../Modal/Story");
+const Story = require("../src/modules/social/models/Story");
 const { storiesDir } = require("../middleware/uploads");
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;

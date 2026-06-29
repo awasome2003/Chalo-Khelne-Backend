@@ -7,12 +7,12 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const { Manager } = require("../Modal/ClubManager");
-const Tournament = require("../Modal/Tournament");
-const Booking = require("../Modal/BookingModel");
-const Turf = require("../Modal/Turf");
-const TurfBooking = require("../Modal/TurfBooking");
-const User = require("../Modal/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Turf = require("../src/modules/org/models/Turf");
+const TurfBooking = require("../src/modules/org/models/TurfBooking");
+const User = require("../src/modules/identity/models/User");
 
 const CLUB_ADMIN_ID = "69bd1d70bfaa7aa856eab464";
 

@@ -3,10 +3,10 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const GroupChat = require("../Modal/GroupChat");
-const GroupChatMessage = require("../Modal/GroupChatMessage");
-const User = require("../Modal/User");
-const { Manager } = require("../Modal/ClubManager");
+const GroupChat = require("../src/modules/social/models/GroupChat");
+const GroupChatMessage = require("../src/modules/social/models/GroupChatMessage");
+const User = require("../src/modules/identity/models/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
 const { allowUserOrManager } = require("../middleware/authMiddleware");
 
 // File upload

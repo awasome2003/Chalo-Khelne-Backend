@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
-const PlayerPayment = require("../Modal/playerPaymentSchema");
-const Booking = require("../Modal/BookingModel");
+const PlayerPayment = require("../src/modules/commerce/models/playerPaymentSchema");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
 
 // Resolve the Booking a proof pays for: explicit bookingId first, then the
 // player's booking for that tournament. Returns a Mongoose doc or null.
@@ -147,6 +147,23 @@ exports.verifyPayment = async (req, res) => {
             return res.status(403).json({ message: "Forbidden" });
         }
 
+        // ── Idempotency (Phase 5a): a repeat call (manager double-click or a
+        // gateway retry) must NOT re-process. If the payment is already in the
+        // requested state, return the existing record without touching the
+        // booking again — never double-confirm. ──
+        if (payment.status === status) {
+            const existingBooking = status === "approved"
+                ? await resolveBookingForPayment(payment)
+                : null;
+            return res.status(200).json({
+                success: true,
+                message: `Payment already ${status}`,
+                data: payment,
+                booking: existingBooking || undefined,
+                idempotent: true,
+            });
+        }
+
         payment.status = status;
         payment.updatedBy = callerId;
         payment.updatedAt = new Date();
@@ -155,7 +172,10 @@ exports.verifyPayment = async (req, res) => {
         // Mirrors updateBookingStatus's "accepted" semantics. We do NOT touch
         // the booking on rejection — the player can re-submit a corrected proof,
         // and the manager keeps full manual control over the booking lifecycle.
+        // Resolve + stage the booking changes here (read-only); the actual writes
+        // happen together inside the transaction below.
         let linkedBooking = null;
+        let bookingNeedsSave = false;
         if (status === "approved") {
             linkedBooking = await resolveBookingForPayment(payment);
 
@@ -166,7 +186,7 @@ exports.verifyPayment = async (req, res) => {
                 if (linkedBooking.status !== "confirmed" || linkedBooking.paymentStatus !== "paid") {
                     linkedBooking.status = "confirmed";
                     linkedBooking.paymentStatus = "paid";
-                    await linkedBooking.save();
+                    bookingNeedsSave = true;
                 }
             } else {
                 console.warn(
@@ -176,13 +196,21 @@ exports.verifyPayment = async (req, res) => {
             }
         }
 
-        await payment.save();
+        // ── Atomic (Phase 5a): the booking confirmation and the payment status
+        // update commit together or not at all. Previously these were two
+        // separate saves — a failed payment.save() left the booking confirmed +
+        // paid while the payment stayed pending (money/state mismatch). ──
+        const { runInTransaction } = require("../src/platform/db");
+        await runInTransaction(async (session) => {
+            if (bookingNeedsSave) await linkedBooking.save({ session });
+            await payment.save({ session });
+        });
 
         // Best-effort player notification (does not block the response).
         if (status === "approved" && linkedBooking) {
             try {
                 const { notifyPlayer } = require("../utils/playerNotify");
-                const Tournament = require("../Modal/Tournament");
+                const Tournament = require("../src/modules/tournaments/models/Tournament");
                 const tournament = await Tournament.findById(payment.tournamentId).select("title").lean();
                 const tName = tournament?.title || "Tournament";
                 await notifyPlayer(req.app, payment.playerId, {

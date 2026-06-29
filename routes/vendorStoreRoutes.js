@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const ctrl = require("../controllers/vendorStoreController");
 const { authenticate, requireRole } = require("../middleware/authMiddleware");
-const VendorProfile = require("../Modal/VendorProfile");
+const VendorProfile = require("../src/modules/commerce/models/VendorProfile");
 
 // Resolve the caller's vendor profile and require it to be THE platform vendor
 // (the app-owner middleman who receives product uploads). Runs after

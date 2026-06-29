@@ -1,6 +1,6 @@
-const Conversation = require("../Modal/Conversation");
-const Message = require("../Modal/Message");
-const User = require("../Modal/User");
+const Conversation = require("../src/modules/social/models/Conversation");
+const Message = require("../src/modules/social/models/Message");
+const User = require("../src/modules/identity/models/User");
 const mongoose = require("mongoose");
 const { conversationAllowed, computeIsMinor } = require("../utils/contactGuard");
 const { containsPII } = require("../utils/piiGuard");
@@ -223,7 +223,7 @@ const chatController = {
         const { notifyPlayer } = require("../utils/playerNotify");
         const senderName = message.sender?.name || "Someone";
         // Only save DB record, skip push (handled separately below)
-        const PlayerNotification = require("../Modal/PlayerNotification");
+        const PlayerNotification = require("../src/modules/social/models/PlayerNotification");
         await PlayerNotification.create({
           userId: otherUserId,
           type: "chat_message",

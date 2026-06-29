@@ -1,6 +1,6 @@
-const SuperMatch = require('../Modal/SuperMatch');
-const Tournament = require('../Modal/Tournament');
-const BookingGroup = require('../Modal/bookinggroup');
+const SuperMatch = require('../src/modules/tournaments/models/SuperMatch');
+const Tournament = require('../src/modules/tournaments/models/Tournament');
+const BookingGroup = require('../src/modules/tournaments/models/bookinggroup');
 const { createSuperGroupMatch: factoryCreateSuperGroupMatch } = require('../factories/MatchFactory');
 const { assertGroupHasSport, handleSportContextError } = require('../middleware/requireSportContext');
 

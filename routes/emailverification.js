@@ -1,7 +1,7 @@
 const express = require("express");
 const nodemailer = require("nodemailer");
 const bcrypt = require("bcryptjs");
-const User = require("../Modal/User");
+const User = require("../src/modules/identity/models/User");
 
 const router = express.Router();
 
@@ -26,6 +26,11 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// In dev the SMTP creds are often unset. When they are, OTP handlers log the
+// code to the server console instead of failing, so verification / password
+// reset still works without a real mailbox.
+const emailConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+
 /* ==================== EMAIL VERIFICATION ==================== */
 router.post("/send-otp", async (req, res) => {
   try {
@@ -35,12 +40,16 @@ router.post("/send-otp", async (req, res) => {
     // Store OTP in memory with an expiration time (5 minutes)
     otpStore[email] = { otp, expiresAt: Date.now() + 5 * 60 * 1000 };
 
-    await transporter.sendMail({
-      from: EMAIL_FROM,
-      to: email,
-      subject: "OTP Verification",
-      text: `Your OTP code is: ${otp}`,
-    });
+    if (emailConfigured) {
+      await transporter.sendMail({
+        from: EMAIL_FROM,
+        to: email,
+        subject: "OTP Verification",
+        text: `Your OTP code is: ${otp}`,
+      });
+    } else {
+      console.warn(`[DEV] Email not configured — verification OTP for ${email}: ${otp}`);
+    }
 
     res.json({ message: "OTP sent successfully!" });
   } catch (error) {
@@ -93,7 +102,7 @@ router.post("/forgot-password/send-otp", async (req, res) => {
     const user = await User.findOne({ email });
     let recipientExists = !!user;
     if (!user) {
-      const { Manager } = require("../Modal/ClubManager");
+      const { Manager } = require("../src/modules/identity/models/ClubManager");
       const manager = await Manager.findOne({ email });
       recipientExists = !!manager;
     }
@@ -108,12 +117,14 @@ router.post("/forgot-password/send-otp", async (req, res) => {
     otpStore[email] = { otp, expiresAt: Date.now() + 5 * 60 * 1000 };
     otpRateLimit[email] = Date.now();
 
-    // Send OTP email
-    await transporter.sendMail({
-      from: EMAIL_FROM,
-      to: email,
-      subject: "Password Reset Code",
-      html: `
+    // Send the OTP — or, when email isn't configured (dev), log it so the reset
+    // flow still works without a real mailbox.
+    if (emailConfigured) {
+      await transporter.sendMail({
+        from: EMAIL_FROM,
+        to: email,
+        subject: "Password Reset Code",
+        html: `
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px;">
           <h2 style="color: #333;">Password Reset</h2>
           <p>Your password reset code is:</p>
@@ -123,7 +134,10 @@ router.post("/forgot-password/send-otp", async (req, res) => {
           <p style="color: #666; font-size: 14px;">This code expires in <strong>5 minutes</strong>. If you didn't request this, please ignore this email.</p>
         </div>
       `,
-    });
+      });
+    } else {
+      console.warn(`[DEV] Email not configured — password reset OTP for ${email}: ${otp}`);
+    }
 
     res.json({ message: "OTP sent successfully!", expiresIn: 300 });
   } catch (error) {
@@ -194,7 +208,7 @@ router.post("/forgot-password/reset", async (req, res) => {
     await User.updateMany({ email }, { password: hashedPassword });
 
     // Also update Manager or Superadmin if they share the same email
-    const { Manager } = require("../Modal/ClubManager");
+    const { Manager } = require("../src/modules/identity/models/ClubManager");
     if (Manager) {
       await Manager.updateMany({ email }, { password: hashedPassword });
     }

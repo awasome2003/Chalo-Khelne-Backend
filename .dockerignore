@@ -1,0 +1,21 @@
+# Keep the build context small and never ship secrets or local junk.
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.github
+.env
+.env.*
+!.env.example
+uploads
+tests
+__tests__
+coverage
+*.md
+Dockerfile
+.dockerignore
+ecosystem.config.js
+# Local seed/util scripts — not needed at runtime.
+_seed*.js
+_completeTestMatch.js
+check_manager.js

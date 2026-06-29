@@ -15,8 +15,8 @@
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
-const User = require("../Modal/User");
-const VendorProfile = require("../Modal/VendorProfile");
+const User = require("../src/modules/identity/models/User");
+const VendorProfile = require("../src/modules/commerce/models/VendorProfile");
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",

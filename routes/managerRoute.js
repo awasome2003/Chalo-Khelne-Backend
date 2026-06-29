@@ -1,10 +1,11 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const nodemailer = require("nodemailer");
-const { Manager } = require("../Modal/ClubManager");
-const { ActivityLog } = require("../Modal/activityLog");
-const TurfBooking = require("../Modal/TurfBooking");
-const ClubApplication = require("../Modal/TrainerClubApplication");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
+const { ActivityLog } = require("../src/modules/org/models/activityLog");
+const TurfBooking = require("../src/modules/org/models/TurfBooking");
+const ClubApplication = require("../src/modules/org/models/TrainerClubApplication");
 const { managerAuth, requireSuperAdmin, allowUserOrManager } = require("../middleware/authMiddleware");
 const { requireSelf, requireTurfBookingOwner } = require("../middleware/authz");
 const router = express.Router();
@@ -42,7 +43,7 @@ function resolveClubScope(req) {
 
 // Route to create a new manager
 router.post("/managers", allowUserOrManager, async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, staffRole: rawStaffRole, sports: rawSports } = req.body;
 
   // Validate input
   if (!name || !email || !password) {
@@ -77,11 +78,36 @@ router.post("/managers", allowUserOrManager, async (req, res) => {
 
     // Verify that the clubId exists. Either a ClubAdmin or corporate_admin
     // user is a valid org owner for Manager.clubId.
-    const User = require("../Modal/User"); // Import User model
+    const User = require("../src/modules/identity/models/User"); // Import User model
     const clubAdmin = await User.findById(clubId);
     if (!clubAdmin || (clubAdmin.role !== "ClubAdmin" && clubAdmin.role !== "corporate_admin")) {
       return res.status(400).json({ error: "Invalid club ID." });
     }
+
+    // Resolve the staff role. Coach / Trainer are only available to school or
+    // organization admins (orgType on their ClubAdminProfile); everyone else
+    // can only add Managers.
+    const VALID_STAFF_ROLES = ["manager", "coach", "trainer"];
+    let staffRole = VALID_STAFF_ROLES.includes(rawStaffRole) ? rawStaffRole : "manager";
+    if (staffRole === "coach" || staffRole === "trainer") {
+      const ClubAdminProfile = require("../src/modules/org/models/ClubAdminProfile");
+      const profile = await ClubAdminProfile.findOne({ userId: clubId }).select("orgType").lean();
+      const orgType = profile?.orgType || "club";
+      if (orgType !== "school" && orgType !== "organization") {
+        return res.status(403).json({
+          error: "Only school or organization admins can add coach or trainer staff.",
+        });
+      }
+    }
+
+    // Sports are assigned later via the Sports & Trainers flow, not at creation.
+    // Still accept them if provided (optional).
+    const sports = Array.isArray(rawSports)
+      ? rawSports.map((s) => String(s).trim()).filter(Boolean)
+      : String(rawSports || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
 
     // Create new manager with clubId
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -90,26 +116,36 @@ router.post("/managers", allowUserOrManager, async (req, res) => {
       email,
       password: hashedPassword,
       clubId, // Add clubId to new manager
+      staffRole,
+      sports,
     });
 
     await newManager.save();
 
     const loginLink = `${process.env.FRONTEND_URL || "https://chalokhelne.com"}/login`;
 
+    const roleLabel = staffRole === "coach" ? "Coach" : staffRole === "trainer" ? "Trainer" : "Manager";
+
     // Send email with login info — never include the password in plaintext.
-    // The new manager sets their own password via the Forgot Password flow.
+    // The new staff member sets their own password via the Forgot Password flow.
+    // Best-effort: email must never block staff creation (SMTP may be unset).
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
-      subject: "Your Manager Account",
-      text: `Hello ${name},\n\nYour manager account for ${clubAdmin.clubName || clubAdmin.companyName || "your organisation"} has been created.\n\nTo set your password, open the login page and use "Forgot Password" with this email:\n${email}\n\nLogin link:\n${loginLink}\n\nThank you,\nSportszz Team`,
+      subject: `Your ${roleLabel} Account`,
+      text: `Hello ${name},\n\nYour ${roleLabel.toLowerCase()} account for ${clubAdmin.clubName || clubAdmin.companyName || "your organisation"} has been created.\n\nTo set your password, open the login page and use "Forgot Password" with this email:\n${email}\n\nLogin link:\n${loginLink}\n\nThank you,\nSportszz Team`,
     };
 
-    await transporter.sendMail(mailOptions);
+    try {
+      await transporter.sendMail(mailOptions);
+    } catch (mailErr) {
+      console.error("Staff welcome email failed:", mailErr.message);
+    }
 
     res.status(201).json({
-      message: "Manager added and email sent with credentials!",
+      message: `${roleLabel} added successfully!`,
       _id: newManager._id, // Return the ID for activity logging
+      staffRole,
     });
   } catch (error) {
     console.error("Error adding manager or sending email:", error);
@@ -383,15 +419,18 @@ router.get("/activity-log", allowUserOrManager, async (req, res) => {
   }
 });
 
-// Clear activity logs
-router.delete("/activity-log", requireSuperAdmin, async (req, res) => {
+// Clear activity logs. allowUserOrManager so a ClubAdmin can clear THEIR OWN
+// club's logs (was requireSuperAdmin → 403). The delete is now scoped to the
+// caller's club managers — previously it deleted EVERY club's logs by date.
+router.delete("/activity-log", allowUserOrManager, async (req, res) => {
   try {
-    const { timeRange = "week" } = req.query;
+    const scope = resolveClubScope(req);
+    if (scope.error) return res.status(scope.status).json({ message: scope.error });
+    const clubManagerIds = await Manager.find({ clubId: scope.clubId }).distinct("_id");
 
-    // Determine the date range to delete
+    const { timeRange = "week" } = req.query;
     let dateFilter;
     const now = new Date();
-
     switch (timeRange) {
       case "day":
         dateFilter = { $gte: new Date(now.setDate(now.getDate() - 1)) };
@@ -404,9 +443,10 @@ router.delete("/activity-log", requireSuperAdmin, async (req, res) => {
         dateFilter = { $gte: new Date(now.setDate(now.getDate() - 7)) };
     }
 
-    // Delete activities within the time range
+    // Scoped to this club's managers only (tenant-safe).
     const result = await ActivityLog.deleteMany({
       createdAt: dateFilter,
+      managerId: { $in: clubManagerIds },
     });
 
     res.status(200).json({
@@ -422,8 +462,9 @@ router.delete("/activity-log", requireSuperAdmin, async (req, res) => {
   }
 });
 
-// Log a new activity
-router.post("/activity-log", managerAuth, async (req, res) => {
+// Log a new activity. allowUserOrManager so ClubAdmins (Users) can log too —
+// managerAuth rejected them with 401 and activity logging silently failed.
+router.post("/activity-log", allowUserOrManager, async (req, res) => {
   try {
     const { managerId, type, description, metadata } = req.body;
 
@@ -671,8 +712,8 @@ router.get("/trainer-applications", managerAuth, async (req, res) => {
       return res.status(400).json({ message: "Manager ID is required" });
     }
 
-    const ClubApplication = require("../Modal/TrainerClubApplication");
-    const User = require("../Modal/User");
+    const ClubApplication = require("../src/modules/org/models/TrainerClubApplication");
+    const User = require("../src/modules/identity/models/User");
 
     // Debug: Check if trainers exist in database
     const trainerCount = await User.countDocuments({ role: "Trainer" });
@@ -788,8 +829,10 @@ router.get("/trainer-applications", managerAuth, async (req, res) => {
 
 // Approve/Reject trainer application - WITH DEBUGGING
 router.put("/trainer-applications/:id/:action", managerAuth, async (req, res) => {
+  // Hoisted out of try so the catch block can reference `action` (was a
+  // ReferenceError in the error path).
+  const { id, action } = req.params;
   try {
-    const { id, action } = req.params;
     const { rejectionReason } = req.body;
     const managerId = req.headers["manager-id"];
 

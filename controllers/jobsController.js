@@ -1,11 +1,11 @@
 const mongoose = require("mongoose");
 const escapeRegex = require("../utils/escapeRegex");
-const ProfessionalProfile = require("../Modal/ProfessionalProfile");
-const JobPosting = require("../Modal/JobPosting");
-const JobApplication = require("../Modal/JobApplication");
-const HireRequest = require("../Modal/HireRequest");
-const User = require("../Modal/User");
-const { Manager } = require("../Modal/ClubManager");
+const ProfessionalProfile = require("../src/modules/social/models/ProfessionalProfile");
+const JobPosting = require("../src/modules/social/models/JobPosting");
+const JobApplication = require("../src/modules/social/models/JobApplication");
+const HireRequest = require("../src/modules/social/models/HireRequest");
+const User = require("../src/modules/identity/models/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
 const { parsePagination } = require("../utils/pagination");
 
 // ── helpers ───────────────────────────────────────────────

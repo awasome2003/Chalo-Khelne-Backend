@@ -1,4 +1,4 @@
-const Inquiry = require("../Modal/Inquiry");
+const Inquiry = require("../src/modules/commerce/models/Inquiry");
 const nodemailer = require("nodemailer");
 
 // Configure Nodemailer (Reusing existing config or env vars is better practice)

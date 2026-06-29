@@ -69,16 +69,16 @@ async function main() {
   const db = mongoose.connection.db;
 
   // Resolve collection names via Mongoose models (handles pluralization).
-  const Tournament = require("../Modal/Tournament");
-  const Booking = require("../Modal/BookingModel");
-  const Match = require("../Modal/Tournnamentmatch");
-  const BookingGroup = require("../Modal/bookinggroup");
-  const TopPlayers = require("../Modal/TopPlayers");
-  const GroupStandings = require("../Modal/GroupStandings");
-  const KnockoutMatch = require("../Modal/KnockoutMatch");
-  const SuperMatch = require("../Modal/SuperMatch");
-  const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-  const SuperPlayers = require("../Modal/SuperPlayers");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
+  const Booking = require("../src/modules/tournaments/models/BookingModel");
+  const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+  const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+  const TopPlayers = require("../src/modules/tournaments/models/TopPlayers");
+  const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
+  const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+  const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+  const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+  const SuperPlayers = require("../src/modules/tournaments/models/SuperPlayers");
   const TOURNAMENT_COLL = Tournament.collection.name;
   const BOOKING_COLL = Booking.collection.name;
   console.log(`${TAG} Resolved collections via Mongoose: tournaments="${TOURNAMENT_COLL}", bookings="${BOOKING_COLL}"`);

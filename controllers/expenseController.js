@@ -1,6 +1,6 @@
-const Expense = require("../Modal/Expense");
-const ExpenseCategory = require("../Modal/ExpenseCategory");
-const ExpensePayment = require("../Modal/ExpensePayment");
+const Expense = require("../src/modules/commerce/models/Expense");
+const ExpenseCategory = require("../src/modules/commerce/models/ExpenseCategory");
+const ExpensePayment = require("../src/modules/commerce/models/ExpensePayment");
 const mongoose = require("mongoose");
 
 const expenseController = {

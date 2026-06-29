@@ -1,6 +1,6 @@
-const BookingGroup = require("../Modal/bookinggroup");
-const Tournament = require("../Modal/Tournament");
-const Booking = require("../Modal/BookingModel");
+const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
 const { assertSportInTournament, handleSportContextError } = require("../middleware/requireSportContext");
 
 exports.createBookingGroup = async (req, res) => {
@@ -232,7 +232,7 @@ async function _runDeleteBookingGroup(groupId) {
     return { ok: false, status: 404, reason: "notfound", message: "Booking group not found" };
   }
 
-  const Match = require("../Modal/Tournnamentmatch");
+  const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
   const completedCount = await Match.countDocuments({
     tournamentId: bookingGroup.tournamentId,
     groupId,

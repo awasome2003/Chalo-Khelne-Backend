@@ -22,8 +22,8 @@
 
 require("dotenv").config();
 const mongoose = require("mongoose");
-const SuperMatch = require("../Modal/SuperMatch");
-const Tournament = require("../Modal/Tournament");
+const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 const { getMatchFormat, resolveSportId } = require("../utils/sportTrackUtils");
 
 const DRY_RUN = process.argv.includes("--dry");

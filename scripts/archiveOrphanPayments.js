@@ -17,8 +17,8 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Payment = require("../Modal/Payments");
-const Tournament = require("../Modal/Tournament");
+const Payment = require("../src/modules/commerce/models/Payments");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const ARCHIVE_COLLECTION = "payments_archive";

@@ -25,11 +25,11 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-const User = require("../Modal/User");
-const Tournament = require("../Modal/Tournament");
-const Booking = require("../Modal/BookingModel");
-const BookingGroup = require("../Modal/bookinggroup");
-const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
+const User = require("../src/modules/identity/models/User");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+const TeamKnockoutTeams = require("../src/modules/tournaments/models/TeamKnockoutTeams");
 
 const TOURNAMENT_ID = "6a0feb0e4e01e9fb817707c1";
 const EMAIL_SUFFIX = "@spinmasters2026.test";

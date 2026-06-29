@@ -1,6 +1,6 @@
-const ManagerPayment = require("../Modal/managerPaymentSchema");
-const Notification = require("../Modal/Notification");
-const User = require('../Modal/User');
+const ManagerPayment = require("../src/modules/commerce/models/managerPaymentSchema");
+const Notification = require("../src/modules/social/models/Notification");
+const User = require('../src/modules/identity/models/User');
 const path = require("path");
 const fs = require("fs");
 

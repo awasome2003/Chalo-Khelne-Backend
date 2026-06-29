@@ -1,7 +1,7 @@
-const CorporateClubAdmin = require("../Modal/CorporateClubAdmin");
-const User = require("../Modal/User");
+const CorporateClubAdmin = require("../src/modules/identity/models/CorporateClubAdmin");
+const User = require("../src/modules/identity/models/User");
 const bcrypt = require("bcryptjs");
-const { Manager } = require("../Modal/ClubManager");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
 const nodemailer = require("nodemailer");
 
 // Create a Nodemailer transporter (Reusing config is better, but declaring here for now)

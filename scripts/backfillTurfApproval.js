@@ -13,7 +13,7 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Turf = require("../Modal/Turf");
+const Turf = require("../src/modules/org/models/Turf");
 
 const DRY_RUN = process.argv.includes("--dry-run");
 

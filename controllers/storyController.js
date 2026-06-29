@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
-const Story = require("../Modal/Story");
+const Story = require("../src/modules/social/models/Story");
 const { storiesDir, cleanupFile, getRelativePath } = require("../middleware/uploads");
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -111,7 +111,7 @@ exports.getStoriesFeed = async (req, res) => {
     // Story privacy: a story is visible to its author's followers + following.
     // From the viewer's side that means I only see stories from users I follow
     // OR who follow me (the union of my following + followers).
-    const User = require("../Modal/User");
+    const User = require("../src/modules/identity/models/User");
     const me = await User.findById(userId).select("followers following");
     const audience = new Set([
       ...(me?.following || []).map(String),
@@ -162,7 +162,12 @@ exports.deleteStory = async (req, res) => {
     if (!story) {
       return res.status(404).json({ success: false, message: "Story not found" });
     }
-    if (String(story.user) !== String(req.user.id)) {
+    // The story owner, or a SuperAdmin (platform moderation), may delete it.
+    const actorId = req.user.id || req.user._id;
+    const isSuperAdmin =
+      req.isSuperAdmin === true ||
+      String(req.user?.role || "").toLowerCase() === "superadmin";
+    if (String(story.user) !== String(actorId) && !isSuperAdmin) {
       return res
         .status(403)
         .json({ success: false, message: "Forbidden — not your story" });

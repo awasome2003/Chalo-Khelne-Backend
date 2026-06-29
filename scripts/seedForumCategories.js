@@ -1,6 +1,6 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
-const ForumCategory = require("../Modal/ForumCategory");
+const ForumCategory = require("../src/modules/social/models/ForumCategory");
 
 const CATEGORIES = [
   { name: "General", slug: "general", description: "General sports discussions", icon: "💬", color: "#004E93", order: 1 },

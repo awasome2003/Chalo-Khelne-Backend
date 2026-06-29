@@ -1,8 +1,8 @@
-const Post = require('../Modal/Post');
+const Post = require('../src/modules/social/models/Post');
 const escapeRegex = require('../utils/escapeRegex');
-const Tournament = require('../Modal/Tournament'); // Add Tournament model
-const User = require('../Modal/User'); // Add User model
-const { Manager } = require('../Modal/ClubManager'); // Add Manager model
+const Tournament = require('../src/modules/tournaments/models/Tournament'); // Add Tournament model
+const User = require('../src/modules/identity/models/User'); // Add User model
+const { Manager } = require('../src/modules/identity/models/ClubManager'); // Add Manager model
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { default: mongoose } = require('mongoose');
@@ -261,7 +261,10 @@ exports.addComment = async (req, res) => {
 exports.deleteComment = async (req, res) => {
   try {
     const { postId, commentId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
+    const isSuperAdmin =
+      req.isSuperAdmin === true ||
+      String(req.user?.role || "").toLowerCase() === "superadmin";
 
     const post = await Post.findById(postId);
     if (!post) {
@@ -273,10 +276,10 @@ exports.deleteComment = async (req, res) => {
       return res.status(404).json({ success: false, message: "Comment not found" });
     }
 
-    // Only the comment author or the post owner can delete a comment
+    // The comment author, the post owner, or a SuperAdmin (moderation) may delete.
     const isCommentAuthor = String(comment.user) === String(userId);
     const isPostOwner = String(post.user) === String(userId);
-    if (!isCommentAuthor && !isPostOwner) {
+    if (!isCommentAuthor && !isPostOwner && !isSuperAdmin) {
       return res
         .status(403)
         .json({ success: false, message: "Unauthorized to delete this comment" });
@@ -296,16 +299,20 @@ exports.deleteComment = async (req, res) => {
 exports.deletePost = async (req, res) => {
   try {
     const { postId } = req.params;
-    const userId = req.user.id;
+    // SuperAdmin actors come through allowUserOrManager as { _id, role } (no .id),
+    // so resolve both id shapes.
+    const userId = req.user.id || req.user._id;
+    const isSuperAdmin =
+      req.isSuperAdmin === true ||
+      String(req.user?.role || "").toLowerCase() === "superadmin";
 
     const post = await Post.findById(postId);
     if (!post) {
       return res.status(404).json({ message: "Post not found" });
     }
 
-    // Check if the user is the owner of the post
-    // Note: post.user is an ObjectId
-    if (post.user.toString() !== userId) {
+    // The post owner, or a SuperAdmin (platform moderation), may delete a post.
+    if (post.user.toString() !== String(userId) && !isSuperAdmin) {
       return res.status(403).json({ message: "Unauthorized to delete this post" });
     }
 

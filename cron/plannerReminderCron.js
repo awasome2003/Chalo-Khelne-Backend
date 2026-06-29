@@ -6,8 +6,8 @@
 
 const cron = require("node-cron");
 const { Expo } = require("expo-server-sdk");
-const PlannerNote = require("../Modal/PlannerNote");
-const DeviceToken = require("../Modal/DeviceToken");
+const PlannerNote = require("../src/modules/social/models/PlannerNote");
+const DeviceToken = require("../src/modules/identity/models/DeviceToken");
 
 const expo = new Expo();
 

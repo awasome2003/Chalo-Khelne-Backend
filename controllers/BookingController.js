@@ -1,9 +1,9 @@
-const Booking = require("../Modal/BookingModel");
-const Payment = require("../Modal/Payments");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const Payment = require("../src/modules/commerce/models/Payments");
 const mongoose = require("mongoose");
-const User = require("../Modal/User");
-const Notification = require("../Modal/Notification");
-const Tournament = require("../Modal/Tournament");
+const User = require("../src/modules/identity/models/User");
+const Notification = require("../src/modules/social/models/Notification");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 const { validateTeamSize } = require("../utils/teamValidation");
 const { assertSportSelections, handleSportContextError } = require("../middleware/requireSportContext");
 const { eligibilityFor, findCategory } = require("../utils/eligibility");
@@ -602,7 +602,7 @@ const bookingController = {
       // Notify player about registration status change
       try {
         const { notifyPlayer } = require("../utils/playerNotify");
-        const Tournament = require("../Modal/Tournament");
+        const Tournament = require("../src/modules/tournaments/models/Tournament");
         const tournament = await Tournament.findById(tournamentId).select("title").lean();
         const tName = tournament?.title || "Tournament";
 

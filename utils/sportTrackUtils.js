@@ -35,7 +35,7 @@ function getCurrentStage(tournament, sportId) {
 // Update currentStage for a specific sport. Falls back to root scalar for
 // legacy tournaments. Lazy-requires Tournament to avoid circular imports.
 async function setCurrentStage(tournamentId, sportId, stage) {
-  const Tournament = require("../Modal/Tournament");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
   if (!sportId) {
     return Tournament.findByIdAndUpdate(
       tournamentId,
@@ -53,7 +53,7 @@ async function setCurrentStage(tournamentId, sportId, stage) {
 // Update a stageConfig dot-path on a specific sport-track. `path` is
 // relative to stageConfig (e.g., "qualifierKnockout.enabled").
 async function setStageConfigPath(tournamentId, sportId, path, value) {
-  const Tournament = require("../Modal/Tournament");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
   if (!sportId) {
     return Tournament.findByIdAndUpdate(
       tournamentId,

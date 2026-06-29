@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const tc = require("../controllers/trainerConsoleController");
-const { authenticate } = require("../middleware/authMiddleware");
+const { authenticate, allowUserOrManager } = require("../middleware/authMiddleware");
 const { requireSelf, requireOwner, forceSelfBody } = require("../middleware/authz");
 
 // Trainer identity (auto-creates a Trainer profile if missing)
@@ -39,5 +39,9 @@ router.patch(
 // Clubs directory
 router.get("/clubs", authenticate, tc.listClubs);
 router.post("/clubs/apply", authenticate, forceSelfBody("userId"), tc.applyToClub);
+
+// Schedule / Calendar feed — accepts User, Manager AND Substitute tokens.
+// :userId is informational; the controller derives identity from req.user.
+router.get("/calendar/:userId", allowUserOrManager, tc.getCalendar);
 
 module.exports = router;

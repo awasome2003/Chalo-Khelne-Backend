@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
-const News = require("../Modal/News");
+const News = require("../src/modules/social/models/News");
 
 const newsArticles = [
   {
@@ -148,8 +148,8 @@ async function seedNews() {
     console.log("MongoDB connected");
 
     // Check if we need a fallback user ID
-    const User = require("../Modal/User");
-    const Manager = require("../Modal/ClubManager").Manager;
+    const User = require("../src/modules/identity/models/User");
+    const Manager = require("../src/modules/identity/models/ClubManager").Manager;
 
     // Try to find any existing manager or user to use as createdBy
     let creator = await Manager.findOne().lean();

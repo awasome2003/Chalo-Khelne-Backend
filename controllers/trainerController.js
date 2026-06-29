@@ -1,10 +1,10 @@
-const Trainer = require("../Modal/Trainer");
-const Session = require("../Modal/Session");
-const Request = require("../Modal/Request");
-const User = require("../Modal/User");
+const Trainer = require("../src/modules/org/models/Trainer");
+const Session = require("../src/modules/org/models/Session");
+const Request = require("../src/modules/org/models/Request");
+const User = require("../src/modules/identity/models/User");
 const notificationController = require("../controllers/notificationController");
-const ClubApplication = require("../Modal/TrainerClubApplication");
-const Turf = require("../Modal/Turf");
+const ClubApplication = require("../src/modules/org/models/TrainerClubApplication");
+const Turf = require("../src/modules/org/models/Turf");
 
 // Get trainer profile
 // Behavior: by default returns 404 if no profile exists.
@@ -1230,7 +1230,7 @@ exports.addCertificate = async (req, res) => {
     }
 
     // Find the trainer
-    const trainer = await require("../Modal/Trainer").findOne({
+    const trainer = await require("../src/modules/org/models/Trainer").findOne({
       userId: req.params.id,
     });
     if (!trainer) {
@@ -1523,7 +1523,7 @@ exports.applyToClub = async (req, res) => {
     }
 
     // Get all assigned managers for this turf
-    const { Manager } = require("../Modal/ClubManager");
+    const { Manager } = require("../src/modules/identity/models/ClubManager");
     const assignedManagerIds = turf.assignedManagers;
     const managers = await Manager.find({
       _id: { $in: assignedManagerIds },

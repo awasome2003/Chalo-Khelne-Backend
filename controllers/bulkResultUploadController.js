@@ -5,10 +5,10 @@ const path = require("path");
 const fs = require("fs");
 
 // Models
-const SuperMatch = require("../Modal/SuperMatch");
-const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
-const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
-const Tournament = require("../Modal/Tournament");
+const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+const TeamKnockoutTeams = require("../src/modules/tournaments/models/TeamKnockoutTeams");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 const { getScoringType } = require("../utils/matchFormatUtils");
 const { readMatchResult } = require("../utils/matchUtils");
 

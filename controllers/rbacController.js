@@ -1,8 +1,8 @@
-const Role = require("../Modal/Role");
-const Permission = require("../Modal/Permission");
+const Role = require("../src/modules/identity/models/Role");
+const Permission = require("../src/modules/identity/models/Permission");
 const mongoose = require("mongoose");
-const User = require("../Modal/User");
-const { Manager } = require("../Modal/ClubManager");
+const User = require("../src/modules/identity/models/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
 
 // ═══════════════════════════════════════════════════════════════
 // USER-LIFECYCLE HELPERS — suspend / reject / reactivate

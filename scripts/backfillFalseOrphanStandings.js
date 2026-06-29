@@ -34,8 +34,8 @@ async function main() {
   if (!uri) { console.error("MONGO_URI not set"); process.exit(1); }
   await mongoose.connect(uri);
 
-  const Tournament = require("../Modal/Tournament");
-  const GroupStandings = require("../Modal/GroupStandings");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
+  const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
 
   // 1) Find all standings with null sportId.
   const orphans = await GroupStandings.find({

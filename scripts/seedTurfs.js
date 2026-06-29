@@ -1,7 +1,7 @@
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 const mongoose = require("mongoose");
-const Turf = require("../Modal/Turf");
-const User = require("../Modal/User");
+const Turf = require("../src/modules/org/models/Turf");
+const User = require("../src/modules/identity/models/User");
 
 const allDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 

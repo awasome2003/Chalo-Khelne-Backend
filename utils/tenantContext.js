@@ -22,6 +22,7 @@
  * the store automatically via async_hooks.
  */
 const { AsyncLocalStorage } = require("async_hooks");
+const mongoose = require("mongoose");
 
 const als = new AsyncLocalStorage();
 
@@ -45,6 +46,30 @@ function getClubId() {
 }
 
 /**
+ * Aggregate scoping helper (Phase 1).
+ *
+ * The tenantScope plugin's pre-hooks cover find/update/delete/count but NOT
+ * .aggregate(), so aggregation pipelines must scope the tenant EXPLICITLY by
+ * prepending this stage:
+ *
+ *   const rows = await Model.aggregate([ ...tenantMatchStage(), ...stages ]);
+ *
+ * Returns:
+ *  • [{ $match: { [field]: ObjectId(clubId) } }]  for a club-staff caller
+ *  • []  for SuperAdmin / public / cross-tenant callers (no narrowing)
+ *
+ * Because it no-ops without a clubId context, the SAME call is safe on public
+ * endpoints — spectators (no context) get the full result, club-staff get only
+ * their tenant's slice. `field` defaults to "clubId"; pass another path for
+ * collections whose tenant key has a different name.
+ */
+function tenantMatchStage(field = "clubId") {
+  const s = als.getStore();
+  if (!s || s.isSuperAdmin || !s.clubId) return [];
+  return [{ $match: { [field]: new mongoose.Types.ObjectId(String(s.clubId)) } }];
+}
+
+/**
  * Build the tenant context for a User principal from its role + id.
  * Owner roles → scoped to their own id; everyone else → cross-tenant (no clubId).
  */
@@ -60,6 +85,7 @@ module.exports = {
   runWithTenant,
   getTenant,
   getClubId,
+  tenantMatchStage,
   contextForUser,
   TENANT_OWNER_ROLES,
 };

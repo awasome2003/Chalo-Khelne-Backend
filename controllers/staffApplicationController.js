@@ -12,11 +12,11 @@
  *   - See applicant's full service profile
  */
 
-const StaffApplication = require("../Modal/StaffApplication");
-const Tournament = require("../Modal/Tournament");
-const User = require("../Modal/User");
-const Trainer = require("../Modal/Trainer");
-const Referee = require("../Modal/Referee");
+const StaffApplication = require("../src/modules/social/models/StaffApplication");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const User = require("../src/modules/identity/models/User");
+const Trainer = require("../src/modules/org/models/Trainer");
+const Referee = require("../src/modules/catalog/models/Referee");
 const notificationController = require("./notificationController");
 
 const staffApplicationController = {

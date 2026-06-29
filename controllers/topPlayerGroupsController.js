@@ -1,4 +1,4 @@
-const BookingTopGroup = require('../Modal/BookingGroupTop'); 
+const BookingTopGroup = require('../src/modules/tournaments/models/BookingGroupTop'); 
 
 
 exports.createTopPlayerGroup = async (req, res) => {

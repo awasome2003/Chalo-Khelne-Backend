@@ -1,4 +1,4 @@
-const SportLibrary = require("../Modal/SportLibrary");
+const SportLibrary = require("../src/modules/catalog/models/SportLibrary");
 
 // GET /api/sport-library — public list (active only by default; ?all=true for admin)
 exports.getAll = async (req, res) => {

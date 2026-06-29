@@ -16,7 +16,7 @@
 const mongoose = require("mongoose");
 require("dotenv").config();
 
-const Booking = require("../Modal/BookingModel");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
 
 const DRY_RUN = process.argv.includes("--dry");
 

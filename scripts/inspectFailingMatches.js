@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 require("dotenv").config();
 const mongoose = require("mongoose");
-const TournamentMatch = require("../Modal/Tournnamentmatch");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-const SuperMatch = require("../Modal/SuperMatch");
-const KnockoutMatch = require("../Modal/KnockoutMatch");
-const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
-const Tournament = require("../Modal/Tournament");
+const TournamentMatch = require("../src/modules/tournaments/models/Tournnamentmatch");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
 const COLLECTIONS = [
   ["TournamentMatch", TournamentMatch],

@@ -1,5 +1,5 @@
-const Turf = require("../Modal/Turf");
-const Favorite = require("../Modal/Favorite");
+const Turf = require("../src/modules/org/models/Turf");
+const Favorite = require("../src/modules/social/models/Favorite");
 
 const favoriteController = {
   // Get all favorites for the logged-in user

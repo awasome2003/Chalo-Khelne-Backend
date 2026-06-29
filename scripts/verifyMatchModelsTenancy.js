@@ -15,19 +15,19 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const { runWithTenant } = require("../utils/tenantContext");
 const tenantScope = require("../utils/tenantScope");
-const Tournament = require("../Modal/Tournament");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
 
-const TournamentMatch = require("../Modal/TournamentMatch");
-const Match = require("../Modal/Tournnamentmatch");
-const KnockoutMatch = require("../Modal/KnockoutMatch");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-const TeamKnockout = require("../Modal/TeamKnockout");
-const TeamKnockoutMatches = require("../Modal/TeamKnockoutMatches");
-const TeamKnockoutTeams = require("../Modal/TeamKnockoutTeams");
-const SuperMatch = require("../Modal/SuperMatch");
-const Semifinals = require("../Modal/semifinal");
-const GroupStandings = require("../Modal/GroupStandings");
-const Score = require("../Modal/Score");
+const TournamentMatch = require("../src/modules/tournaments/models/TournamentMatch");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+const TeamKnockout = require("../src/modules/tournaments/models/TeamKnockout");
+const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+const TeamKnockoutTeams = require("../src/modules/tournaments/models/TeamKnockoutTeams");
+const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+const Semifinals = require("../src/modules/tournaments/models/semifinal");
+const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
+const Score = require("../src/modules/tournaments/models/Score");
 
 const MODELS = [
   { Model: TournamentMatch, name: "TournamentMatch", kind: "tournament" },

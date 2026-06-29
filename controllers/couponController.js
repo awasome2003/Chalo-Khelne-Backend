@@ -1,5 +1,5 @@
-const Coupon = require("../Modal/Coupon");
-const CouponUsage = require("../Modal/CouponUsage");
+const Coupon = require("../src/modules/commerce/models/Coupon");
+const CouponUsage = require("../src/modules/commerce/models/CouponUsage");
 const mongoose = require("mongoose");
 
 const couponController = {

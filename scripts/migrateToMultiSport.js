@@ -60,17 +60,17 @@ async function main() {
   await mongoose.connect(uri);
 
   // Lazy-require models AFTER connection so index creation is bound to this run.
-  const Tournament = require("../Modal/Tournament");
-  const Sport = require("../Modal/Sport");
-  const BookingGroup = require("../Modal/bookinggroup");
-  const Match = require("../Modal/Tournnamentmatch");
-  const KnockoutMatch = require("../Modal/KnockoutMatch");
-  const SuperMatch = require("../Modal/SuperMatch");
-  const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-  const TopPlayers = require("../Modal/TopPlayers");
-  const SuperPlayers = require("../Modal/SuperPlayers");
-  const GroupStandings = require("../Modal/GroupStandings");
-  const Booking = require("../Modal/BookingModel");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
+  const Sport = require("../src/modules/catalog/models/Sport");
+  const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+  const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+  const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+  const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+  const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+  const TopPlayers = require("../src/modules/tournaments/models/TopPlayers");
+  const SuperPlayers = require("../src/modules/tournaments/models/SuperPlayers");
+  const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
+  const Booking = require("../src/modules/tournaments/models/BookingModel");
 
   const log = {
     startedAt: new Date().toISOString(),

@@ -1,8 +1,9 @@
 const jwt = require("jsonwebtoken");
-const Manager = require("../Modal/ClubManager").Manager;
+const Manager = require("../src/modules/identity/models/ClubManager").Manager;
 
-const User = require("../Modal/User");
-const Superadminmodel = require("../Modal/Superadminmodel");
+const User = require("../src/modules/identity/models/User");
+const Superadminmodel = require("../src/modules/identity/models/Superadminmodel");
+const Substitute = require("../src/modules/identity/models/Substitute");
 const { runWithTenant, contextForUser } = require("../utils/tenantContext");
 
 // ═══════════════════════════════════════════════════════════════
@@ -78,16 +79,34 @@ exports.authenticate = async (req, res, next) => {
       "_id role status suspensionReason"
     );
 
-    if (!user) {
-      return res.status(401).json({ message: "User not found." });
+    if (user) {
+      if (rejectIfSuspended(user, res)) return;
+      req.user = decoded;
+      // Tenant context: owner roles (ClubAdmin/corporate_admin) scope to their own
+      // id; players & other roles carry no clubId (cross-tenant) and aren't scoped.
+      return runWithTenant(contextForUser(decoded.role, decoded.id), () => next());
     }
 
-    if (rejectIfSuspended(user, res)) return;
+    // Substitute — a temporary stand-in for a coach. Same active+accepted gate
+    // as allowUserOrManager, so the substitute can hit any "authenticate"-gated
+    // route (notifications, etc.) while their access is live.
+    const substitute = await Substitute.findById(decoded.id).select(
+      "_id active status clubId coachId"
+    );
+    if (substitute) {
+      if (!substitute.active || substitute.status !== "accepted") {
+        return res.status(403).json({ message: "Your substitute access has ended." });
+      }
+      req.user = decoded;
+      req.userRole = "Substitute";
+      const ctx = {
+        clubId: substitute.clubId ? String(substitute.clubId) : null,
+        principalType: "Substitute",
+      };
+      return runWithTenant(ctx, () => next());
+    }
 
-    req.user = decoded;
-    // Tenant context: owner roles (ClubAdmin/corporate_admin) scope to their own
-    // id; players & other roles carry no clubId (cross-tenant) and aren't scoped.
-    return runWithTenant(contextForUser(decoded.role, decoded.id), () => next());
+    return res.status(401).json({ message: "User not found." });
   } catch (error) {
     return res.status(401).json({ message: "Invalid token." });
   }
@@ -131,7 +150,19 @@ exports.allowUserOrManager = async (req, res, next) => {
       return runWithTenant(ctx, () => next());
     }
 
-    return res.status(401).json({ message: "User or Manager not found." });
+    // Substitute — a temporary stand-in for a coach; valid only while active.
+    const substitute = await Substitute.findById(id);
+    if (substitute) {
+      if (!substitute.active || substitute.status !== "accepted") {
+        return res.status(403).json({ message: "Your substitute access has ended." });
+      }
+      req.user = substitute;
+      req.userRole = "Substitute";
+      const ctx = { clubId: substitute.clubId ? String(substitute.clubId) : null, principalType: "Substitute" };
+      return runWithTenant(ctx, () => next());
+    }
+
+    return res.status(401).json({ message: "User, Manager, or Substitute not found." });
   } catch (err) {
     return res.status(401).json({ message: "Invalid token." });
   }

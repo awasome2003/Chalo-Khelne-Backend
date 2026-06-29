@@ -33,7 +33,7 @@ router.put(
 );
 
 // ── Player Notification Routes (new unified system) ──
-const PlayerNotification = require("../Modal/PlayerNotification");
+const PlayerNotification = require("../src/modules/social/models/PlayerNotification");
 
 // Get all player notifications (paginated)
 router.get("/player/:userId", requireSelf("userId"), async (req, res) => {

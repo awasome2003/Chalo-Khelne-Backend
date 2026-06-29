@@ -431,6 +431,43 @@ const sportPresets = [
     },
   },
   {
+    // Foosball (table football) — singles or doubles. Authentic scoring: a
+    // SINGLE game, first side to 10 GOALS wins, no win-by-2 (matches the
+    // physical table counters / standard foosball). Uses the "sets" engine
+    // configured as best-of-1.
+    name: "Foosball",
+    slug: "foosball",
+    category: SPORT_CATEGORIES.INDIVIDUAL,
+    scoringType: SCORING_TYPES.SETS_GAMES_POINTS,
+    defaultMatchFormat: {
+      totalSets: 1,        // single game
+      gamesPerSet: null,
+      pointsPerSet: 10,    // first to 10 goals wins
+      pointsPerGame: null,
+      winByMargin: 1,      // no win-by-2 — reaching 10 wins immediately
+      maxPointsCap: 10,
+      deuceEnabled: false,
+      deuceMinPoints: null,
+      tiebreakEnabled: false,
+      tiebreakPoints: null,
+      decidingSetPoints: 10,
+      serviceRules: null,
+      halvesCount: null,
+      halvesDuration: null,
+      quartersCount: null,
+      quartersDuration: null,
+      oversCount: null,
+      inningsCount: null,
+    },
+    displayConfig: {
+      icon: "foosball",
+      color: "#8B5CF6",
+      scoreLabel: "Goals",
+      setLabel: "Game",
+      pointLabel: "Goal",
+    },
+  },
+  {
     name: "Snooker",
     slug: "snooker",
     category: SPORT_CATEGORIES.INDIVIDUAL,

@@ -2,15 +2,15 @@
 const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
-const Payment = require("../Modal/Payments");
-const Booking = require("../Modal/BookingModel");
-const TurfBooking = require("../Modal/TurfBooking");
-const Tournament = require("../Modal/Tournament");
-const Turf = require("../Modal/Turf");
-const User = require("../Modal/User");
-const { Manager } = require("../Modal/ClubManager");
+const Payment = require("../src/modules/commerce/models/Payments");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const TurfBooking = require("../src/modules/org/models/TurfBooking");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const Turf = require("../src/modules/org/models/Turf");
+const User = require("../src/modules/identity/models/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
 const mongoose = require("mongoose");
-const { getClubId } = require("../utils/tenantContext");
+const { getClubId, tenantMatchStage } = require("../utils/tenantContext");
 const { authenticate, managerAuth, allowUserOrManager, requireSuperAdmin } = require("../middleware/authMiddleware");
 const { requireSelf, requireOwner, forceSelfBody, requireTurfBookingOwner, requireTurfOwner } = require("../middleware/authz");
 const escapeRegex = require("../utils/escapeRegex");
@@ -434,12 +434,12 @@ router.get("/search-players", allowUserOrManager, async (req, res) => {
         {
           $match: {
             role: "Player",
+            // Contains the query BUT does not start with it (prefix matches were
+            // already added above). Both conditions on `name` must be in ONE
+            // operator object — two `name:` keys silently dropped the first.
             name: {
               $regex: escapedQuery,
               $options: "i",
-            },
-            // Exclude names that start with the query (already included above)
-            name: {
               $not: {
                 $regex: `^${escapedQuery}`,
                 $options: "i",
@@ -886,7 +886,7 @@ router.get("/payment-stats", managerAuth, async (req, res) => {
       return res.status(403).json({ success: false, message: "No tenant context" });
     }
     const stats = await Payment.aggregate([
-      { $match: { clubId: new mongoose.Types.ObjectId(clubId) } },
+      ...tenantMatchStage(), // scope to the caller's club (helper casts clubId→ObjectId)
       {
         $group: {
           _id: "$status",
@@ -991,7 +991,7 @@ router.post("/turf-bookings/create", authenticate, forceSelfBody("userId"), asyn
 
     // Notify turf owner + assigned managers (DB record + socket + push)
     try {
-      const BookingNotification = require("../Modal/Notification_Booking");
+      const BookingNotification = require("../src/modules/social/models/Notification_Booking");
       const formattedDate = new Date(date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
       const notifTitle = `New Booking — ${turf.name}`;
       const notifBody = `${user.name} booked ${sport.name} on ${formattedDate} (${timeSlot}) • ₹${sport.pricePerHour}`;

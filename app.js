@@ -111,8 +111,8 @@ function createApp() {
   };
 
   // Side-effect model loads (preserved from legacy server.js)
-  require("./Modal/ClubManager");
-  require("./Modal/Referee");
+  require("./src/modules/identity/models/ClubManager");
+  require("./src/modules/catalog/models/Referee");
 
   // Health check (simple liveness — server is up).
   app.get("/", (_req, res) => res.send("Chalo Khelne API is running"));

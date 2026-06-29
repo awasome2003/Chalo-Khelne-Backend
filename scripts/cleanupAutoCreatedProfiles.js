@@ -24,9 +24,9 @@ const mongoose = require("mongoose");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
-const Trainer = require("../Modal/Trainer");
-const Referee = require("../Modal/Referee");
-require("../Modal/User"); // ensure model is registered
+const Trainer = require("../src/modules/org/models/Trainer");
+const Referee = require("../src/modules/catalog/models/Referee");
+require("../src/modules/identity/models/User"); // ensure model is registered
 
 // --- CLI flags ------------------------------------------
 const argv = process.argv.slice(2);

@@ -1,9 +1,10 @@
 const mongoose = require("mongoose");
-const Manager = require("../Modal/ClubManager").Manager || require("../Modal/ClubManager");
-const Tournament = require("../Modal/Tournament");
-const Booking = require("../Modal/BookingModel");
-const TurfBooking = require("../Modal/TurfBooking");
-const Turf = require("../Modal/Turf");
+const Manager = require("../src/modules/identity/models/ClubManager").Manager || require("../src/modules/identity/models/ClubManager");
+const Tournament = require("../src/modules/tournaments/models/Tournament");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
+const TurfBooking = require("../src/modules/org/models/TurfBooking");
+const Turf = require("../src/modules/org/models/Turf");
+const { tenantMatchStage } = require("../utils/tenantContext");
 
 // Get the Manager model properly
 let ManagerModel;
@@ -26,25 +27,13 @@ const clubAdminFinanceController = {
         .select("name email profileImage isActive createdAt")
         .lean();
 
-      if (managers.length === 0) {
-        return res.status(200).json({
-          success: true,
-          overview: {
-            totalManagers: 0,
-            totalTournaments: 0,
-            totalTournamentRevenue: 0,
-            totalBookings: 0,
-            totalBookingRevenue: 0,
-            grandTotalRevenue: 0,
-            managers: [],
-          },
-        });
-      }
-
+      // Do NOT bail when there are no managers — a club can own turfs directly,
+      // and those bookings must still count toward the totals below.
       const managerIds = managers.map((m) => m._id);
 
       // Get tournaments per manager
       const tournamentsByManager = await Tournament.aggregate([
+        ...tenantMatchStage(), // tenant guard: Tournament.clubId === caller's clubId
         { $match: { managerId: { $in: managerIds } } },
         { $unwind: "$managerId" },
         { $match: { managerId: { $in: managerIds } } },
@@ -86,6 +75,7 @@ const clubAdminFinanceController = {
 
       // Get booking revenue per tournament
       const bookingRevenue = await Booking.aggregate([
+        ...tenantMatchStage(), // tenant guard: Booking.clubId === caller's clubId
         {
           $match: {
             tournamentId: { $in: tournamentIds },
@@ -106,8 +96,9 @@ const clubAdminFinanceController = {
         },
       ]);
 
-      // Get turfs owned by each manager
-      const turfs = await Turf.find({ owner: { $in: managerIds } }).select("_id owner").lean();
+      // Turfs are owned by the club admin directly (owner = clubId), not by
+      // managers — include clubAdminId so club-run turfs are counted too.
+      const turfs = await Turf.find({ owner: { $in: [clubAdminId, ...managerIds] } }).select("_id owner").lean();
       const turfIds = turfs.map((t) => t._id);
       const turfOwnerMap = {};
       turfs.forEach((t) => {
@@ -190,6 +181,14 @@ const clubAdminFinanceController = {
           totalRevenue: bData.revenue + tbData.revenue,
         };
       });
+
+      // Club-owned turfs (owner = clubAdminId, no manager) — fold their bookings
+      // into the totals so the dashboard reflects directly-run turf revenue.
+      const clubDirectTurf = turfBookingMap[String(clubAdminId)];
+      if (clubDirectTurf) {
+        totalBookings += clubDirectTurf.bookings;
+        totalBookingRevenue += clubDirectTurf.revenue;
+      }
 
       // Sort by total revenue descending
       managerSummaries.sort((a, b) => b.totalRevenue - a.totalRevenue);
@@ -431,11 +430,10 @@ const clubAdminFinanceController = {
       const clubAdminId = req.user.id || req.user._id;
       const { type, status, search, page = 1, limit = 30 } = req.query;
 
-      // Get all managers under this club admin
+      // Get all managers under this club admin. Note: a club may have ZERO
+      // managers and still own turfs/tournaments directly, so we do NOT bail out
+      // here — that early-return hid club-owned turf bookings entirely.
       const managers = await ManagerModel.find({ clubId: clubAdminId }).select("_id name").lean();
-      if (managers.length === 0) {
-        return res.status(200).json({ success: true, payments: [], totals: { count: 0, revenue: 0, pending: 0, completed: 0 } });
-      }
 
       const managerIds = managers.map((m) => m._id);
       const managerNameMap = {};
@@ -454,8 +452,10 @@ const clubAdminFinanceController = {
         tournamentManagerMap[t._id.toString()] = mgrId;
       });
 
-      // Get turfs by these managers
-      const turfs = await Turf.find({ owner: { $in: managerIds } }).select("_id name owner").lean();
+      // Get the club's turfs. Turfs are owned by the CLUB ADMIN directly
+      // (owner = clubId), not by managers — so include clubAdminId. Without it
+      // the club's own turfs (and all their bookings) never appear.
+      const turfs = await Turf.find({ owner: { $in: [clubAdminId, ...managerIds] } }).select("_id name owner").lean();
       const turfIds = turfs.map((t) => t._id);
       const turfNameMap = {};
       const turfOwnerMap = {};

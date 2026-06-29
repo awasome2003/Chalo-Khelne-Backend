@@ -1,5 +1,5 @@
 const cron = require("node-cron");
-const Notification = require("../Modal/Notification_Player");
+const Notification = require("../src/modules/social/models/Notification_Player");
 const { sendPushNotification } = require("../controllers/matchController");
 
 const startNotificationCron = () => {

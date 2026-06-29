@@ -1,11 +1,11 @@
-const Match = require("../Modal/Tournnamentmatch");
-const SuperMatch = require("../Modal/SuperMatch");
-const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-const KnockoutMatch = require("../Modal/KnockoutMatch");
-const User = require("../Modal/User");
-const Score = require("../Modal/Score");
-const GroupStandings = require("../Modal/GroupStandings");
-const BookingGroup = require("../Modal/bookinggroup");
+const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+const User = require("../src/modules/identity/models/User");
+const Score = require("../src/modules/tournaments/models/Score");
+const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
+const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
 const mongoose = require("mongoose");
 const { readMatchFormat, SAFE_DEFAULTS } = require("../utils/matchFormatUtils");
 
@@ -122,7 +122,7 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
 
     // Detect scoringType from the sport-track matching this group's sportId.
     // Falls back to root tournament.matchFormat for legacy single-sport.
-    const Tournament = require("../Modal/Tournament");
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
     const tournament = await Tournament.findById(tournamentId);
     const { getScoringType } = require("../utils/matchFormatUtils");
     const { getMatchFormat, resolveSportId } = require("../utils/sportTrackUtils");
@@ -146,6 +146,11 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
       || getScoringType(tournament?.sportsType)
       || "sets";
 
+    // Sport-aware league points. Cricket convention is 2/1/0 (win/tie/loss);
+    // everything else uses 3/1/0.
+    const pointsForWin = scoringType === "innings" ? 2 : 3;
+    const pointsForDraw = 1;
+
     // Get all completed matches for this group
     const matches = await Match.find({
       tournamentId,
@@ -167,6 +172,9 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
         roundsLost: 0,
         scoreFor: 0,
         scoreAgainst: 0,
+        oversFor: 0,
+        oversAgainst: 0,
+        netRunRate: 0,
         // Legacy aliases (kept for backward compat with frontend)
         setsWon: 0,
         setsLost: 0,
@@ -192,24 +200,24 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
       statsMap[p1Id].played++;
       statsMap[p2Id].played++;
 
-      // Win/Loss/Draw + Tournament Points
-      if (result.winner) {
+      // Win/Loss/Draw + Tournament Points (sport-aware points)
+      if (result.winner && result.winner.playerId) {
         const winnerId = result.winner.playerId?.toString();
         if (winnerId === p1Id) {
           statsMap[p1Id].won++;
-          statsMap[p1Id].totalPoints += 3;
+          statsMap[p1Id].totalPoints += pointsForWin;
           statsMap[p2Id].lost++;
         } else if (winnerId === p2Id) {
           statsMap[p2Id].won++;
-          statsMap[p2Id].totalPoints += 3;
+          statsMap[p2Id].totalPoints += pointsForWin;
           statsMap[p1Id].lost++;
         }
       } else {
-        // Draw (possible in time-based sports)
+        // Draw (time-based sports, or a tied cricket match in group play)
         statsMap[p1Id].drawn++;
         statsMap[p2Id].drawn++;
-        statsMap[p1Id].totalPoints += 1;
-        statsMap[p2Id].totalPoints += 1;
+        statsMap[p1Id].totalPoints += pointsForDraw;
+        statsMap[p2Id].totalPoints += pointsForDraw;
       }
 
       // Rounds won (sets/innings/periods — the top-level score)
@@ -225,7 +233,29 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
       statsMap[p2Id].setsLost = statsMap[p2Id].roundsLost;
 
       // Score accumulation (points/goals/runs from game-level data)
-      if (match.sets) {
+      if (scoringType === "innings" && Array.isArray(match.result?.innings)) {
+        // Cricket — accumulate runs scored/conceded and overs faced/bowled (NRR).
+        for (const inn of match.result.innings) {
+          const batSide = inn.battingSide; // "player1" | "player2"
+          const runs = inn.runs || 0;
+          const overs = (inn.oversBowled || 0) + (inn.ballsBowled || 0) / 6;
+          if (batSide === "player1") {
+            statsMap[p1Id].scoreFor += runs; statsMap[p1Id].oversFor += overs;
+            statsMap[p2Id].scoreAgainst += runs; statsMap[p2Id].oversAgainst += overs;
+          } else if (batSide === "player2") {
+            statsMap[p2Id].scoreFor += runs; statsMap[p2Id].oversFor += overs;
+            statsMap[p1Id].scoreAgainst += runs; statsMap[p1Id].oversAgainst += overs;
+          }
+        }
+      } else if (scoringType === "board" && Array.isArray(match.result?.boards)) {
+        // Carrom — accumulate per-board points.
+        for (const b of match.result.boards) {
+          const s1 = b.player1Points || 0;
+          const s2 = b.player2Points || 0;
+          statsMap[p1Id].scoreFor += s1; statsMap[p1Id].scoreAgainst += s2;
+          statsMap[p2Id].scoreFor += s2; statsMap[p2Id].scoreAgainst += s1;
+        }
+      } else if (match.sets) {
         for (const set of match.sets) {
           if (!set.games) continue;
           for (const game of set.games) {
@@ -277,8 +307,16 @@ const recalculateGroupStandings = async (tournamentId, groupId) => {
       byWon[k].push(p);
     }
 
+    // Net run rate (cricket tiebreaker): runs/over scored − runs/over conceded.
+    for (const p of Object.values(statsMap)) {
+      const rrFor = p.oversFor > 0 ? p.scoreFor / p.oversFor : 0;
+      const rrAgainst = p.oversAgainst > 0 ? p.scoreAgainst / p.oversAgainst : 0;
+      p.netRunRate = Number((rrFor - rrAgainst).toFixed(3));
+    }
+
     const setDiff = (p) => p.roundsWon - p.roundsLost;
-    const scoreDiff = (p) => p.scoreFor - p.scoreAgainst;
+    // For cricket, NRR is the meaningful score tiebreaker; otherwise raw diff.
+    const scoreDiff = (p) => scoringType === "innings" ? p.netRunRate : (p.scoreFor - p.scoreAgainst);
     const byId = (p) => p.playerId.toString();
 
     const sorted = [];
@@ -354,7 +392,7 @@ const initializeMatchScoreboard = async (match, isKnockoutMatch = false, session
     if (!match.matchFormat) {
       // Load tournament format if not already loaded. STEP 17c — read
       // per-sport from sports[i] (root matchFormat removed).
-      const Tournament = require("../Modal/Tournament");
+      const Tournament = require("../src/modules/tournaments/models/Tournament");
       const { getMatchFormat, resolveSportId } = require("../utils/sportTrackUtils");
       const tournament = await Tournament.findById(match.tournamentId);
       const tournamentFormat = getMatchFormat(tournament, resolveSportId(tournament, match.sportId)) || {};
@@ -435,21 +473,24 @@ const initializeMatchScoreboard = async (match, isKnockoutMatch = false, session
 
 // Check if game is won — sport-aware (supports sets, time, innings, single)
 const isGameWon = (player1Points, player2Points, pointsToWinGame = null, marginToWin = null, deuceRule = false, maxPointsPerGame = null, scoringType = null) => {
-  // ═══ NON-SET SPORTS: time / innings / single ═══
-  // For these, the submitted scores ARE the final match totals (goals, runs, result).
-  // No threshold validation needed — just check who scored more.
-  if (scoringType === "time" || scoringType === "innings" || scoringType === "single") {
+  // ═══ NON-SET SPORTS: time / innings / single / board ═══
+  // For these, the submitted scores ARE the final match totals (goals, runs,
+  // result, board points). No threshold validation — just check who scored more.
+  if (scoringType === "time" || scoringType === "innings" || scoringType === "single" || scoringType === "board") {
     if (player1Points === player2Points) {
-      // Draws are valid in time-based sports — treat higher scorer as winner,
-      // or mark as draw if truly tied. For now, require a winner.
+      // Ties are LEGAL for time (football draw), innings (cricket tie → super-
+      // over) and single (chess draw). Board (carrom) cannot tie → rejected.
+      // winner is null; callers branch on isTie (group draw vs KO tie-break).
       return {
-        isWon: player1Points !== player2Points,
-        winner: player1Points > player2Points ? "player1" : player2Points > player1Points ? "player2" : null,
+        isWon: scoringType === "innings" || scoringType === "time" || scoringType === "single",
+        isTie: true,
+        winner: null,
         winType: `${scoringType}_final_score`
       };
     }
     return {
       isWon: true,
+      isTie: false,
       winner: player1Points > player2Points ? "player1" : "player2",
       winType: `${scoringType}_final_score`
     };
@@ -701,7 +742,7 @@ const getLiveMatchState = async (req, res) => {
       // STEP 17c — root matchFormat/sportsType removed; read per-sport from
       // sports[i] keyed by match.sportId (with sports[0] fallback for legacy
       // matches lacking sportId).
-      const Tournament = require("../Modal/Tournament");
+      const Tournament = require("../src/modules/tournaments/models/Tournament");
       const { getMatchFormat, getSportName, resolveSportId } = require("../utils/sportTrackUtils");
       const tournament = await Tournament.findById(match.tournamentId);
       const _resolvedSportId = resolveSportId(tournament, match.sportId);
@@ -710,10 +751,10 @@ const getLiveMatchState = async (req, res) => {
       // Detect scoringType from tournament sport
       const { getScoringType } = require("../utils/matchFormatUtils");
       const sportName = match.sportName || match.sportsType || getSportName(tournament, _resolvedSportId);
-      const VALID_SCORING_TYPES = ["sets", "time", "innings", "single"];
+      const VALID_SCORING_TYPES = ["sets", "time", "innings", "single", "board"];
       const rawScoringType = tournamentFormat.scoringType || getScoringType(sportName);
       const scoringType = VALID_SCORING_TYPES.includes(rawScoringType) ? rawScoringType : (getScoringType(sportName) || "sets");
-      const isNonSet = scoringType === "time" || scoringType === "innings" || scoringType === "single";
+      const isNonSet = scoringType === "time" || scoringType === "innings" || scoringType === "single" || scoringType === "board";
       const defaultSets = isNonSet ? 1 : (tournamentFormat.totalSets || 1);
       const defaultGames = isNonSet ? 1 : (tournamentFormat.totalGames || 1);
       const defaultPTW = isNonSet ? null : (tournamentFormat.pointsToWinGame || null);
@@ -733,7 +774,11 @@ const getLiveMatchState = async (req, res) => {
         pointsToWinGame: tournamentFormat.pointsToWinGame || defaultPTW,
         marginToWin: tournamentFormat.marginToWin ?? null,
         deuceRule: tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : !isNonSet,
-        maxPointsPerGame: tournamentFormat.maxPointsPerGame || null,
+        // The hard cap is stored as `maxPointsCap` in presets/freeze but the
+        // engine consumes `maxPointsPerGame`. Coalesce both so e.g. Badminton's
+        // 30-point cap actually flows through (otherwise a 30-29 finish is
+        // rejected as "not won by margin").
+        maxPointsPerGame: tournamentFormat.maxPointsPerGame || tournamentFormat.maxPointsCap || null,
         serviceRule: {
           pointsPerService: tournamentFormat.serviceRule?.pointsPerService || 2,
           deuceServicePoints: tournamentFormat.serviceRule?.deuceServicePoints || 1
@@ -760,9 +805,20 @@ const getLiveMatchState = async (req, res) => {
       });
     }
 
+    // Sport-aware live-score block for cricket (innings) and carrom (board) so
+    // the scorers/spectators can render without separate calls.
+    let liveScore = null;
+    const _st = match.matchFormat?.scoringType || match.scoringType || null;
+    if (_st === "innings") liveScore = _cricketLiveScore(match, match.matchFormat || {});
+    else if (_st === "board") liveScore = _carromLiveScore(match);
+
+    const matchObj = match.toObject ? match.toObject() : match;
+    if (liveScore) matchObj.liveScore = liveScore;
+
     res.status(200).json({
       success: true,
-      match,
+      match: matchObj,
+      liveScore,
       matchType: isKnockoutMatch ? 'knockout' : 'regular'
     });
 
@@ -872,7 +928,9 @@ const completeGame = async (req, res) => {
 
   try {
     const { matchId } = req.params;
-    const { finalPlayer1Points, finalPlayer2Points } = req.body;
+    // penaltyWinner ("player1"|"player2") decides a level KNOCKOUT match for
+    // time-based sports (Football) — a penalty shootout. Ignored otherwise.
+    const { finalPlayer1Points, finalPlayer2Points, penaltyWinner = null } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(matchId)) {
       return res.status(400).json({
@@ -930,9 +988,9 @@ const completeGame = async (req, res) => {
 
     let authorized = false;
     if (req.userRole === "Manager") {
-      const TournamentModel = require("../Modal/Tournament");
+      const TournamentModel = require("../src/modules/tournaments/models/Tournament");
       const tournamentDoc = await TournamentModel.findById(match.tournamentId)
-        .select("managerId")
+        .select("managerId clubId")
         .lean();
       const managerIds = Array.isArray(tournamentDoc?.managerId)
         ? tournamentDoc.managerId.map((id) => id?.toString())
@@ -940,6 +998,13 @@ const completeGame = async (req, res) => {
         ? [tournamentDoc.managerId.toString()]
         : [];
       authorized = managerIds.includes(callerId);
+      // Same-club fallback: any manager of the tournament's owning club may
+      // score it (covers tournaments created before the creator was auto-added
+      // to managerId). Both clubIds must be present and equal.
+      if (!authorized && tournamentDoc?.clubId && req.user?.clubId &&
+          String(tournamentDoc.clubId) === String(req.user.clubId)) {
+        authorized = true;
+      }
     } else {
       const { isUmpireAuthorizedForMatch } = require("../utils/umpireAuth");
       const result = await isUmpireAuthorizedForMatch(callerId, match);
@@ -963,7 +1028,7 @@ const completeGame = async (req, res) => {
 
       if (match.tournamentId) {
         try {
-          const Tournament = require("../Modal/Tournament");
+          const Tournament = require("../src/modules/tournaments/models/Tournament");
           const { getMatchFormat, getSportName, resolveSportId } = require("../utils/sportTrackUtils");
           const tournament = await Tournament.findById(match.tournamentId);
           const _resolvedSportId = resolveSportId(tournament, match.sportId);
@@ -980,7 +1045,7 @@ const completeGame = async (req, res) => {
       const scoringType = tournamentFormat.scoringType || getScoringType(sportName);
 
       // Sport-aware defaults: non-set sports use 1 set / 1 game / 1 point-to-win
-      const isNonSet = scoringType === "time" || scoringType === "innings" || scoringType === "single";
+      const isNonSet = scoringType === "time" || scoringType === "innings" || scoringType === "single" || scoringType === "board";
       const defaultSets = isNonSet ? 1 : (tournamentFormat.totalSets || 1);
       const defaultGames = isNonSet ? 1 : (tournamentFormat.totalGames || 1);
       const defaultPTW = isNonSet ? null : (tournamentFormat.pointsToWinGame || null);
@@ -1001,7 +1066,9 @@ const completeGame = async (req, res) => {
         pointsToWinGame: tournamentFormat.pointsToWinGame || defaultPTW,
         marginToWin: tournamentFormat.marginToWin ?? null,
         deuceRule: tournamentFormat.deuceRule !== undefined ? tournamentFormat.deuceRule : defaultDeuce,
-        maxPointsPerGame: tournamentFormat.maxPointsPerGame || null,
+        // Coalesce maxPointsCap → maxPointsPerGame so the hard cap (e.g. 30 in
+        // Badminton) is enforced on this auto-init path too.
+        maxPointsPerGame: tournamentFormat.maxPointsPerGame || tournamentFormat.maxPointsCap || null,
 
         serviceRule: {
           pointsPerService: tournamentFormat.serviceRule?.pointsPerService || 2,
@@ -1031,9 +1098,23 @@ const completeGame = async (req, res) => {
       throw new Error("Current game not found");
     }
 
+    // matchFormat.scoringType is STRIPPED by the Match subschema, so it's always
+    // undefined here. Resolve from the canonical top-level match.scoringType
+    // (or the sport mapping) — otherwise time sports (Football) wrongly fall
+    // back to "sets" and a draw gets rejected as a tie.
+    const { getScoringType } = require("../utils/matchFormatUtils");
+    const resolvedScoringType =
+      (match.matchFormat && match.matchFormat.scoringType) ||
+      match.scoringType ||
+      getScoringType(match.sportName) ||
+      "sets";
+
     // Pre-validate game scores
     const { validateGameScore } = require("../utils/validateMatchResult");
-    const preValidation = validateGameScore(finalPlayer1Points, finalPlayer2Points, match.matchFormat);
+    const preValidation = validateGameScore(
+      finalPlayer1Points, finalPlayer2Points,
+      Object.assign({}, match.matchFormat?.toObject ? match.matchFormat.toObject() : match.matchFormat, { scoringType: resolvedScoringType })
+    );
     if (!preValidation.valid) {
       await session.abortTransaction();
       session.endSession();
@@ -1048,14 +1129,36 @@ const completeGame = async (req, res) => {
       match.matchFormat.marginToWin,
       match.matchFormat.deuceRule,
       match.matchFormat.maxPointsPerGame,
-      match.matchFormat.scoringType || null
+      resolvedScoringType
     );
 
     if (!gameResult.isWon) {
       return res.status(400).json({
         success: false,
-        message: `Invalid game result — scores do not satisfy win condition (scoringType: ${match.matchFormat.scoringType || "sets"})`
+        message: `Invalid game result — scores do not satisfy win condition (scoringType: ${resolvedScoringType})`
       });
+    }
+
+    // ── Drawable non-set sports (Football time, Chess single): resolve a LEVEL
+    // final score. Group stage → genuine draw (normalized after completion).
+    // Knockout → the manager must enter a tie-break winner; a KO can't end level.
+    const _isTimeSport = resolvedScoringType === "time";
+    const _drawableNonSet = resolvedScoringType === "time" || resolvedScoringType === "single";
+    const _isKnockoutLike = isKnockoutMatch || !!match.nextMatchId;
+    if (_drawableNonSet && gameResult.isTie && _isKnockoutLike) {
+      if (penaltyWinner === "player1" || penaltyWinner === "player2") {
+        gameResult.isTie = false;
+        gameResult.winner = penaltyWinner;
+        gameResult.shootout = true;
+      } else {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          needsTiebreak: true,
+          message: "Knockout match ended level — enter a tie-break winner to decide it.",
+        });
+      }
     }
 
     // Update current game
@@ -1216,7 +1319,7 @@ const completeGame = async (req, res) => {
                 player2Sets: player2SetsWon
               },
               completedAt: new Date(),
-              matchDuration: Math.floor((new Date() - match.createdAt) / (1000 * 60)) // minutes
+              matchDuration: match.createdAt ? Math.floor((new Date() - match.createdAt) / (1000 * 60)) : 0 // minutes
             };
           }
         } else {
@@ -1231,7 +1334,7 @@ const completeGame = async (req, res) => {
               player2Sets: player2SetsWon
             },
             completedAt: new Date(),
-            matchDuration: Math.floor((new Date() - match.createdAt) / (1000 * 60)) // minutes
+            matchDuration: match.createdAt ? Math.floor((new Date() - match.createdAt) / (1000 * 60)) : 0 // minutes
           };
         }
         matchCompleted = true;
@@ -1250,6 +1353,25 @@ const completeGame = async (req, res) => {
           };
         } catch (mrErr) {
           console.warn("[COMPLETE_GAME] Could not build matchResult:", mrErr.message);
+        }
+
+        // ── Non-set (Football time / Chess single) result normalization ──
+        // Persist the real score (goals/result, not the synthetic 1/0 "sets"),
+        // and represent a level GROUP match as a genuine DRAW (no winner). KO
+        // ties were already decided above via the tie-break winner.
+        if (_drawableNonSet) {
+          const goals = { player1Sets: finalPlayer1Points, player2Sets: finalPlayer2Points };
+          if (match.result) match.result.finalScore = goals;
+          if (match.score) { match.score.player1Sets = finalPlayer1Points; match.score.player2Sets = finalPlayer2Points; }
+          if (match.matchResult) { match.matchResult.player1Score = finalPlayer1Points; match.matchResult.player2Score = finalPlayer2Points; }
+          if (gameResult.shootout) {
+            if (match.matchResult) match.matchResult.tiebreak = { type: "penalties", winner: gameResult.winner };
+          } else if (gameResult.isTie) {
+            // genuine draw (group stage) — clear the fabricated set winner
+            if (match.result) match.result.winner = { playerId: null, playerName: null };
+            if (match.winner) match.winner = { playerId: null, playerName: null };
+            if (match.matchResult) match.matchResult.winner = null;
+          }
         }
 
         // ================================
@@ -1281,8 +1403,9 @@ const completeGame = async (req, res) => {
         // ================================
         if (!isKnockoutMatch) {
           await syncScoreModel(match, session);
-          // Recalculate group standings after match completion
-          await recalculateGroupStandings(match.tournamentId, match.groupId);
+          // Group standings are recalculated AFTER commit (below) — the
+          // in-transaction recalc read a snapshot WITHOUT this just-completed
+          // match, which dropped the last-scored match from the table.
         }
       } else {
         // Start next set
@@ -1369,6 +1492,17 @@ const completeGame = async (req, res) => {
     }
 
     await session.commitTransaction();
+
+    // Recalculate group standings AFTER commit so the just-completed match is
+    // included. (The in-transaction recalc read a snapshot without it, which
+    // permanently dropped the LAST-scored group match → wrong qualifiers.)
+    if (!isKnockoutMatch && matchCompleted) {
+      try {
+        await recalculateGroupStandings(match.tournamentId, match.groupId);
+      } catch (e) {
+        console.warn("[COMPLETE_GAME] post-commit standings recalc failed:", e.message);
+      }
+    }
 
     // Emit real-time events via Socket.io
     const io = req.app.get("io");
@@ -2290,7 +2424,7 @@ const bulkUploadScores = async (req, res) => {
 
         // Resolve match format. STEP 17c — read per-sport from sports[i].
         if (!match.matchFormat || !match.matchFormat.setsToWin) {
-          const Tournament = require("../Modal/Tournament");
+          const Tournament = require("../src/modules/tournaments/models/Tournament");
           const { getMatchFormat, resolveSportId } = require("../utils/sportTrackUtils");
           const tournament = await Tournament.findById(match.tournamentId);
           const tf = getMatchFormat(tournament, resolveSportId(tournament, match.sportId)) || {};
@@ -2308,6 +2442,26 @@ const bulkUploadScores = async (req, res) => {
             maxPointsPerGame: tf.maxPointsPerGame || null,
             serviceRule: tf.serviceRule || null
           };
+        }
+
+        // ── Sport-aware guard ──────────────────────────────────────────────
+        // Bulk upload collects per-SET scores, so it only makes sense for
+        // set-based sports (TT, Badminton, Foosball, Tennis, Volleyball…).
+        // Cricket (innings), Carrom (board), Chess (single) and Football (time)
+        // have fundamentally different result shapes — applying "sets" to them
+        // records a meaningless winner and breaks NRR/board/draw standings
+        // SILENTLY. Reject those cleanly so the manager uses the live scorer
+        // (this also guarantees the endpoint never crashes on a non-set sport).
+        let _bulkScoringType = match.scoringType || match.matchFormat?.scoringType || null;
+        if (!_bulkScoringType) {
+          try { _bulkScoringType = require("../utils/matchFormatUtils").getScoringType(match.sportName); } catch (_) { /* ignore */ }
+        }
+        if (_bulkScoringType && _bulkScoringType !== "sets") {
+          errors.push({
+            matchId,
+            error: `Bulk score upload isn't available for ${match.sportName || "this sport"} (${_bulkScoringType} scoring). Score these matches with the live scorer.`,
+          });
+          continue;
         }
 
         const setsToWin = match.matchFormat.setsToWin || 1;
@@ -2523,6 +2677,698 @@ const bulkUploadScores = async (req, res) => {
   }
 };
 
+// ════════════════════════════════════════════════════════════════════
+// CRICKET (innings) + CARROM (board) — incremental live scoring
+// ════════════════════════════════════════════════════════════════════
+// These power the dedicated scorers (web InningsBasedScorer / BoardBasedScorer
+// and the mobile referee scorers). They submit incrementally (per ball / per
+// board) so spectators see live updates, unlike the set-sports completeGame
+// path that posts a final game score.
+
+// Load the match across the 3 scoring models and authorize the caller
+// (mirrors completeGame's auth). Returns { match, isKnockoutMatch } or { error }.
+async function _loadScoringMatch(req, matchId, session) {
+  if (!mongoose.Types.ObjectId.isValid(matchId)) {
+    return { error: { status: 400, message: "Invalid match ID" } };
+  }
+  let match = await Match.findById(matchId).session(session);
+  let isKnockoutMatch = false;
+  if (!match) { match = await SuperMatch.findById(matchId).session(session); if (match) isKnockoutMatch = true; }
+  if (!match) { match = await DirectKnockoutMatch.findById(matchId).session(session); if (match) isKnockoutMatch = true; }
+  if (!match) return { error: { status: 404, message: "Match not found" } };
+
+  const callerId = req.user?._id?.toString() || req.user?.id?.toString();
+  if (!callerId) return { error: { status: 401, message: "Not authenticated." } };
+
+  let authorized = false;
+  if (req.userRole === "Manager") {
+    const TournamentModel = require("../src/modules/tournaments/models/Tournament");
+    const tDoc = await TournamentModel.findById(match.tournamentId).select("managerId clubId").lean();
+    const managerIds = Array.isArray(tDoc?.managerId)
+      ? tDoc.managerId.map((id) => id?.toString())
+      : tDoc?.managerId ? [tDoc.managerId.toString()] : [];
+    authorized = managerIds.includes(callerId);
+    // Same-club fallback (see completeGame): a club's managers may score its
+    // tournaments even if not explicitly listed in managerId.
+    if (!authorized && tDoc?.clubId && req.user?.clubId &&
+        String(tDoc.clubId) === String(req.user.clubId)) {
+      authorized = true;
+    }
+  } else {
+    const { isUmpireAuthorizedForMatch } = require("../utils/umpireAuth");
+    const r = await isUmpireAuthorizedForMatch(callerId, match);
+    authorized = !!r.authorized;
+  }
+  if (!authorized) return { error: { status: 403, message: "You are not authorized to score this match." } };
+  return { match, isKnockoutMatch };
+}
+
+// Ensure we have a match format carrying scoringType. NOTE: the Match
+// `matchFormat` subschema does NOT declare `scoringType` (Mongoose strips it),
+// so the canonical scoring type lives on the top-level `match.scoringType`
+// (stamped by MatchFactory). Resolve from there first, then the tournament.
+async function _ensureScoringFormat(match) {
+  const existingType = match.matchFormat?.scoringType || match.scoringType || null;
+  if (match.matchFormat && existingType) {
+    const base = match.matchFormat.toObject ? match.matchFormat.toObject() : { ...match.matchFormat };
+    return { ...base, scoringType: existingType };
+  }
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
+  const { getMatchFormat, getSportName, resolveSportId } = require("../utils/sportTrackUtils");
+  const { getScoringType, freezeMatchFormat } = require("../utils/matchFormatUtils");
+  let tf = {};
+  let sportName = match.sportName;
+  try {
+    const t = await Tournament.findById(match.tournamentId);
+    const sid = resolveSportId(t, match.sportId);
+    tf = getMatchFormat(t, sid) || {};
+    sportName = getSportName(t, sid) || sportName;
+  } catch { /* fall through to defaults */ }
+  const scoringType = tf.scoringType || match.scoringType || getScoringType(sportName);
+  match.matchFormat = { ...(match.matchFormat || {}), ...freezeMatchFormat({ ...tf, scoringType }) };
+  match.scoringType = scoringType; // keep the canonical top-level field in sync
+  return match.matchFormat;
+}
+
+// Save a match to the correct model.
+async function _persistMatch(match, isKnockoutMatch, session) {
+  if (isKnockoutMatch && match.constructor.modelName === "SuperMatch") {
+    await SuperMatch.findByIdAndUpdate(match._id, match, { session, new: true });
+  } else if (isKnockoutMatch && match.constructor.modelName === "DirectKnockoutMatch") {
+    await DirectKnockoutMatch.findByIdAndUpdate(match._id, match, { session, new: true });
+  } else {
+    await match.save({ session });
+  }
+}
+
+// Shared completion: set winner/result, normalized matchResult, bracket
+// progression, standings — mirrors completeGame's terminal block.
+// winnerSide is "player1"|"player2"|null (null = recorded draw, group only).
+async function _finalizeMatch(match, winnerSide, p1Score, p2Score, isKnockoutMatch, session) {
+  match.status = "COMPLETED";
+
+  const sideObj = (side) => ({
+    playerId: side === "player1" ? match.player1.playerId : match.player2.playerId,
+    playerName: side === "player1"
+      ? (match.player1.playerName || match.player1.userName)
+      : (match.player2.playerName || match.player2.userName),
+  });
+  const winnerObj = winnerSide ? sideObj(winnerSide) : { playerId: null, playerName: null };
+  const finalScore = { player1Sets: p1Score, player2Sets: p2Score };
+
+  if (isKnockoutMatch && match.constructor.modelName === "SuperMatch") {
+    match.winner = winnerObj;
+    match.loser = winnerSide ? sideObj(winnerSide === "player1" ? "player2" : "player1") : { playerId: null, playerName: null };
+    match.score = { player1Sets: p1Score, player2Sets: p2Score, setScores: [] };
+  } else {
+    const durMin = match.createdAt ? Math.floor((new Date() - match.createdAt) / (1000 * 60)) : 0;
+    match.result = {
+      ...(match.result?.toObject ? match.result.toObject() : match.result || {}),
+      winner: winnerObj,
+      finalScore,
+      completedAt: new Date(),
+      matchDuration: Number.isFinite(durMin) ? durMin : 0,
+    };
+  }
+
+  try {
+    const { readMatchResult } = require("../utils/matchUtils");
+    const cr = readMatchResult(match);
+    match.matchResult = {
+      type: cr.type, completed: true,
+      player1Score: cr.player1Score, player2Score: cr.player2Score,
+      winner: cr.winner, details: cr.details,
+    };
+  } catch (e) { console.warn("[INNINGS/BOARD] matchResult build failed:", e.message); }
+
+  if (isKnockoutMatch && winnerSide) {
+    try {
+      if (match.constructor.modelName === "DirectKnockoutMatch") {
+        const { processDirectKnockoutProgression } = require("./directKnockoutController");
+        await processDirectKnockoutProgression(match, winnerObj.playerId);
+      } else {
+        const { progressWinnerToNextRound } = require("./tournamentController");
+        await progressWinnerToNextRound(match, session);
+      }
+    } catch (e) { console.error("[INNINGS/BOARD] progression error:", e.message); }
+  }
+
+  await _persistMatch(match, isKnockoutMatch, session);
+
+  if (!isKnockoutMatch) {
+    await syncScoreModel(match, session);
+    // NOTE: standings are recalculated AFTER the transaction commits (by the
+    // caller via _recalcAfterCommit) — running it here would query outside the
+    // session and miss this match's just-set COMPLETED status.
+  }
+}
+
+// Recalculate group standings for a completed group match. MUST be called
+// after the scoring transaction has committed so the completion is visible.
+async function _recalcAfterCommit(match, isKnockoutMatch) {
+  if (isKnockoutMatch) return;
+  try { await recalculateGroupStandings(match.tournamentId, match.groupId); }
+  catch (e) { console.error("[INNINGS/BOARD] standings recalc error:", e.message); }
+}
+
+// Emit live score/round/complete socket events for cricket & carrom.
+function _emitCricketCarromUpdate(req, match, matchId, { roundCompleted, matchCompleted, liveScore }) {
+  const io = req.app.get("io");
+  if (!io) return;
+  const tournamentId = match.tournamentId ? match.tournamentId.toString() : null;
+  const tournamentRoom = tournamentId ? `tournament_${tournamentId}` : null;
+  const matchRoom = `match_${matchId}`;
+  const scoringType = match.matchFormat?.scoringType || match.scoringType || null;
+  const labels = scoringType === "innings" ? { round: "Innings", score: "Runs" }
+    : scoringType === "board" ? { round: "Board", score: "Points" }
+    : { round: "Set", score: "Points" };
+
+  const payload = {
+    matchId,
+    tournamentId,
+    scoringType,
+    sportName: match.sportName || null,
+    labels,
+    player1: match.player1?.userName || match.player1?.playerName,
+    player2: match.player2?.userName || match.player2?.playerName,
+    liveScore: liveScore || null,
+    result: match.result,
+  };
+  io.to(matchRoom).emit("score:update", payload);
+  if (tournamentRoom) io.to(tournamentRoom).emit("score:update", payload);
+
+  if (roundCompleted) {
+    io.to(matchRoom).emit("round:complete", payload);
+    io.to(matchRoom).emit("set:complete", payload);
+    if (tournamentRoom) {
+      io.to(tournamentRoom).emit("round:complete", payload);
+      io.to(tournamentRoom).emit("set:complete", payload);
+    }
+  }
+  if (matchCompleted) {
+    let normalizedResult = null;
+    try { normalizedResult = require("../utils/matchUtils").readMatchResult(match); } catch { /* noop */ }
+    const completePayload = { ...payload, winner: match.winner, matchResult: normalizedResult };
+    io.to(matchRoom).emit("match:complete", completePayload);
+    if (tournamentRoom) io.to(tournamentRoom).emit("match:complete", completePayload);
+  }
+}
+
+// ── Cricket helpers ──
+
+// Recompute innings aggregates from the flat deliveries log.
+function _recomputeInnings(inn) {
+  let runs = 0, wickets = 0, legalBalls = 0;
+  const extras = { wides: 0, noBalls: 0, byes: 0, legByes: 0 };
+  const fow = [];
+  for (const d of (inn.deliveries || [])) {
+    const off = Number(d.runs) || 0;
+    const ex = Number(d.extraRuns) || 0;
+    runs += off + ex;
+    if (d.extra === "wide") extras.wides += ex || 1;
+    else if (d.extra === "no-ball") extras.noBalls += ex || 1;
+    else if (d.extra === "bye") extras.byes += ex;
+    else if (d.extra === "leg-bye") extras.legByes += ex;
+    if (d.legalDelivery !== false) legalBalls += 1;
+    if (d.isWicket) {
+      wickets += 1;
+      fow.push({ wicket: wickets, runs, over: Math.floor(legalBalls / 6) + (legalBalls % 6) / 10 });
+    }
+  }
+  inn.runs = runs;
+  inn.wickets = wickets;
+  inn.oversBowled = Math.floor(legalBalls / 6);
+  inn.ballsBowled = legalBalls % 6;
+  inn.extras = extras;
+  inn.fallOfWickets = fow;
+  return { runs, wickets, legalBalls };
+}
+
+function _inningsOver(inn, oversCount) {
+  const legalBalls = (inn.oversBowled * 6) + inn.ballsBowled;
+  const maxBalls = (oversCount || 20) * 6;
+  if (inn.wickets >= 10) return true;
+  if (legalBalls >= maxBalls) return true;
+  return false;
+}
+
+function _cricketLiveScore(match, fmt) {
+  const innings = (match.result?.innings || []).map((i) => (i.toObject ? i.toObject() : i));
+  const current = [...innings].reverse().find((i) => i.status === "IN_PROGRESS") || innings[innings.length - 1] || null;
+  const oversCount = fmt.oversCount || 20;
+  let required = null, ballsRemaining = null, requiredRate = null, currentRunRate = null;
+  if (current) {
+    const legalBalls = (current.oversBowled * 6) + current.ballsBowled;
+    currentRunRate = legalBalls > 0 ? Number(((current.runs / legalBalls) * 6).toFixed(2)) : 0;
+    if (current.inningsNumber === 2 && current.target != null) {
+      required = Math.max(0, current.target - current.runs);
+      ballsRemaining = Math.max(0, (oversCount * 6) - legalBalls);
+      requiredRate = ballsRemaining > 0 ? Number(((required / ballsRemaining) * 6).toFixed(2)) : null;
+    }
+  }
+  return {
+    scoringType: "innings",
+    currentInnings: current?.inningsNumber ?? null,
+    battingPlayer: current?.battingSide ?? null,
+    target: current?.target ?? null,
+    required, ballsRemaining, requiredRate, currentRunRate,
+    innings,
+  };
+}
+
+// Compute and finalize the cricket match winner from both innings.
+// winnerOverride lets finishCricketMatch force a super-over winner on a tie.
+async function _resolveCricketResultAndFinalize(match, fmt, isKnockoutMatch, session, { winnerOverride = null, superOver = null } = {}) {
+  const innings = match.result.innings;
+  const i1 = innings.find((i) => i.inningsNumber === 1);
+  const i2 = innings.find((i) => i.inningsNumber === 2);
+  const r1 = i1?.runs || 0;
+  const r2 = i2?.runs || 0;
+
+  // Map innings totals back to player sides
+  const sideRuns = { player1: 0, player2: 0 };
+  for (const inn of innings) {
+    if (inn.inningsNumber <= 2 && inn.battingSide) sideRuns[inn.battingSide] += inn.runs || 0;
+  }
+
+  let winnerSide = null;
+  const cricketResult = { marginType: null, marginValue: null, isTie: false, superOver: superOver || null, chasedSuccessfully: false };
+
+  if (winnerOverride) {
+    winnerSide = winnerOverride;
+    cricketResult.marginType = "super_over";
+    cricketResult.isTie = true;
+  } else if (sideRuns.player1 === sideRuns.player2) {
+    // Tie — caller (finishCricketMatch) must resolve via super-over for knockouts.
+    cricketResult.isTie = true;
+    cricketResult.marginType = "tie";
+    winnerSide = null;
+  } else {
+    winnerSide = sideRuns.player1 > sideRuns.player2 ? "player1" : "player2";
+    // Margin: chasing side (innings-2 batting) winning by wickets, else by runs.
+    const chasingSide = i2?.battingSide || null;
+    if (chasingSide && winnerSide === chasingSide && i2) {
+      cricketResult.marginType = "wickets";
+      cricketResult.marginValue = 10 - (i2.wickets || 0);
+      cricketResult.chasedSuccessfully = true;
+    } else {
+      cricketResult.marginType = "runs";
+      cricketResult.marginValue = Math.abs(sideRuns.player1 - sideRuns.player2);
+    }
+  }
+
+  match.result = match.result?.toObject ? match.result.toObject() : match.result;
+  match.result.cricketResult = cricketResult;
+  match.markModified("result");
+
+  const p1Won = winnerSide === "player1" ? 1 : 0;
+  const p2Won = winnerSide === "player2" ? 1 : 0;
+  await _finalizeMatch(match, winnerSide, p1Won, p2Won, isKnockoutMatch, session);
+  return { winnerSide, cricketResult };
+}
+
+// POST /cricket/ball — record one delivery
+const submitCricketBall = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { matchId } = req.params;
+    const loaded = await _loadScoringMatch(req, matchId, session);
+    if (loaded.error) { await session.abortTransaction(); return res.status(loaded.error.status).json({ success: false, message: loaded.error.message }); }
+    let { match, isKnockoutMatch } = loaded;
+    if (match.status === "COMPLETED") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Match already completed" }); }
+
+    const fmt = await _ensureScoringFormat(match);
+    if (fmt.scoringType !== "innings") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Not a cricket (innings) match" }); }
+
+    const {
+      innings: inningsNumber = 1, battingPlayer = "player1",
+      runs = 0, extra = null, extraRuns = 0, isWicket = false, wicketType = null, legalDelivery = true,
+    } = req.body;
+
+    if (!match.result) match.result = {};
+    if (!Array.isArray(match.result.innings)) match.result.innings = [];
+
+    let inn = match.result.innings.find((i) => i.inningsNumber === inningsNumber);
+    if (!inn) {
+      const firstInnings = match.result.innings.find((x) => x.inningsNumber === 1);
+      const target = inningsNumber === 2 ? ((firstInnings?.runs || 0) + 1) : null;
+      match.result.innings.push({
+        inningsNumber, battingSide: battingPlayer, deliveries: [],
+        runs: 0, wickets: 0, oversBowled: 0, ballsBowled: 0,
+        extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0 },
+        target, status: "IN_PROGRESS", overLog: [], fallOfWickets: [],
+      });
+      inn = match.result.innings[match.result.innings.length - 1];
+    }
+    if (inn.status === "COMPLETED") { await session.abortTransaction(); return res.status(400).json({ success: false, message: `Innings ${inningsNumber} is already complete` }); }
+
+    // Per-ball striker/bowler + live role tracking. The scorer drives strike
+    // rotation client-side: `striker`/`bowler` = who faced/bowled THIS ball
+    // (recorded on the delivery); `nextStriker`/`nextNonStriker`/`nextBowler` =
+    // the roles AFTER rotation (stored on the innings for the next ball).
+    const {
+      striker = null, nonStriker = null, bowler = null,
+      nextStriker = null, nextNonStriker = null, nextBowler = null,
+    } = req.body;
+    inn.deliveries.push({
+      runs, extra, extraRuns, isWicket, wicketType, legalDelivery,
+      striker: striker || inn.striker || null,
+      bowler: bowler || inn.currentBowler || null,
+    });
+    _recomputeInnings(inn);
+    inn.striker = nextStriker !== null ? nextStriker : (striker !== null ? striker : inn.striker);
+    inn.nonStriker = nextNonStriker !== null ? nextNonStriker : (nonStriker !== null ? nonStriker : inn.nonStriker);
+    inn.currentBowler = nextBowler !== null ? nextBowler : (bowler !== null ? bowler : inn.currentBowler);
+    match.markModified("result");
+
+    if (match.status === "SCHEDULED") match.status = "IN_PROGRESS";
+    match.scoringType = "innings";
+
+    const oversCount = inn.maxOvers || fmt.oversCount || 20;
+    const inningsCountTotal = fmt.inningsCount || 2;
+    let matchCompleted = false, inningsCompleted = false;
+
+    if (inningsNumber === 2 && inn.target != null && inn.runs >= inn.target) {
+      inn.status = "COMPLETED"; inningsCompleted = true; matchCompleted = true;        // chase success
+    } else if (_inningsOver(inn, oversCount)) {
+      inn.status = "COMPLETED"; inningsCompleted = true;
+      if (inningsNumber >= inningsCountTotal) matchCompleted = true;
+    }
+
+    let tie = false;
+    if (matchCompleted) {
+      const resolved = await _resolveCricketResultAndFinalize(match, fmt, isKnockoutMatch, session);
+      if (resolved.winnerSide === null) {
+        // Tie — do not finalize as completed for knockouts; await super-over.
+        // (_finalizeMatch already ran with winnerSide null = recorded draw for
+        //  group; for knockout the client must POST /cricket/finish super_over.)
+        tie = true;
+        matchCompleted = !isKnockoutMatch; // group: a tie is a valid completed draw
+        if (isKnockoutMatch) match.status = "IN_PROGRESS"; // reopen for super-over
+      }
+    } else {
+      await _persistMatch(match, isKnockoutMatch, session);
+    }
+
+    await session.commitTransaction();
+    if (matchCompleted) await _recalcAfterCommit(match, isKnockoutMatch);
+    _emitCricketCarromUpdate(req, match, matchId, { roundCompleted: inningsCompleted, matchCompleted, liveScore: _cricketLiveScore(match, fmt) });
+    return res.status(200).json({ success: true, matchCompleted, inningsCompleted, tie, liveScore: _cricketLiveScore(match, fmt), match });
+  } catch (e) {
+    await session.abortTransaction();
+    console.error("submitCricketBall error:", e);
+    return res.status(500).json({ success: false, message: "Failed to record delivery", error: e.message });
+  } finally { session.endSession(); }
+};
+
+// POST /cricket/undo — remove the last delivery of the active innings
+const undoCricketBall = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { matchId } = req.params;
+    const loaded = await _loadScoringMatch(req, matchId, session);
+    if (loaded.error) { await session.abortTransaction(); return res.status(loaded.error.status).json({ success: false, message: loaded.error.message }); }
+    let { match, isKnockoutMatch } = loaded;
+    const fmt = await _ensureScoringFormat(match);
+    if (fmt.scoringType !== "innings") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Not a cricket match" }); }
+
+    const innings = match.result?.innings || [];
+    const inn = [...innings].reverse().find((i) => (i.deliveries || []).length > 0);
+    if (!inn) { await session.abortTransaction(); return res.status(400).json({ success: false, message: "No delivery to undo" }); }
+
+    inn.deliveries.pop();
+    inn.status = "IN_PROGRESS";
+    _recomputeInnings(inn);
+    if (match.status === "COMPLETED") {
+      match.status = "IN_PROGRESS";
+      if (match.result) match.result.cricketResult = null;
+    }
+    match.markModified("result");
+    await _persistMatch(match, isKnockoutMatch, session);
+    await session.commitTransaction();
+    _emitCricketCarromUpdate(req, match, matchId, { liveScore: _cricketLiveScore(match, fmt) });
+    return res.status(200).json({ success: true, liveScore: _cricketLiveScore(match, fmt), match });
+  } catch (e) {
+    await session.abortTransaction();
+    console.error("undoCricketBall error:", e);
+    return res.status(500).json({ success: false, message: "Failed to undo", error: e.message });
+  } finally { session.endSession(); }
+};
+
+// POST /cricket/innings-switch — close innings 1, open innings 2 (with target)
+const switchCricketInnings = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { matchId } = req.params;
+    const loaded = await _loadScoringMatch(req, matchId, session);
+    if (loaded.error) { await session.abortTransaction(); return res.status(loaded.error.status).json({ success: false, message: loaded.error.message }); }
+    let { match, isKnockoutMatch } = loaded;
+    const fmt = await _ensureScoringFormat(match);
+    if (fmt.scoringType !== "innings") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Not a cricket match" }); }
+
+    const innings = match.result?.innings || [];
+    const i1 = innings.find((i) => i.inningsNumber === 1);
+    if (!i1) { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Innings 1 not started" }); }
+    i1.status = "COMPLETED";
+
+    if (!innings.find((i) => i.inningsNumber === 2)) {
+      const otherSide = i1.battingSide === "player1" ? "player2" : "player1";
+      match.result.innings.push({
+        inningsNumber: 2, battingSide: otherSide, deliveries: [],
+        runs: 0, wickets: 0, oversBowled: 0, ballsBowled: 0,
+        extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0 },
+        target: (i1.runs || 0) + 1, status: "IN_PROGRESS", overLog: [], fallOfWickets: [],
+      });
+    }
+    match.markModified("result");
+    await _persistMatch(match, isKnockoutMatch, session);
+    await session.commitTransaction();
+    _emitCricketCarromUpdate(req, match, matchId, { roundCompleted: true, liveScore: _cricketLiveScore(match, fmt) });
+    return res.status(200).json({ success: true, liveScore: _cricketLiveScore(match, fmt), match });
+  } catch (e) {
+    await session.abortTransaction();
+    console.error("switchCricketInnings error:", e);
+    return res.status(500).json({ success: false, message: "Failed to switch innings", error: e.message });
+  } finally { session.endSession(); }
+};
+
+// POST /cricket/finish — explicit finish; resolves ties via super-over winner
+const finishCricketMatch = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { matchId } = req.params;
+    const { result = null, winner = null, superOver = null } = req.body; // winner: "player1"|"player2"
+    const loaded = await _loadScoringMatch(req, matchId, session);
+    if (loaded.error) { await session.abortTransaction(); return res.status(loaded.error.status).json({ success: false, message: loaded.error.message }); }
+    let { match, isKnockoutMatch } = loaded;
+    const fmt = await _ensureScoringFormat(match);
+    if (fmt.scoringType !== "innings") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Not a cricket match" }); }
+    (match.result?.innings || []).forEach((i) => { i.status = "COMPLETED"; });
+
+    const override = result === "super_over" ? winner : null;
+    if (result === "super_over" && !winner) {
+      await session.abortTransaction();
+      return res.status(400).json({ success: false, message: "super_over result requires a winner" });
+    }
+    const resolved = await _resolveCricketResultAndFinalize(match, fmt, isKnockoutMatch, session, { winnerOverride: override, superOver });
+    await session.commitTransaction();
+    await _recalcAfterCommit(match, isKnockoutMatch);
+    _emitCricketCarromUpdate(req, match, matchId, { matchCompleted: true, liveScore: _cricketLiveScore(match, fmt) });
+    return res.status(200).json({ success: true, winnerSide: resolved.winnerSide, cricketResult: resolved.cricketResult, match });
+  } catch (e) {
+    await session.abortTransaction();
+    console.error("finishCricketMatch error:", e);
+    return res.status(500).json({ success: false, message: "Failed to finish match", error: e.message });
+  } finally { session.endSession(); }
+};
+
+// ── Carrom helpers ──
+
+function _carromLiveScore(match) {
+  const boards = (match.result?.boards || []).map((b) => (b.toObject ? b.toObject() : b));
+  let p1Boards = 0, p2Boards = 0, p1Points = 0, p2Points = 0;
+  for (const b of boards) {
+    if (b.winner === "player1") p1Boards++;
+    else if (b.winner === "player2") p2Boards++;
+    p1Points += b.player1Points || 0;
+    p2Points += b.player2Points || 0;
+  }
+  return { scoringType: "board", boards, player1Boards: p1Boards, player2Boards: p2Boards, player1Points: p1Points, player2Points: p2Points };
+}
+
+// POST /carrom/board — record one board's result
+const submitCarromBoard = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { matchId } = req.params;
+    const loaded = await _loadScoringMatch(req, matchId, session);
+    if (loaded.error) { await session.abortTransaction(); return res.status(loaded.error.status).json({ success: false, message: loaded.error.message }); }
+    let { match, isKnockoutMatch } = loaded;
+    if (match.status === "COMPLETED") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Match already completed" }); }
+
+    const fmt = await _ensureScoringFormat(match);
+    if (fmt.scoringType !== "board") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Not a carrom (board) match" }); }
+
+    const { boardNumber = null, winner, points = 0, queenPocketed = false, queenBonus = 0 } = req.body;
+    if (winner !== "player1" && winner !== "player2") {
+      await session.abortTransaction();
+      return res.status(400).json({ success: false, message: "Board winner (player1/player2) is required" });
+    }
+
+    if (!match.result) match.result = {};
+    if (!Array.isArray(match.result.boards)) match.result.boards = [];
+
+    const winnerPoints = (Number(points) || 0) + (queenPocketed ? (Number(queenBonus) || 0) : 0);
+    match.result.boards.push({
+      boardNumber: boardNumber ?? (match.result.boards.length + 1),
+      player1Points: winner === "player1" ? winnerPoints : 0,
+      player2Points: winner === "player2" ? winnerPoints : 0,
+      queenPocketedBy: queenPocketed ? winner : null,
+      winner,
+      status: "COMPLETED",
+    });
+    match.markModified("result");
+    if (match.status === "SCHEDULED") match.status = "IN_PROGRESS";
+    match.scoringType = "board";
+
+    const live = _carromLiveScore(match);
+    const boardsToWin = fmt.boardsToWin || Math.ceil((fmt.totalSets || 3) / 2);
+    let matchCompleted = false;
+    if (live.player1Boards >= boardsToWin || live.player2Boards >= boardsToWin) {
+      matchCompleted = true;
+      const winnerSide = live.player1Boards > live.player2Boards ? "player1" : "player2";
+      await _finalizeMatch(match, winnerSide, live.player1Boards, live.player2Boards, isKnockoutMatch, session);
+    } else {
+      await _persistMatch(match, isKnockoutMatch, session);
+    }
+
+    await session.commitTransaction();
+    if (matchCompleted) await _recalcAfterCommit(match, isKnockoutMatch);
+    _emitCricketCarromUpdate(req, match, matchId, { roundCompleted: true, matchCompleted, liveScore: _carromLiveScore(match) });
+    return res.status(200).json({ success: true, matchCompleted, liveScore: _carromLiveScore(match), match });
+  } catch (e) {
+    await session.abortTransaction();
+    console.error("submitCarromBoard error:", e);
+    return res.status(500).json({ success: false, message: "Failed to record board", error: e.message });
+  } finally { session.endSession(); }
+};
+
+// POST /cricket/setup — set overs + batting/bowling order + opening roles for an
+// innings (scorer enters names; no squad system). Creates the innings if needed.
+const setupCricketInnings = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { matchId } = req.params;
+    const loaded = await _loadScoringMatch(req, matchId, session);
+    if (loaded.error) { await session.abortTransaction(); return res.status(loaded.error.status).json({ success: false, message: loaded.error.message }); }
+    let { match, isKnockoutMatch } = loaded;
+    if (match.status === "COMPLETED") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Match already completed" }); }
+
+    const fmt = await _ensureScoringFormat(match);
+    if (fmt.scoringType !== "innings") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Not a cricket (innings) match" }); }
+
+    const {
+      innings: inningsNumber = 1, battingPlayer = "player1",
+      maxOvers = null, battingOrder = [], bowlingOrder = [],
+      striker = null, nonStriker = null, currentBowler = null,
+    } = req.body;
+
+    const clean = (a) => (Array.isArray(a) ? a.map((s) => String(s || "").trim()).filter(Boolean) : []);
+    const bat = clean(battingOrder), bowl = clean(bowlingOrder);
+
+    if (!match.result) match.result = {};
+    if (!Array.isArray(match.result.innings)) match.result.innings = [];
+
+    let inn = match.result.innings.find((i) => i.inningsNumber === inningsNumber);
+    const firstInnings = match.result.innings.find((x) => x.inningsNumber === 1);
+    const target = inningsNumber === 2 ? ((firstInnings?.runs || 0) + 1) : null;
+    if (!inn) {
+      match.result.innings.push({
+        inningsNumber, battingSide: battingPlayer, deliveries: [],
+        runs: 0, wickets: 0, oversBowled: 0, ballsBowled: 0,
+        extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0 },
+        target, status: "IN_PROGRESS", overLog: [], fallOfWickets: [],
+        maxOvers: maxOvers ? Math.floor(Number(maxOvers)) : null,
+        battingOrder: bat, bowlingOrder: bowl,
+        striker, nonStriker, currentBowler,
+      });
+      inn = match.result.innings[match.result.innings.length - 1];
+    } else {
+      if (maxOvers) inn.maxOvers = Math.floor(Number(maxOvers));
+      if (bat.length) inn.battingOrder = bat;
+      if (bowl.length) inn.bowlingOrder = bowl;
+      if (striker !== null) inn.striker = striker;
+      if (nonStriker !== null) inn.nonStriker = nonStriker;
+      if (currentBowler !== null) inn.currentBowler = currentBowler;
+    }
+    // Default the live roles from the orders when not supplied.
+    if (!inn.striker && inn.battingOrder?.[0]) inn.striker = inn.battingOrder[0];
+    if (!inn.nonStriker && inn.battingOrder?.[1]) inn.nonStriker = inn.battingOrder[1];
+    if (!inn.currentBowler && inn.bowlingOrder?.[0]) inn.currentBowler = inn.bowlingOrder[0];
+
+    if (inn.maxOvers) {
+      match.matchFormat = match.matchFormat || {};
+      match.matchFormat.oversCount = inn.maxOvers;
+      match.markModified("matchFormat");
+    }
+    if (match.status === "SCHEDULED") match.status = "IN_PROGRESS";
+    match.scoringType = "innings";
+    match.markModified("result");
+
+    await _persistMatch(match, isKnockoutMatch, session);
+    await session.commitTransaction();
+    _emitCricketCarromUpdate(req, match, matchId, { liveScore: _cricketLiveScore(match, fmt) });
+    return res.status(200).json({ success: true, liveScore: _cricketLiveScore(match, fmt), match });
+  } catch (e) {
+    await session.abortTransaction();
+    console.error("setupCricketInnings error:", e);
+    return res.status(500).json({ success: false, message: "Failed to set up innings", error: e.message });
+  } finally { session.endSession(); }
+};
+
+// POST /cricket/lineup — change batting/bowling order or the live striker /
+// non-striker / bowler DURING a running match.
+const updateCricketLineup = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { matchId } = req.params;
+    const loaded = await _loadScoringMatch(req, matchId, session);
+    if (loaded.error) { await session.abortTransaction(); return res.status(loaded.error.status).json({ success: false, message: loaded.error.message }); }
+    let { match, isKnockoutMatch } = loaded;
+    if (match.status === "COMPLETED") { await session.abortTransaction(); return res.status(400).json({ success: false, message: "Match already completed" }); }
+
+    const fmt = await _ensureScoringFormat(match);
+    const inningsNumber = req.body.innings || match.liveScore?.currentInnings || 1;
+    const inn = (match.result?.innings || []).find((i) => i.inningsNumber === inningsNumber);
+    if (!inn) { await session.abortTransaction(); return res.status(404).json({ success: false, message: "Innings not found" }); }
+
+    const { battingOrder, bowlingOrder, striker, nonStriker, currentBowler } = req.body;
+    const clean = (a) => a.map((s) => String(s || "").trim()).filter(Boolean);
+    if (Array.isArray(battingOrder)) inn.battingOrder = clean(battingOrder);
+    if (Array.isArray(bowlingOrder)) inn.bowlingOrder = clean(bowlingOrder);
+    if (striker !== undefined) inn.striker = striker;
+    if (nonStriker !== undefined) inn.nonStriker = nonStriker;
+    if (currentBowler !== undefined) inn.currentBowler = currentBowler;
+    match.markModified("result");
+
+    await _persistMatch(match, isKnockoutMatch, session);
+    await session.commitTransaction();
+    _emitCricketCarromUpdate(req, match, matchId, { liveScore: _cricketLiveScore(match, fmt) });
+    return res.status(200).json({ success: true, liveScore: _cricketLiveScore(match, fmt), match });
+  } catch (e) {
+    await session.abortTransaction();
+    console.error("updateCricketLineup error:", e);
+    return res.status(500).json({ success: false, message: "Failed to update lineup", error: e.message });
+  } finally { session.endSession(); }
+};
+
 module.exports = {
   startMatch,
   getLiveMatchState,
@@ -2539,4 +3385,12 @@ module.exports = {
   getGroupStandings,
   recalculateGroupStandings,
   bulkUploadScores,
+  // Cricket (innings) + Carrom (board) incremental scoring
+  setupCricketInnings,
+  updateCricketLineup,
+  submitCricketBall,
+  undoCricketBall,
+  switchCricketInnings,
+  finishCricketMatch,
+  submitCarromBoard,
 };

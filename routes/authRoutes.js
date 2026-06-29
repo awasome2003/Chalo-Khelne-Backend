@@ -1,10 +1,11 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const User = require("../Modal/User");
-const { Manager } = require("../Modal/ClubManager");
-const DeviceToken = require("../Modal/DeviceToken");
-const Superadminmodel = require("../Modal/Superadminmodel");
+const User = require("../src/modules/identity/models/User");
+const { Manager } = require("../src/modules/identity/models/ClubManager");
+const DeviceToken = require("../src/modules/identity/models/DeviceToken");
+const Superadminmodel = require("../src/modules/identity/models/Superadminmodel");
+const Substitute = require("../src/modules/identity/models/Substitute");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 
@@ -179,8 +180,34 @@ router.post("/register", registerLimiter, async (req, res) => {
       res.json({ message: "Registration successful, waiting for approval" });
     }
   } catch (error) {
-    console.error(error.message);
-    res.status(500).send("Server error");
+    console.error("[REGISTER] failed:", error);
+    // Duplicate unique index (e.g. email) → clean 400 instead of a 500.
+    if (error && error.code === 11000) {
+      const field = Object.keys(error.keyPattern || error.keyValue || {})[0] || "field";
+      return res.status(400).json({
+        message:
+          field === "email"
+            ? "An account with this email already exists."
+            : `An account with this ${field} already exists.`,
+        code: "DUPLICATE_KEY",
+        field,
+      });
+    }
+    // Mongoose validation (e.g. missing mobile/name) → 400 with the failing field.
+    if (error && error.name === "ValidationError") {
+      const first = Object.values(error.errors || {})[0];
+      return res.status(400).json({
+        message: first ? first.message : "Please fill in all required fields.",
+        code: "VALIDATION_ERROR",
+      });
+    }
+    // ALWAYS return JSON — the mobile/web clients call res.json() on the body.
+    // (Previously this sent the plain text "Server error", which crashed the
+    // client with: JSON Parse error: Unexpected character: S.)
+    res.status(500).json({
+      message: "Registration failed. Please try again.",
+      error: error.message,
+    });
   }
 });
 
@@ -200,9 +227,10 @@ router.post("/login", authLimiter, async (req, res) => {
     const user = await User.findOne(emailQuery).collation(collation);
     const superadmin = await Superadminmodel.findOne(emailQuery).collation(collation);
     const manager = await Manager.findOne(emailQuery).collation(collation);
+    const substitute = await Substitute.findOne({ ...emailQuery, status: "accepted" }).collation(collation);
 
     // 🛑 Conflict Check
-    const foundRoles = [user, superadmin, manager].filter(Boolean);
+    const foundRoles = [user, superadmin, manager, substitute].filter(Boolean);
     if (foundRoles.length > 1) {
       return res.status(409).json({
         message:
@@ -292,8 +320,37 @@ router.post("/login", authLimiter, async (req, res) => {
           email: manager.email,
           name: manager.name,
           role: "Manager",
+          staffRole: manager.staffRole || "manager",
           clubId: manager.clubId || null,
           isCorporate: !!isCorporate,
+        },
+      });
+    }
+
+    // ✅ Substitute Login (temporary stand-in for a coach)
+    if (substitute) {
+      if (!substitute.active) {
+        return res.status(403).json({ message: "Your substitute access has ended." });
+      }
+      const isPasswordValid = await bcrypt.compare(password, substitute.password || "");
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      const token = jwt.sign(
+        { id: substitute._id, role: "Substitute" },
+        process.env.JWT_SECRET,
+        { expiresIn: "30d" }
+      );
+      return res.json({
+        token,
+        user: {
+          id: substitute._id,
+          email: substitute.email,
+          name: substitute.name,
+          role: "Substitute",
+          coachId: substitute.coachId || null,
+          coachName: substitute.coachName || "",
+          clubId: substitute.clubId || null,
         },
       });
     }
@@ -1242,12 +1299,12 @@ router.get("/user/can-switch-role/:userId", authenticate, requireSelf("userId"),
     const availableRoles = ["Player"];
 
     // Check if trainer profile exists
-    const Trainer = require("../Modal/Trainer");
+    const Trainer = require("../src/modules/org/models/Trainer");
     const trainerProfile = await Trainer.findOne({ userId: user._id });
     if (trainerProfile) availableRoles.push("Trainer");
 
     // Check if referee profile exists
-    const Referee = require("../Modal/Referee");
+    const Referee = require("../src/modules/catalog/models/Referee");
     const refereeProfile = await Referee.findOne({ userId: user._id });
     if (refereeProfile) availableRoles.push("Referee");
 

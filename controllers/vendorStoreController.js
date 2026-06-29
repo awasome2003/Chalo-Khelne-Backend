@@ -12,8 +12,8 @@
  * route is owner-checked here.
  */
 const mongoose = require("mongoose");
-const EquipmentListing = require("../Modal/EquipmentListing");
-const VendorProfile = require("../Modal/VendorProfile");
+const EquipmentListing = require("../src/modules/commerce/models/EquipmentListing");
+const VendorProfile = require("../src/modules/commerce/models/VendorProfile");
 const { notifyPlayer } = require("../utils/playerNotify");
 
 function badId(res) {
@@ -186,7 +186,7 @@ exports.markPickedUp = async (req, res) => {
 exports.publishProduct = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) return badId(res);
-    const { vendorSalePrice } = req.body;
+    const { vendorSalePrice, quantity } = req.body;
     if (vendorSalePrice == null || Number(vendorSalePrice) <= 0) {
       return res.status(400).json({ success: false, message: "A valid resale price is required" });
     }
@@ -200,6 +200,11 @@ exports.publishProduct = async (req, res) => {
     product.vendorTimeline = product.vendorTimeline || {};
     product.vendorTimeline.listedAt = new Date();
     product.vendorSalePrice = Number(vendorSalePrice);
+    // The vendor sets the resale stock at publish time; fall back to the seller's
+    // quantity when not supplied. This is what the product details page shows.
+    if (quantity != null && Number(quantity) > 0) {
+      product.quantity = Math.floor(Number(quantity));
+    }
     // Mirror into askingPrice + status so the existing store feed/cards show the
     // resale price and treat it as a live listing (mobile changes are Phase 2).
     product.askingPrice = Number(vendorSalePrice);

@@ -47,16 +47,16 @@ async function main() {
   console.log("[AUDIT-16a] Connecting to MongoDB...");
   await mongoose.connect(uri);
 
-  const Tournament = require("../Modal/Tournament");
-  const Booking = require("../Modal/BookingModel");
-  const Match = require("../Modal/Tournnamentmatch");
-  const BookingGroup = require("../Modal/bookinggroup");
-  const KnockoutMatch = require("../Modal/KnockoutMatch");
-  const SuperMatch = require("../Modal/SuperMatch");
-  const DirectKnockoutMatch = require("../Modal/DirectKnockoutMatch");
-  const TopPlayers = require("../Modal/TopPlayers");
-  const GroupStandings = require("../Modal/GroupStandings");
-  const SuperPlayers = require("../Modal/SuperPlayers");
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
+  const Booking = require("../src/modules/tournaments/models/BookingModel");
+  const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+  const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
+  const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+  const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+  const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+  const TopPlayers = require("../src/modules/tournaments/models/TopPlayers");
+  const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
+  const SuperPlayers = require("../src/modules/tournaments/models/SuperPlayers");
 
   // Predicate: sportId is missing or null. (Empty-string values cannot
   // exist on these collections — sportId is typed ObjectId.)

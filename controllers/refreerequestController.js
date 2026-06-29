@@ -1,4 +1,4 @@
-const Request = require('../Modal/refreerequestModel');
+const Request = require('../src/modules/catalog/models/refreerequestModel');
 
 // GET all requests or filter by status
 exports.getRequests = async (req, res) => {
