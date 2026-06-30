@@ -146,6 +146,68 @@ const TEAM_KNOCKOUT_FORMATS = [
       { setNumber: 7, type: "singles", homePos: ["B"], awayPos: ["C"], isDecider: true },
     ],
   },
+
+  // ──────────────────────────────────────────────────────────────────
+  // CSL 4.0 (Circles Sports League) tie formats.
+  // Unlike the A/B/C rotation presets above, CSL uses LARGE rosters with a
+  // DISTINCT player/pair per slot (P1..Pn), assigned via the captain's tie
+  // sheet. Slot i (home) plays slot i (away). `setsToWin` decides the tie
+  // winner; per the dossier ALL sub-matches are still played to earn points
+  // (the points engine handles that — Phase 4).
+  // ──────────────────────────────────────────────────────────────────
+  {
+    id: "csl_badminton", name: "CSL Badminton — 3 Doubles (21 pts)", totalSets: 3, setsToWin: 2,
+    hasDoubles: true, minPlayers: 6, sport: "Badminton", pointsToWin: 21,
+    sets: [
+      { setNumber: 1, type: "doubles", homePos: ["P1", "P2"], awayPos: ["P1", "P2"] },
+      { setNumber: 2, type: "doubles", homePos: ["P3", "P4"], awayPos: ["P3", "P4"] },
+      { setNumber: 3, type: "doubles", homePos: ["P5", "P6"], awayPos: ["P5", "P6"] },
+    ],
+  },
+  {
+    id: "csl_table_tennis", name: "CSL Table Tennis — 7 Singles (+Impact, 11 pts)", totalSets: 7, setsToWin: 4,
+    hasDoubles: false, minPlayers: 6, sport: "Table Tennis", pointsToWin: 11, hasImpactPlayer: true,
+    sets: [
+      { setNumber: 1, type: "singles", homePos: ["P1"], awayPos: ["P1"] },
+      { setNumber: 2, type: "singles", homePos: ["P2"], awayPos: ["P2"] },
+      { setNumber: 3, type: "singles", homePos: ["P3"], awayPos: ["P3"] },
+      { setNumber: 4, type: "singles", homePos: ["P4"], awayPos: ["P4"] },
+      { setNumber: 5, type: "singles", homePos: ["P5"], awayPos: ["P5"] },
+      { setNumber: 6, type: "singles", homePos: ["P6"], awayPos: ["P6"] },
+      { setNumber: 7, type: "singles", homePos: ["IMPACT"], awayPos: ["IMPACT"], isImpact: true },
+    ],
+  },
+  {
+    id: "csl_carrom", name: "CSL Carrom — 5 Doubles (20min/4 boards/25 pts)", totalSets: 5, setsToWin: 3,
+    hasDoubles: true, minPlayers: 10, sport: "Carrom",
+    sets: [
+      { setNumber: 1, type: "doubles", homePos: ["P1", "P2"], awayPos: ["P1", "P2"] },
+      { setNumber: 2, type: "doubles", homePos: ["P3", "P4"], awayPos: ["P3", "P4"] },
+      { setNumber: 3, type: "doubles", homePos: ["P5", "P6"], awayPos: ["P5", "P6"] },
+      { setNumber: 4, type: "doubles", homePos: ["P7", "P8"], awayPos: ["P7", "P8"] },
+      { setNumber: 5, type: "doubles", homePos: ["P9", "P10"], awayPos: ["P9", "P10"] },
+    ],
+  },
+  {
+    id: "csl_chess", name: "CSL Chess — 3 Boards (time-scored, 15 min/player)", totalSets: 3, setsToWin: 2,
+    hasDoubles: false, minPlayers: 3, sport: "Chess", scoreBy: "time", minutesPerPlayer: 15,
+    sets: [
+      { setNumber: 1, type: "singles", homePos: ["P1"], awayPos: ["P1"] },
+      { setNumber: 2, type: "singles", homePos: ["P2"], awayPos: ["P2"] },
+      { setNumber: 3, type: "singles", homePos: ["P3"], awayPos: ["P3"] },
+    ],
+  },
+  {
+    id: "csl_pickleball", name: "CSL Pickle Ball — 5 Doubles (15 pts)", totalSets: 5, setsToWin: 3,
+    hasDoubles: true, minPlayers: 10, sport: "Pickle Ball", pointsToWin: 15,
+    sets: [
+      { setNumber: 1, type: "doubles", homePos: ["P1", "P2"], awayPos: ["P1", "P2"] },
+      { setNumber: 2, type: "doubles", homePos: ["P3", "P4"], awayPos: ["P3", "P4"] },
+      { setNumber: 3, type: "doubles", homePos: ["P5", "P6"], awayPos: ["P5", "P6"] },
+      { setNumber: 4, type: "doubles", homePos: ["P7", "P8"], awayPos: ["P7", "P8"] },
+      { setNumber: 5, type: "doubles", homePos: ["P9", "P10"], awayPos: ["P9", "P10"] },
+    ],
+  },
 ];
 
 /**

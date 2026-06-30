@@ -362,12 +362,9 @@ const turfController = {
           const relativePath = path
             .join("turfs", path.basename(file.path))
             .replace(/\\/g, "/");
-          turf.images.push({
-            path: relativePath,
-            name: file.originalname,
-            type: file.mimetype,
-            uploadedAt: new Date(),
-          });
+          // `images` is an array of path STRINGS (see createTurf) — store the
+          // relative path, not a metadata object (which fails the String cast).
+          turf.images.push(relativePath);
         }
       }
 
@@ -378,9 +375,10 @@ const turfController = {
           : [req.body.deleteImages];
 
         for (const imagePath of deleteImages) {
-          // Find the image in turf.images array
+          // Find the image in turf.images array. Entries are path strings, but
+          // tolerate legacy object entries ({ path }) just in case.
           const imageIndex = turf.images.findIndex(
-            (img) => img.path === imagePath
+            (img) => img === imagePath || img?.path === imagePath
           );
 
           if (imageIndex !== -1) {
