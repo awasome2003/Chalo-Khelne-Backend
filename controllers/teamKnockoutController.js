@@ -6,6 +6,18 @@ const Tournament = require("../src/modules/tournaments/models/Tournament");
 const mongoose = require("mongoose");
 const { getFormat, resolveSetPlayers } = require("../Config/teamKnockoutFormats");
 const { readMatchResult } = require("../utils/matchUtils");
+const RRLineup = require("../utils/rapidRalliesLineup");
+const {
+  slotMapFromTeam,
+  genderMapFromTeam,
+  buildRapidRalliesSets,
+  decideTieOutcome,
+} = require("../utils/rapidRalliesTie");
+
+// A team-tie format is "Rapid Rallies" style when it declares playAllSets and a
+// 5-slot roster (femaleSlot). Detected from the resolved format config so the
+// generator/scoring branch never hard-codes the id.
+const isRapidRalliesFormat = (fmt) => !!(fmt && fmt.playAllSets && fmt.femaleSlot);
 
 // ================================
 // HELPER FUNCTIONS
@@ -781,7 +793,24 @@ const teamKnockoutController = {
       // Resolve formatId (required by schema). Prefer per-sport davisCupFormatId, else derive.
       const rrFormatId = _gdcf4(tournament, sportId) || deriveFormatId(tournamentType, validSetCount, teams);
       let rrFormatName = effectiveFormat;
-      try { rrFormatName = getFormat(rrFormatId).name; } catch {}
+      let rrFormatConfig = null;
+      try { rrFormatConfig = getFormat(rrFormatId); rrFormatName = rrFormatConfig.name; } catch {}
+
+      // Rapid Rallies (5-slot dynamic tie) uses the config registry + roster
+      // slots P1..P5, NOT the legacy A/B/C generateMatchSequence path.
+      const rapidRallies = isRapidRalliesFormat(rrFormatConfig);
+      if (rapidRallies) {
+        for (const t of teams) {
+          const rosterCheck = RRLineup.validateRoster(genderMapFromTeam(t));
+          if (!rosterCheck.valid) {
+            await session.abortTransaction();
+            return res.status(400).json({
+              success: false,
+              message: `Team "${t.teamName}" is not ready for Rapid Rallies: ${rosterCheck.errors.join(" ")}`,
+            });
+          }
+        }
+      }
 
       // Generate all possible matchups (round robin: every team plays every other team)
       const matches = [];
@@ -799,22 +828,32 @@ const teamKnockoutController = {
           );
 
           // Generate sets with proper player assignments
-          const matchSets = generateMatchSequence(effectiveFormat).map((seq) => ({
-            setNumber: seq.setNumber,
-            type: seq.type,
-            homePlayer: team1.playerPositions[seq.homePos] || null,
-            awayPlayer: team2.playerPositions[seq.awayPos] || null,
-            homePlayerB: seq.homePosB
-              ? team1.playerPositions[seq.homePosB] || null
-              : null,
-            awayPlayerZ: seq.awayPosZ
-              ? team2.playerPositions[seq.awayPosZ] || null
-              : null,
-            status: "PENDING",
-            games: [],
-            gamesWon: { home: 0, away: 0 },
-            setWinner: null,
-          }));
+          let matchSets;
+          if (rapidRallies) {
+            // 5-slot config-registry path — dynamic picks default to placeholders
+            // and are locked live via selectRapidRalliesPick.
+            matchSets = buildRapidRalliesSets(
+              slotMapFromTeam(team1),
+              slotMapFromTeam(team2)
+            );
+          } else {
+            matchSets = generateMatchSequence(effectiveFormat).map((seq) => ({
+              setNumber: seq.setNumber,
+              type: seq.type,
+              homePlayer: team1.playerPositions[seq.homePos] || null,
+              awayPlayer: team2.playerPositions[seq.awayPos] || null,
+              homePlayerB: seq.homePosB
+                ? team1.playerPositions[seq.homePosB] || null
+                : null,
+              awayPlayerZ: seq.awayPosZ
+                ? team2.playerPositions[seq.awayPosZ] || null
+                : null,
+              status: "PENDING",
+              games: [],
+              gamesWon: { home: 0, away: 0 },
+              setWinner: null,
+            }));
+          }
 
           matches.push({
             tournamentId: new mongoose.Types.ObjectId(tournamentId),
@@ -830,6 +869,7 @@ const teamKnockoutController = {
             status: "SCHEDULED",
             isBye: false,
             sets: matchSets,
+            ...(rapidRallies ? { rrSelections: { home: {}, away: {} } } : {}),
             liveState: {
               currentSetNumber: 1,
               currentGameNumber: 1,
@@ -982,9 +1022,11 @@ const teamKnockoutController = {
         }
       });
 
-      // Sort: points → round diff → score diff (sport-neutral)
+      // Sort: tie points → total matches (rubbers) won → round diff → score diff.
+      // Client ranking rule: tie points (win=2/loss=0), then total matches won.
       const sorted = Object.values(standings).sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
+        if (b.roundsWon !== a.roundsWon) return b.roundsWon - a.roundsWon; // total matches won
         const aDiff = a.roundsWon - a.roundsLost;
         const bDiff = b.roundsWon - b.roundsLost;
         if (bDiff !== aDiff) return bDiff - aDiff;
@@ -1198,6 +1240,19 @@ const teamKnockoutController = {
         });
       }
 
+      // Guard: never re-score a finished match. Without this, a double-tap /
+      // client retry re-enters the completion block and double-counts the
+      // winner's matchesWon/setsWon and the loser's matchesLost (corrupts the
+      // team standings). Mirrors the group-stage / direct-knockout guards.
+      if (match.status === "COMPLETED" || match.status === "completed") {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: "Cannot score a completed match. This match has already finished.",
+        });
+      }
+
       const currentSet = match.sets[setNumber - 1];
       if (!currentSet) {
         return res.status(400).json({
@@ -1272,20 +1327,26 @@ const teamKnockoutController = {
 
         const setsNeeded = getSetsRequiredToWin(match.formatId || match.format, match);
 
+        // playAllSets formats (Rapid Rallies) finish only when ALL rubbers are
+        // played (no dead rubbers); everything else finishes the moment a team
+        // reaches setsNeeded. decideTieOutcome() encodes both.
+        let _fmt = null;
+        try { _fmt = getFormat(match.formatId); } catch { /* legacy string format */ }
+        const playAllSets = !!(_fmt && _fmt.playAllSets);
+        const tie = decideTieOutcome({ sets: match.sets, setsToWin: setsNeeded, playAllSets });
+
         // Check if match is completed
-        if (
-          match.setsWon.home >= setsNeeded ||
-          match.setsWon.away >= setsNeeded
-        ) {
-          // FIXED: Correct match winner and winnerId assignment
-          match.matchWinner =
-            match.setsWon.home > match.setsWon.away ? "home" : "away";
+        if (tie.complete && tie.winner) {
+          match.matchWinner = tie.winner;
           match.winnerId =
             match.matchWinner === "home" ? match.team1Id : match.team2Id;
           match.status = "COMPLETED";
           match.completedAt = new Date();
 
-          // FIXED: Update team statistics with correct winner/loser identification
+          // League fixtures (round 0) must NOT eliminate the loser — they play
+          // their remaining round-robin ties. Only knockout ties eliminate.
+          const isLeagueTie = match.round === 0;
+
           const winnerTeamId =
             match.matchWinner === "home" ? match.team1Id : match.team2Id;
           const loserTeamId =
@@ -1313,7 +1374,7 @@ const teamKnockoutController = {
 
           if (loserTeam) {
             loserTeam.matchesLost += 1;
-            loserTeam.status = "ELIMINATED";
+            if (!isLeagueTie) loserTeam.status = "ELIMINATED";
             loserTeam.setsWon +=
               match.matchWinner === "home"
                 ? match.setsWon.away
@@ -2701,6 +2762,216 @@ const teamKnockoutController = {
     } catch (error) {
       console.error("Error selecting doubles pairing:", error);
       res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Rapid Rallies — lock a captain's dynamic pick (a doubles partner for
+  // rubber 2/4, or the rubber-5 singles player) for one side. Enforces the full
+  // rule-set incrementally so a captain can never reach an invalid lineup.
+  selectRapidRalliesPick: async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      const { side, setNumber, slot } = req.body;
+
+      if (!matchId || !side || !setNumber || !slot) {
+        return res.status(400).json({ success: false, message: "matchId, side, setNumber and slot are required" });
+      }
+      if (!["home", "away"].includes(side)) {
+        return res.status(400).json({ success: false, message: "side must be 'home' or 'away'" });
+      }
+
+      const FIELD_BY_SET = { 2: "partner2", 4: "partner4", 5: "singles5" };
+      const field = FIELD_BY_SET[Number(setNumber)];
+      if (!field) {
+        return res.status(400).json({ success: false, message: `Rubber ${setNumber} has no captain selection` });
+      }
+
+      const match = await TeamKnockoutMatches.findById(matchId)
+        .populate("team1Id")
+        .populate("team2Id");
+      if (!match) return res.status(404).json({ success: false, message: "Match not found" });
+      if (match.status === "COMPLETED") return res.status(400).json({ success: false, message: "Match already completed" });
+
+      let fmt = null;
+      try { fmt = getFormat(match.formatId); } catch { /* legacy */ }
+      if (!isRapidRalliesFormat(fmt)) {
+        return res.status(400).json({ success: false, message: "This match is not a Rapid Rallies tie" });
+      }
+
+      // A pick locks once its rubber has started.
+      const targetSet = match.sets.find((s) => s.setNumber === Number(setNumber));
+      if (!targetSet) return res.status(400).json({ success: false, message: `Rubber ${setNumber} not found` });
+      if (targetSet.status && targetSet.status !== "PENDING") {
+        return res.status(400).json({ success: false, message: `Rubber ${setNumber} has already started — the pick is locked.` });
+      }
+
+      // Validate the new pick against this side's OTHER already-locked picks.
+      const selections = match.rrSelections || { home: {}, away: {} };
+      const sidePartial = { ...(selections[side] || {}) };
+      delete sidePartial[field];
+      const allowed = RRLineup.validOptionsFor(side, field, sidePartial);
+      if (!allowed.includes(slot)) {
+        return res.status(400).json({
+          success: false,
+          message: `"${slot}" is not a valid pick for rubber ${setNumber} — it would break the lineup rules. Allowed: ${allowed.join(", ") || "none"}.`,
+          allowed,
+        });
+      }
+
+      // Persist the pick and reflect it on the affected rubber.
+      selections[side] = { ...(selections[side] || {}), [field]: slot };
+      match.rrSelections = selections;
+
+      const team = side === "home" ? match.team1Id : match.team2Id;
+      const playerName = slotMapFromTeam(team)[slot] || null;
+
+      if (field === "singles5") {
+        if (side === "home") targetSet.homePlayer = playerName;
+        else targetSet.awayPlayer = playerName;
+      } else {
+        // doubles partner — the anchor stays in homePlayer/awayPlayer
+        if (side === "home") targetSet.homePlayerB = playerName;
+        else targetSet.awayPlayerB = playerName;
+      }
+
+      match.markModified("sets");
+      match.markModified("rrSelections");
+      await match.save({ validateModifiedOnly: true });
+
+      return res.json({
+        success: true,
+        message: `${side} pick locked for rubber ${setNumber}.`,
+        rrSelections: match.rrSelections,
+        set: targetSet,
+      });
+    } catch (error) {
+      console.error("Error selecting Rapid Rallies pick:", error);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Rapid Rallies — the legal picks per side/rubber given what's already locked.
+  // Powers the manager lineup UI: it renders one dropdown per rubber/side from
+  // `options`, so an illegal pick is never even offered.
+  getRapidRalliesOptions: async (req, res) => {
+    try {
+      const { matchId } = req.params;
+      const match = await TeamKnockoutMatches.findById(matchId)
+        .populate("team1Id")
+        .populate("team2Id");
+      if (!match) return res.status(404).json({ success: false, message: "Match not found" });
+
+      let fmt = null;
+      try { fmt = getFormat(match.formatId); } catch { /* legacy */ }
+      if (!isRapidRalliesFormat(fmt)) {
+        return res.status(400).json({ success: false, message: "This match is not a Rapid Rallies tie" });
+      }
+
+      const selections = match.rrSelections || { home: {}, away: {} };
+      const buildSide = (side, team) => {
+        const slotMap = slotMapFromTeam(team);
+        const cur = selections[side] || {};
+        const fieldInfo = (field) => {
+          const partial = { ...cur };
+          delete partial[field];
+          const options = RRLineup.validOptionsFor(side, field, partial).map((slot) => ({ slot, name: slotMap[slot] || slot }));
+          return {
+            locked: cur[field] || null,
+            lockedName: cur[field] ? (slotMap[cur[field]] || cur[field]) : null,
+            options,
+          };
+        };
+        return {
+          teamName: team?.teamName || null,
+          slotMap,
+          partner2: fieldInfo("partner2"),
+          partner4: fieldInfo("partner4"),
+          singles5: fieldInfo("singles5"),
+        };
+      };
+
+      return res.json({
+        success: true,
+        data: {
+          matchId: match._id,
+          formatId: match.formatId,
+          femaleSlot: fmt.femaleSlot,
+          rrSelections: selections,
+          rubberStatus: match.sets.map((s) => ({ setNumber: s.setNumber, status: s.status })),
+          home: buildSide("home", match.team1Id),
+          away: buildSide("away", match.team2Id),
+        },
+      });
+    } catch (error) {
+      console.error("Error getting Rapid Rallies options:", error);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // Rapid Rallies — register a team with a full 5-slot roster (P1..P5 + gender).
+  // Self-contained for the web-managed corporate flow: writes TeamKnockoutTeams
+  // directly (position = slot) so the round-robin generator can read roster[].
+  registerRapidRalliesTeam: async (req, res) => {
+    try {
+      const { tournamentId, teamName, players, sportId, teamId } = req.body;
+
+      if (!tournamentId || !teamName || !Array.isArray(players) || players.length !== 5) {
+        return res.status(400).json({ success: false, message: "tournamentId, teamName and exactly 5 players are required" });
+      }
+
+      const tournament = await Tournament.findById(tournamentId).lean();
+      if (!tournament) return res.status(404).json({ success: false, message: "Tournament not found" });
+
+      const { getDavisCupFormatId, resolveSportId } = require("../utils/sportTrackUtils");
+      const fmtId = getDavisCupFormatId(tournament, resolveSportId(tournament, sportId));
+      let fmt = null;
+      try { fmt = getFormat(fmtId); } catch { /* legacy */ }
+      if (!isRapidRalliesFormat(fmt)) {
+        return res.status(400).json({ success: false, message: "This tournament is not a Rapid Rallies tie" });
+      }
+
+      const roster = players.map((p, i) => ({
+        name: (p.name || "").trim(),
+        gender: p.gender,
+        position: `P${i + 1}`,
+        role: i === 0 ? "captain" : "player",
+      }));
+
+      // Validate against the shared rule-set (5 named players, P3 female).
+      const genderMap = {};
+      roster.forEach((r) => { genderMap[r.position] = { name: r.name, gender: r.gender }; });
+      const check = RRLineup.validateRoster(genderMap);
+      if (!check.valid) {
+        return res.status(400).json({ success: false, message: check.errors.join(" ") });
+      }
+
+      // Block editing once the league fixtures exist (rosters are frozen).
+      const rrExists = await TeamKnockoutMatches.countDocuments({ tournamentId, round: 0 });
+      if (rrExists > 0) {
+        return res.status(400).json({ success: false, message: "Round-robin fixtures already generated — delete them before changing teams." });
+      }
+
+      const payload = {
+        tournamentId,
+        teamName: teamName.trim(),
+        playerPositions: { A: roster[0].name, B: roster[1].name, C: roster[2].name },
+        roster,
+        teamSize: 5,
+        status: "ACTIVE",
+      };
+
+      let team;
+      if (teamId) {
+        team = await TeamKnockoutTeams.findByIdAndUpdate(teamId, payload, { new: true });
+        if (!team) return res.status(404).json({ success: false, message: "Team not found" });
+      } else {
+        team = await TeamKnockoutTeams.create({ ...payload, originalBookingId: new mongoose.Types.ObjectId() });
+      }
+
+      return res.status(teamId ? 200 : 201).json({ success: true, message: teamId ? "Team updated" : "Team registered", team });
+    } catch (error) {
+      console.error("Error registering Rapid Rallies team:", error);
+      return res.status(500).json({ success: false, message: error.message });
     }
   },
 

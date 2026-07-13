@@ -141,6 +141,10 @@ const UserSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+  // Event OS tenancy — for agency staff (event_manager/coordinator/field staff),
+  // points to the Agency Admin's User._id. Null for agency admins themselves
+  // (their own _id IS the agencyId) and for non-agency users.
+  agencyId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
   // Social graph — Instagram-style public follow.
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],

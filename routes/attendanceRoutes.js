@@ -17,6 +17,18 @@ router.get("/admin", allowUserOrManager, async (req, res) => {
   }
 });
 
+// GET /api/attendance/admin/summary?date= — dashboard totals for one day:
+// student Present/Absent/Leave + per-coach status/in-out/hours (Coach tab).
+router.get("/admin/summary", allowUserOrManager, async (req, res) => {
+  try {
+    const clubId = await coaching.resolveSchoolOrgAdmin(req.user);
+    const summary = await coaching.getAttendanceSummary(clubId, req.query);
+    res.json({ success: true, ...summary });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 // GET /api/attendance/history — the logged-in trainer's own past sessions.
 router.get("/history", allowUserOrManager, async (req, res) => {
   try {

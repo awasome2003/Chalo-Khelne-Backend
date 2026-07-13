@@ -83,10 +83,15 @@ router.param("matchId", async (req, res, next, matchId) => {
       .model("Manager")
       .exists({ _id: { $in: t.managerId || [] }, clubId: me });
     if (ownsManager) return next();
-    const assigned = await mongoose
-      .model("Assignment")
-      .exists({ matchId, refereeId: me, status: "accepted" });
-    if (assigned) return next();
+    // Umpire authorization — use the SAME helper as the client/read-side gate
+    // (umpireAuth): authorized via a match-level accepted Assignment OR a
+    // stage-level accepted StaffApplication for this tournament. Previously this
+    // only checked the per-match Assignment, so stage-granted umpires — who ARE
+    // allowed to score and get tap-to-score enabled in the app — were wrongly
+    // rejected here with 403 "not a scorer for this match".
+    const { isUmpireAuthorizedForMatch } = require("../utils/umpireAuth");
+    const umpAuth = await isUmpireAuthorizedForMatch(me, result.match);
+    if (umpAuth.authorized) return next();
     return res.status(403).json({ success: false, message: "Forbidden: not a scorer for this match" });
   } catch (err) {
     next(err);
@@ -816,6 +821,27 @@ router.post(
   "/team-knockout/matches/:matchId/select-pairing",
   requirePermission("tournament:score"),
   teamKnockoutController.selectDoublesPairing
+);
+
+// Rapid Rallies — captain's dynamic pick (doubles partner / rubber-5 player)
+router.post(
+  "/team-knockout/matches/:matchId/rapid-rallies-pick",
+  requirePermission("tournament:score"),
+  teamKnockoutController.selectRapidRalliesPick
+);
+
+// Rapid Rallies — legal picks per side/rubber (for the manager lineup UI)
+router.get(
+  "/team-knockout/matches/:matchId/rapid-rallies-options",
+  requirePermission("tournament:score"),
+  teamKnockoutController.getRapidRalliesOptions
+);
+
+// Rapid Rallies — register/update a team with a full 5-slot roster (+ gender)
+router.post(
+  "/team-knockout/rapid-rallies/register-team",
+  requirePermission("tournament:manage"),
+  teamKnockoutController.registerRapidRalliesTeam
 );
 
 // Match Queries

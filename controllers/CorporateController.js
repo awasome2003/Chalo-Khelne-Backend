@@ -206,7 +206,8 @@ exports.onboardCorporateAdmin = async (req, res) => {
         industryType,
         companySize,
         location,
-        designation
+        designation,
+        agencyId, // Event OS: optionally place this corporate under an agency
     } = req.body;
 
     if (!name || !email || !companyName) {
@@ -235,7 +236,8 @@ exports.onboardCorporateAdmin = async (req, res) => {
             // So passing plain text 'generatedPassword' is correct.
             role: "corporate_admin", // Explicit role
             isApproved: true,
-            emailVerified: true
+            emailVerified: true,
+            ...(agencyId && /^[0-9a-fA-F]{24}$/.test(agencyId) ? { agencyId } : {}),
         });
         await newUser.save();
 

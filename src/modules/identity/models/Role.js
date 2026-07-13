@@ -36,6 +36,15 @@ const roleSchema = new mongoose.Schema(
       default: "",
     },
 
+    // Which client the role signs in to. Event-OS gates by this:
+    // office roles (agency_admin/event_manager/coordinator) = "web",
+    // field staff (referee/photographer/ground_staff/medical/...) = "mobile".
+    surface: {
+      type: String,
+      enum: ["web", "mobile", "both"],
+      default: "both",
+    },
+
     // Permissions assigned to this role
     permissions: [
       {

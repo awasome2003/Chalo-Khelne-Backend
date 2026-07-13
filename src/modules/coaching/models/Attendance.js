@@ -12,9 +12,14 @@ const attendanceSchema = new mongoose.Schema(
     standard: { type: String, default: "" },
     subjectType: { type: String, enum: ["self", "student"], required: true },
     studentId: { type: mongoose.Schema.Types.ObjectId, ref: "Student", default: null },
-    status: { type: String, enum: ["present", "absent"], required: true },
+    // "leave" is only valid for students (coach picks it while marking) — the
+    // "self" (coach) record stays present/absent. Enforced in the service layer.
+    status: { type: String, enum: ["present", "absent", "leave"], required: true },
     // Reason for absence — required when a trainer/coach marks themselves absent.
     reason: { type: String, default: "" },
+    // Coach check-in / check-out (only on the "self" record). "HH:mm" 24h.
+    checkInTime: { type: String, default: "" },
+    checkOutTime: { type: String, default: "" },
   },
   { timestamps: true }
 );

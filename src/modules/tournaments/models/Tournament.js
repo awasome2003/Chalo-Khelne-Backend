@@ -92,6 +92,16 @@ const sportTrackSchema = new mongoose.Schema(
     },
     davisCupFormatId: { type: String, default: null },
 
+    // Lineup selection mode for team-tie formats with a "Dynamic Selection
+    // System" (e.g. Rapid Rallies). "dynamic" = captain locks each doubles
+    // partner / rubber-5 player right before that rubber (required mode).
+    // "upfront" = whole lineup declared before the tie (optional, later).
+    lineupMode: {
+      type: String,
+      enum: ["dynamic", "upfront"],
+      default: "dynamic",
+    },
+
     qualifyPerGroup: { type: Number, default: 2 },
     // No null in enum — Mongoose treats default:null + enum:[16,32,64] as a
     // skipped-validation case for unset values, avoiding the conflict that

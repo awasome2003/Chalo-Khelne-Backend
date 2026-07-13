@@ -53,6 +53,13 @@ const permissionSchema = new mongoose.Schema(
         "staff",
         "role",
         "users", // user lifecycle (suspend/reject/reactivate)
+        // Event OS (IONIX Sports Events):
+        "agency",
+        "event",
+        "eventstaff",
+        "equipment",
+        "sponsor",
+        "finance",
       ],
     },
 
@@ -82,6 +89,10 @@ const permissionSchema = new mongoose.Schema(
         // User-lifecycle additions:
         "suspend",        // suspend or reject any user
         "reactivate",     // reactivate a suspended/rejected user
+        // Event OS additions:
+        "admin",          // agency-wide admin
+        "client_manage",  // onboard/monitor clubs/schools/corporates
+        "self",           // field staff: own assignment / self check-in
       ],
     },
 

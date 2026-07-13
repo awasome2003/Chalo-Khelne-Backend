@@ -295,6 +295,7 @@ function mapLegacyRole(legacyRole) {
     superadmin: "super_admin",
     ClubAdmin: "club_admin",
     clubadmin: "club_admin",
+    club_admin: "club_admin",
     corporate_admin: "club_admin",
     Manager: "manager",
     manager: "manager",
@@ -306,6 +307,25 @@ function mapLegacyRole(legacyRole) {
     team: "team",
     Referee: "referee",
     referee: "referee",
+    // ── Event OS (IONIX Sports Events) ──
+    AgencyAdmin: "agency_admin",
+    agency_admin: "agency_admin",
+    EventManager: "event_manager",
+    event_manager: "event_manager",
+    Coordinator: "coordinator",
+    coordinator: "coordinator",
+    Volunteer: "volunteer",
+    volunteer: "volunteer",
+    Photographer: "photographer",
+    photographer: "photographer",
+    Commentator: "commentator",
+    commentator: "commentator",
+    GroundStaff: "ground_staff",
+    ground_staff: "ground_staff",
+    Security: "security",
+    security: "security",
+    Medical: "medical",
+    medical: "medical",
   };
   return map[legacyRole] || "player";
 }

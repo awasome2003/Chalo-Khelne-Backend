@@ -212,6 +212,17 @@ const scopeTournamentCreate = async (req, res, next) => {
       req.body.managerId = [String(me)];
       return next();
     }
+    // Event OS: agency users (AgencyAdmin/EventManager/Coordinator) create
+    // tournaments under their own id, same as a Manager. The tournament is then
+    // wrapped by an AgencyEvent in the Event OS.
+    if (req.userRole === "User") {
+      const u = await mongoose.model("User").findById(me).select("role").lean();
+      const AGENCY_ROLES = ["AgencyAdmin", "agency_admin", "EventManager", "event_manager", "Coordinator", "coordinator"];
+      if (u && AGENCY_ROLES.includes(u.role)) {
+        req.body.managerId = [String(me)];
+        return next();
+      }
+    }
     const raw = req.body?.managerId;
     const ids = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((x) =>
       mongoose.Types.ObjectId.isValid(x)

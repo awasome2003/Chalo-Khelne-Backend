@@ -560,7 +560,7 @@ exports.createTournament = async (req, res) => {
     let parsedTurfIds = [];
     if (turfIds) {
       try {
-        parsedTurfIds = JSON.parse(turfIds);
+        parsedTurfIds = typeof turfIds === "string" ? JSON.parse(turfIds) : turfIds;
         if (!Array.isArray(parsedTurfIds)) {
           throw new Error();
         }
@@ -571,10 +571,13 @@ exports.createTournament = async (req, res) => {
     }
 
     // --- Parse managerId ---
+    // Accept both a real array (application/json) and a JSON-encoded string
+    // (multipart/form-data) — mirrors how sports[] and matchFormatOverrides are
+    // handled, so JSON-body create requests aren't rejected.
     let parsedManagerId = [];
     if (managerId) {
       try {
-        parsedManagerId = JSON.parse(managerId);
+        parsedManagerId = typeof managerId === "string" ? JSON.parse(managerId) : managerId;
         if (!Array.isArray(parsedManagerId)) throw new Error();
       } catch {
         return res.status(400).json({ message: "Invalid managerId format" });
@@ -595,11 +598,11 @@ exports.createTournament = async (req, res) => {
     // are part of parsedSports[i].categories, validated by
     // assertNonEmptySports above.
 
-    // --- Parse selectedTime ---
+    // --- Parse selectedTime (accept object [json] or JSON string [multipart]) ---
     let parsedSelectedTime = null;
     if (selectedTime) {
       try {
-        parsedSelectedTime = JSON.parse(selectedTime);
+        parsedSelectedTime = typeof selectedTime === "string" ? JSON.parse(selectedTime) : selectedTime;
       } catch {
         return res.status(400).json({ message: "Invalid selectedTime format" });
       }
@@ -1198,7 +1201,9 @@ exports.editTournament = async (req, res) => {
     let parsedSelectedTime = tournament.selectedTime;
     if (req.body.selectedTime) {
       try {
-        parsedSelectedTime = JSON.parse(req.body.selectedTime);
+        parsedSelectedTime = typeof req.body.selectedTime === "string"
+          ? JSON.parse(req.body.selectedTime)
+          : req.body.selectedTime;
         if (
           typeof parsedSelectedTime !== "object" ||
           !parsedSelectedTime.startTime ||
@@ -1222,7 +1227,9 @@ exports.editTournament = async (req, res) => {
     let managerIds = tournament.managerId;
     if (req.body.managerId) {
       try {
-        managerIds = JSON.parse(req.body.managerId);
+        managerIds = typeof req.body.managerId === "string"
+          ? JSON.parse(req.body.managerId)
+          : req.body.managerId;
         if (!Array.isArray(managerIds)) {
           return res.status(400).json({ message: "Invalid managerId format" });
         }

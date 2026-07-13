@@ -6,8 +6,14 @@ const ExcelJS = require("exceljs");
 const { allowUserOrManager } = require("../middleware/authMiddleware");
 const { readSheetRows } = require("../utils/excelUtils");
 const coaching = require("../src/modules/coaching/coaching.service");
+const SchoolClass = require("../src/modules/coaching/models/SchoolClass");
 
 const upload = multer({ dest: "uploads/", limits: { fileSize: 5 * 1024 * 1024 } });
+
+const cleanSections = (raw) =>
+  (Array.isArray(raw) ? raw : String(raw || "").split(","))
+    .map((s) => String(s).trim())
+    .filter(Boolean);
 
 // Map a thrown ServiceError (or anything) to an HTTP response.
 const fail = (res, err) => res.status(err.status || 500).json({ error: err.message });
@@ -41,6 +47,69 @@ router.get("/standards", allowUserOrManager, async (req, res) => {
     await coaching.resolveSchoolOrgAdmin(req.user);
     const standards = await coaching.listStandards();
     res.json({ success: true, standards });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ── Class & Section (managed under Student Management) ────────────────
+// GET /api/students/classes — list classes + their sections.
+router.get("/classes", allowUserOrManager, async (req, res) => {
+  try {
+    const clubId = await coaching.resolveSchoolOrgAdmin(req.user);
+    const classes = await SchoolClass.find({ clubId }).sort({ order: 1, name: 1 }).lean();
+    res.json({ success: true, classes });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// POST /api/students/classes — add a class.
+router.post("/classes", allowUserOrManager, async (req, res) => {
+  try {
+    const clubId = await coaching.resolveSchoolOrgAdmin(req.user);
+    const name = String(req.body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Class name is required." });
+    const exists = await SchoolClass.findOne({ clubId, name });
+    if (exists) return res.status(409).json({ error: "A class with that name already exists." });
+    const count = await SchoolClass.countDocuments({ clubId });
+    const cls = await SchoolClass.create({
+      clubId, name, sections: cleanSections(req.body.sections), order: count,
+    });
+    res.status(201).json({ success: true, class: cls });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// PUT /api/students/classes/:id — rename / set sections.
+router.put("/classes/:id", allowUserOrManager, async (req, res) => {
+  try {
+    const clubId = await coaching.resolveSchoolOrgAdmin(req.user);
+    const cls = await SchoolClass.findOne({ _id: req.params.id, clubId });
+    if (!cls) return res.status(404).json({ error: "Class not found." });
+    if (req.body.name !== undefined) {
+      const name = String(req.body.name).trim();
+      if (!name) return res.status(400).json({ error: "Class name cannot be empty." });
+      const dup = await SchoolClass.findOne({ clubId, name, _id: { $ne: cls._id } });
+      if (dup) return res.status(409).json({ error: "A class with that name already exists." });
+      cls.name = name;
+    }
+    if (req.body.sections !== undefined) cls.sections = cleanSections(req.body.sections);
+    await cls.save();
+    res.json({ success: true, class: cls });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// DELETE /api/students/classes/:id — remove a class.
+router.delete("/classes/:id", allowUserOrManager, async (req, res) => {
+  try {
+    const clubId = await coaching.resolveSchoolOrgAdmin(req.user);
+    const r = await SchoolClass.deleteOne({ _id: req.params.id, clubId });
+    if (r.deletedCount === 0) return res.status(404).json({ error: "Class not found." });
+    res.json({ success: true });
   } catch (err) {
     fail(res, err);
   }

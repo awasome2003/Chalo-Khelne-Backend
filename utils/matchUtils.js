@@ -147,10 +147,15 @@ const getStatus = (match) => {
 };
 
 /**
- * Check if a match is completed (works across all schemas)
+ * Check if a match is completed (works across all schemas).
+ * A BYE is a resolved result too — the player advances automatically and the
+ * backend sets match.winner + status "BYE". Treating it as completed keeps
+ * "all matches done?" progression checks and result reading from stalling on
+ * byes (which previously carried a non-"COMPLETED" status).
  */
 const isCompleted = (match) => {
-  return getStatus(match) === "COMPLETED";
+  const s = getStatus(match);
+  return s === "COMPLETED" || s === "BYE" || match?.isBye === true;
 };
 
 /**

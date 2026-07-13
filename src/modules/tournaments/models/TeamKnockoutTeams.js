@@ -31,7 +31,11 @@ const teamKnockoutTeamsSchema = new mongoose.Schema(
       userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
       name: { type: String, required: true },
       role: { type: String, enum: ["captain", "player", "substitute"], default: "player" },
-      position: { type: String, default: null }, // Sport-specific: "bowler", "goalkeeper", etc.
+      position: { type: String, default: null }, // Sport-specific: "bowler", "goalkeeper", etc. For Rapid Rallies holds the roster slot "P1".."P5".
+      // Gender — required by formats with a gender rule (Rapid Rallies: slot P3
+      // must be female and plays the female singles rubber). Null for sports
+      // that don't care. Enforced by utils/rapidRalliesLineup.js, not here.
+      gender: { type: String, enum: ["male", "female", "other", null], default: null },
       _id: false,
     }],
 

@@ -158,6 +158,24 @@ const teamKnockoutMatchesSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+
+    // Assigned umpire (nested shape mirrors group-stage Match.referee so the
+    // manager UI's getUmpireName() shows the name). Authorization itself runs
+    // off the Assignment doc (utils/umpireAuth), not this field.
+    referee: {
+      refereeId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      name: { type: String, default: null },
+    },
+
+    // Rapid Rallies "Dynamic Selection System" — the captain's live picks per
+    // side (doubles partners for rubbers 2 & 4, and the rubber-5 singles
+    // player), each a roster slot "P3".."P5"/"P4"/"P5". The set players are
+    // derived from this. Validated by utils/rapidRalliesLineup.js. Null for
+    // every other format.
+    rrSelections: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null, // { home: {partner2,partner4,singles5}, away: {...} }
+    },
   },
   { timestamps: true }
 );

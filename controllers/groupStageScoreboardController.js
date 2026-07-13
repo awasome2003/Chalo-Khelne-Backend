@@ -1664,15 +1664,26 @@ const syncMatchScores = async (req, res) => {
       });
     }
 
-    const match = await Match.findById(matchId);
-    if (!match) {
+    // Look the match up across ALL models — a knockout/team match id sent here
+    // must not 404. Points-table sync only applies to group-stage matches; any
+    // other stage has no group standings to update, so return a no-op success.
+    const { findMatchById } = require("../utils/matchUtils");
+    const found = await findMatchById(matchId);
+    if (!found) {
       return res.status(404).json({
         success: false,
         message: "Match not found"
       });
     }
+    if (found.schemaName !== "Match") {
+      return res.status(200).json({
+        success: true,
+        skipped: true,
+        message: "No points table to sync for this match stage."
+      });
+    }
 
-    const score = await syncScoreModel(match);
+    const score = await syncScoreModel(found.match);
 
     res.status(200).json({
       success: true,

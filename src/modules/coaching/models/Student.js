@@ -7,6 +7,7 @@ const studentSchema = new mongoose.Schema(
   {
     clubId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     standard: { type: String, required: true, trim: true, index: true },
+    section: { type: String, default: "", trim: true }, // "A", "B" (from SchoolClass)
     name: { type: String, required: true, trim: true },
     rollNo: { type: String, default: "", trim: true },
     order: { type: Number, default: 0 },

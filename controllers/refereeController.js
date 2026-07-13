@@ -471,11 +471,16 @@ exports.assignUmpireToMatch = async (req, res) => {
     // Load match from whichever schema holds it
     const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
     const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+    const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
     let match = await Match.findById(matchId);
     let matchKind = "Match";
     if (!match) {
       match = await DirectKnockoutMatch.findById(matchId);
       matchKind = "DirectKnockoutMatch";
+    }
+    if (!match) {
+      match = await TeamKnockoutMatches.findById(matchId);
+      matchKind = "TeamKnockoutMatches";
     }
     if (!match) {
       return res.status(404).json({ message: "Match not found" });
@@ -524,7 +529,7 @@ exports.assignUmpireToMatch = async (req, res) => {
 
     // Assignment schema requires date/startTime/endTime/location for type="Match".
     // Source them from the match doc (manager can edit later via updateAssignment).
-    const startTime = match.matchStartTime || match.startTime || new Date();
+    const startTime = match.matchStartTime || match.startTime || match.matchDate || new Date();
     const startTimeStr = new Date(startTime).toISOString();
     const courtNumber = match.courtNumber
       ? `Court ${match.courtNumber}`
@@ -532,7 +537,7 @@ exports.assignUmpireToMatch = async (req, res) => {
 
     // Create match-level assignment
     const assignment = new Assignment({
-      title: `${tournament?.title || "Tournament"} — ${match.round || "Match " + (match.matchNumber || "")}`,
+      title: `${tournament?.title || "Tournament"} — ${match.round || "Match " + (match.matchNumber || match.bracketPosition || "")}`,
       type: "Match",
       refereeId: refereeUserId,
       tournamentId: match.tournamentId,
@@ -548,8 +553,8 @@ exports.assignUmpireToMatch = async (req, res) => {
     await assignment.save();
 
     // Write match.referee — shape differs between schemas
-    if (matchKind === "Match") {
-      // group-stage schema: nested object { refereeId, name, contact }
+    if (matchKind === "Match" || matchKind === "TeamKnockoutMatches") {
+      // group-stage + team-knockout schema: nested object { refereeId, name }
       match.referee = {
         refereeId: refereeUserId,
         name: user.name,

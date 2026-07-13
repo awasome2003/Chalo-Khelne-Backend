@@ -260,6 +260,7 @@ exports.onboardClubAdmin = async (req, res) => {
     area,
     sports,
     orgType,
+    agencyId, // Event OS: optionally place this club/school under an agency
   } = req.body;
 
   const validOrgType = ["club", "school", "organization"].includes(orgType) ? orgType : "club";
@@ -286,7 +287,8 @@ exports.onboardClubAdmin = async (req, res) => {
       role: "ClubAdmin",
       clubName,
       isApproved: true,
-      emailVerified: true
+      emailVerified: true,
+      ...(agencyId && /^[0-9a-fA-F]{24}$/.test(agencyId) ? { agencyId } : {}),
     });
     await newUser.save();
 

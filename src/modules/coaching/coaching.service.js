@@ -94,7 +94,7 @@ async function listStudents(clubId, { standard } = {}) {
   return repo.findStudents(q, { standard: 1, order: 1, name: 1 });
 }
 
-async function createStudent(clubId, { name, standard, rollNo }) {
+async function createStudent(clubId, { name, standard, section, rollNo }) {
   const cleanName = String(name || "").trim();
   const cleanStandard = String(standard || "").trim();
   if (!cleanName || !cleanStandard) {
@@ -105,6 +105,7 @@ async function createStudent(clubId, { name, standard, rollNo }) {
   return repo.createStudent({
     clubId,
     standard: cleanStandard,
+    section: String(section || "").trim(),
     name: cleanName,
     rollNo: String(rollNo || "").trim(),
     order,
@@ -150,22 +151,42 @@ function requireTrainer(eff) {
   if (!eff || !eff.trainerId) throw new ServiceError(403, "Trainer access required.");
 }
 
+// "HH:mm" (24h) → minutes since midnight, or null if unparseable.
+function minutesOf(t) {
+  if (!t || typeof t !== "string") return null;
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const mins = +m[1] * 60 + +m[2];
+  return mins >= 0 && mins < 24 * 60 ? mins : null;
+}
+// Decimal hours between a check-in and check-out ("HH:mm"), 0 if invalid.
+function sessionHours(checkInTime, checkOutTime) {
+  const a = minutesOf(checkInTime);
+  const b = minutesOf(checkOutTime);
+  if (a == null || b == null || b <= a) return 0;
+  return (b - a) / 60;
+}
+
 async function getAttendanceSession(eff, { date, sport = "", standard = "" }) {
   requireTrainer(eff);
   if (!date) throw new ServiceError(400, "date is required.");
   const records = await repo.findAttendance({ trainerId: eff.trainerId, date, sport, standard });
   let self = null;
   let selfReason = "";
+  let checkInTime = "";
+  let checkOutTime = "";
   const students = {};
   for (const r of records) {
     if (r.subjectType === "self") {
       self = r.status;
       selfReason = r.reason || "";
+      checkInTime = r.checkInTime || "";
+      checkOutTime = r.checkOutTime || "";
     } else if (r.studentId) {
       students[String(r.studentId)] = r.status;
     }
   }
-  return { self, selfReason, students };
+  return { self, selfReason, checkInTime, checkOutTime, students };
 }
 
 /**
@@ -174,7 +195,7 @@ async function getAttendanceSession(eff, { date, sport = "", standard = "" }) {
  * updates the same record instead of creating duplicates. The batch is written
  * inside a transaction (multi-document write).
  */
-async function markAttendance(eff, { date, sport = "", standard = "", self, selfReason = "", students = [] }) {
+async function markAttendance(eff, { date, sport = "", standard = "", self, selfReason = "", checkInTime = "", checkOutTime = "", students = [] }) {
   requireTrainer(eff);
   if (!date) throw new ServiceError(400, "date is required.");
   if (self === "absent" && !String(selfReason).trim()) {
@@ -184,6 +205,8 @@ async function markAttendance(eff, { date, sport = "", standard = "", self, self
   const base = { clubId: eff.clubId, trainerId: eff.trainerId, date, sport, standard };
   const ops = [];
 
+  // Coach ("self") record — present/absent only (no "leave"); carries the
+  // coach's own check-in / check-out times for the Coach Attendance view.
   if (self === "present" || self === "absent") {
     ops.push({
       updateOne: {
@@ -195,14 +218,17 @@ async function markAttendance(eff, { date, sport = "", standard = "", self, self
             studentId: null,
             status: self,
             reason: self === "absent" ? String(selfReason).trim() : "",
+            checkInTime: self === "present" ? String(checkInTime || "").trim() : "",
+            checkOutTime: self === "present" ? String(checkOutTime || "").trim() : "",
           },
         },
         upsert: true,
       },
     });
   }
+  const STUDENT_STATUSES = ["present", "absent", "leave"];
   for (const s of Array.isArray(students) ? students : []) {
-    if (!s || !s.studentId || (s.status !== "present" && s.status !== "absent")) continue;
+    if (!s || !s.studentId || !STUDENT_STATUSES.includes(s.status)) continue;
     ops.push({
       updateOne: {
         filter: { ...base, subjectType: "student", studentId: s.studentId },
@@ -259,20 +285,86 @@ async function getAdminAttendance(clubId, { trainerId, date, standard } = {}) {
         trainerName: trainerName[String(r.trainerId)] || "Trainer",
         sport: r.sport, standard: r.standard,
         time: timeOf(r.date, r.standard, r.sport),
-        self: null, selfReason: "", students: [], present: 0, absent: 0,
+        self: null, selfReason: "", checkInTime: "", checkOutTime: "", hours: 0,
+        students: [], present: 0, absent: 0, leave: 0,
       };
     }
     const sess = map[key];
-    if (r.subjectType === "self") { sess.self = r.status; sess.selfReason = r.reason || ""; }
-    else if (r.studentId) {
+    if (r.subjectType === "self") {
+      sess.self = r.status;
+      sess.selfReason = r.reason || "";
+      sess.checkInTime = r.checkInTime || "";
+      sess.checkOutTime = r.checkOutTime || "";
+      sess.hours = sessionHours(r.checkInTime, r.checkOutTime);
+    } else if (r.studentId) {
       const info = studentInfo[String(r.studentId)] || {};
       sess.students.push({ name: info.name || "Student", rollNo: info.rollNo || "", status: r.status });
-      if (r.status === "present") sess.present++; else sess.absent++;
+      if (r.status === "present") sess.present++;
+      else if (r.status === "leave") sess.leave++;
+      else sess.absent++;
     }
   }
   return Object.values(map)
     .map((s) => ({ ...s, total: s.students.length }))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
+/**
+ * Attendance dashboard summary for a single date (admin). Returns student
+ * Present/Absent/Leave totals + a per-coach list (status, in/out, hours) for
+ * the Coach Attendance tab.
+ */
+async function getAttendanceSummary(clubId, { date } = {}) {
+  if (!date) throw new ServiceError(400, "date is required.");
+  const records = await repo.findAttendance({ clubId, date });
+  const trainerIds = [...new Set(records.map((r) => String(r.trainerId)))];
+  const trainers = await repo.findManagersByIds(trainerIds, "name staffRole sports");
+  const trainerInfo = {};
+  trainers.forEach((t) => { trainerInfo[String(t._id)] = t; });
+
+  const students = { present: 0, absent: 0, leave: 0 };
+  const coachMap = {};
+  for (const r of records) {
+    if (r.subjectType === "student") {
+      if (r.status === "present") students.present++;
+      else if (r.status === "leave") students.leave++;
+      else students.absent++;
+      continue;
+    }
+    // self (coach) record — one coach may run several sessions in a day; roll
+    // up to one row: present if any present, earliest in, latest out, summed hrs.
+    const id = String(r.trainerId);
+    if (!coachMap[id]) {
+      const t = trainerInfo[id] || {};
+      coachMap[id] = {
+        trainerId: id,
+        name: t.name || "Coach",
+        sport: r.sport || (Array.isArray(t.sports) ? t.sports.join(", ") : "") || "",
+        status: "absent", checkInTime: "", checkOutTime: "", hours: 0,
+      };
+    }
+    const c = coachMap[id];
+    if (r.status === "present") c.status = "present";
+    if (r.checkInTime && (!c.checkInTime || r.checkInTime < c.checkInTime)) c.checkInTime = r.checkInTime;
+    if (r.checkOutTime && (!c.checkOutTime || r.checkOutTime > c.checkOutTime)) c.checkOutTime = r.checkOutTime;
+    c.hours += sessionHours(r.checkInTime, r.checkOutTime);
+    if (!c.sport && r.sport) c.sport = r.sport;
+  }
+
+  const coaches = Object.values(coachMap).sort((a, b) => a.name.localeCompare(b.name));
+  const coachesPresent = coaches.filter((c) => c.status === "present").length;
+  const totalHours = coaches.reduce((sum, c) => sum + c.hours, 0);
+
+  return {
+    date,
+    students,
+    coaches,
+    coachSummary: {
+      present: coachesPresent,
+      absent: coaches.length - coachesPresent,
+      totalHours: Math.round(totalHours * 100) / 100,
+    },
+  };
 }
 
 /** The logged-in trainer's own past sessions (most recent 60). */
@@ -391,6 +483,7 @@ module.exports = {
   getAttendanceSession,
   markAttendance,
   getAdminAttendance,
+  getAttendanceSummary,
   getTrainerHistory,
   getStudentsForTrainer,
   // progress

@@ -208,6 +208,52 @@ const TEAM_KNOCKOUT_FORMATS = [
       { setNumber: 5, type: "doubles", homePos: ["P9", "P10"], awayPos: ["P9", "P10"] },
     ],
   },
+
+  // ──────────────────────────────────────────────────────────────────
+  // RAPID RALLIES S1 (Kharadi TT) — 5-player roster, 5-rubber team tie.
+  // Davis Cup style with a "Dynamic Selection System": doubles partners
+  // and the rubber-5 singles player are chosen by the captain (up front OR
+  // live per lineupMode). Constraints (female@P3, partner pool P3-P5,
+  // all-5-play, rubber-5 not-played-singles) are enforced by
+  // utils/rapidRalliesLineup.js — NOT by enumerated `options`.
+  //
+  // playAllSets: ALL 5 rubbers are always played (no dead rubbers); tie
+  // winner = more rubbers won. See project_rapid_rallies_tt memory + plan.
+  // ──────────────────────────────────────────────────────────────────
+  {
+    id: "rapid_rallies_s1",
+    name: "Rapid Rallies S1 — 5-Player Dynamic",
+    totalSets: 5, setsToWin: 3, hasDoubles: true, minPlayers: 5,
+    sport: "Table Tennis", pointsToWin: 11,
+    playAllSets: true,        // no dead rubbers — always play all 5
+    femaleSlot: "P3",         // roster slot P3 must be female; plays rubber 3
+    sets: [
+      // Rubber 1 — Singles, cross-seed A1 vs B2
+      { setNumber: 1, type: "singles", homePos: ["P1"], awayPos: ["P2"] },
+      // Rubber 2 — Doubles, anchors P2(home)/P1(away) + partner from {P3,P4,P5}
+      {
+        setNumber: 2, type: "doubles", requiresSelection: true,
+        homeAnchor: "P2", awayAnchor: "P1", partnerPool: ["P3", "P4", "P5"],
+        defaultHomePos: ["P2", "P3"], defaultAwayPos: ["P1", "P3"],
+      },
+      // Rubber 3 — Singles (Female), always P3 vs P3
+      { setNumber: 3, type: "singles", homePos: ["P3"], awayPos: ["P3"], female: true },
+      // Rubber 4 — Doubles, anchors P1(home)/P2(away) + partner from {P3,P4,P5}
+      {
+        setNumber: 4, type: "doubles", requiresSelection: true,
+        homeAnchor: "P1", awayAnchor: "P2", partnerPool: ["P3", "P4", "P5"],
+        defaultHomePos: ["P1", "P3"], defaultAwayPos: ["P2", "P3"],
+      },
+      // Rubber 5 — Singles, P2/B1 or a player who has NOT played a singles rubber
+      {
+        setNumber: 5, type: "singles", requiresSelection: true,
+        homeAnchor: "P2", awayAnchor: "P1",
+        homeEligible: ["P2", "P4", "P5"], awayEligible: ["P1", "P4", "P5"],
+        eligibility: "notPlayedSingles",
+        defaultHomePos: ["P2"], defaultAwayPos: ["P1"], isDecider: true,
+      },
+    ],
+  },
 ];
 
 /**

@@ -181,8 +181,11 @@ const updateMatch = async (req, res) => {
     const { matchId } = req.params;
     const updates = req.body;
 
-    const match = await Match.findById(matchId);
-    if (!match) {
+    // Look up across ALL match models so knockout / super / team matches can be
+    // edited too (the group `Match` model alone 404s for those ids).
+    const { findMatchById } = require("../utils/matchUtils");
+    const found = await findMatchById(matchId);
+    if (!found) {
       return res.status(404).json({ success: false, message: "Match not found." });
     }
 
@@ -202,7 +205,9 @@ const updateMatch = async (req, res) => {
     if (updates.startTime) updates.startTime = new Date(updates.startTime);
     if (updates.startDate) updates.startDate = new Date(updates.startDate);
 
-    const updatedMatch = await Match.findByIdAndUpdate(matchId, updates, { new: true });
+    // Update on the match's OWN model (found.match.constructor), preserving the
+    // existing findByIdAndUpdate semantics.
+    const updatedMatch = await found.match.constructor.findByIdAndUpdate(matchId, updates, { new: true });
 
     res.status(200).json({
       success: true,
