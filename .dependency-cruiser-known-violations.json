@@ -491,6 +491,20 @@
   },
   {
     "type": "dependency",
+    "from": "controllers/clubCoachController.js",
+    "to": "src/modules/club/models/ClubCoach.js",
+    "unresolvedTo": "../src/modules/club/models/ClubCoach",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
     "from": "controllers/clubCouponController.js",
     "to": "src/modules/club/models/ClubCoupon.js",
     "unresolvedTo": "../src/modules/club/models/ClubCoupon",
@@ -562,6 +576,20 @@
   {
     "type": "dependency",
     "from": "controllers/clubDashboardController.js",
+    "to": "src/modules/club/models/ClubCoach.js",
+    "unresolvedTo": "../src/modules/club/models/ClubCoach",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/clubDashboardController.js",
     "to": "src/modules/club/models/ClubCourt.js",
     "unresolvedTo": "../src/modules/club/models/ClubCourt",
     "dependencyTypes": [
@@ -603,6 +631,20 @@
   },
   {
     "type": "dependency",
+    "from": "controllers/clubDashboardController.js",
+    "to": "src/modules/club/models/ClubStaff.js",
+    "unresolvedTo": "../src/modules/club/models/ClubStaff",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
     "from": "controllers/clubFacilityController.js",
     "to": "src/modules/identity/models/User.js",
     "unresolvedTo": "../src/modules/identity/models/User",
@@ -631,6 +673,20 @@
   },
   {
     "type": "dependency",
+    "from": "controllers/clubInventoryController.js",
+    "to": "src/modules/club/models/ClubInventory.js",
+    "unresolvedTo": "../src/modules/club/models/ClubInventory",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
     "from": "controllers/clubMemberController.js",
     "to": "src/modules/club/models/ClubMember.js",
     "unresolvedTo": "../src/modules/club/models/ClubMember",
@@ -648,6 +704,20 @@
     "from": "controllers/clubMemberController.js",
     "to": "src/modules/club/models/MembershipPackage.js",
     "unresolvedTo": "../src/modules/club/models/MembershipPackage",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/clubStaffController.js",
+    "to": "src/modules/club/models/ClubStaff.js",
+    "unresolvedTo": "../src/modules/club/models/ClubStaff",
     "dependencyTypes": [
       "local",
       "require"
@@ -718,6 +788,34 @@
     "from": "controllers/couponController.js",
     "to": "src/modules/commerce/models/CouponUsage.js",
     "unresolvedTo": "../src/modules/commerce/models/CouponUsage",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/courtController.js",
+    "to": "src/modules/catalog/models/Referee.js",
+    "unresolvedTo": "../src/modules/catalog/models/Referee",
+    "dependencyTypes": [
+      "local",
+      "require"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "legacy-controller-direct-model"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "controllers/courtController.js",
+    "to": "src/modules/identity/models/User.js",
+    "unresolvedTo": "../src/modules/identity/models/User",
     "dependencyTypes": [
       "local",
       "require"

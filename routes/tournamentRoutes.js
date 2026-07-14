@@ -382,6 +382,13 @@ router.put   (
   requireTournamentOwner({ idParam: "tournamentId" }),
   courtController.updateCourt
 );
+// Assign / unassign the umpire responsible for a court (one umpire per court).
+router.patch (
+  "/:tournamentId/courts/:courtId/umpire",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  courtController.assignUmpireToCourt
+);
 router.delete(
   "/:tournamentId/courts/:courtId",
   requirePermission("tournament:manage"),

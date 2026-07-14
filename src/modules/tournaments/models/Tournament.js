@@ -250,6 +250,13 @@ const tournamentSchema = new mongoose.Schema(
       type:    { type: String, default: null },                       // free-form: "indoor" | "outdoor" | "table" | null
       sportId: { type: mongoose.Schema.Types.ObjectId, ref: "Sport", default: null },
       isActive:{ type: Boolean, default: true },
+      // Court-based umpire assignment: ONE umpire per court, responsible for
+      // every match played on it. Authorization runs off this via
+      // utils/umpireAuth.js (a 3rd path alongside per-match + stage-level).
+      assignedUmpire: {
+        refereeId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        name:      { type: String, default: null },
+      },
       createdAt:{ type: Date, default: Date.now },
     }],
 

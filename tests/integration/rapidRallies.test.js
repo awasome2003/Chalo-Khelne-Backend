@@ -261,3 +261,74 @@ describe("completeGame — playAllSets + league no-eliminate", () => {
     expect(standings[1].points).toBe(0);
   });
 });
+
+describe("court-based umpire flow", () => {
+  const { isUmpireAuthorizedForMatch } = require("../../utils/umpireAuth");
+  const courtController = require("../../controllers/courtController");
+  const User = require("../../src/modules/identity/models/User");
+  const Referee = require("../../src/modules/catalog/models/Referee");
+
+  async function seedWithCourts(courtDefs) {
+    const tournamentId = OID();
+    const sportId = OID();
+    const fmt = { scoringType: "sets", totalSets: 5, setsToWin: 3, totalGames: 1, gamesToWin: 1, pointsToWinGame: 11, marginToWin: 2, deuceRule: true };
+    await Tournament.collection.insertOne({
+      _id: tournamentId,
+      title: "Court Cup",
+      davisCupFormatId: "rapid_rallies_s1",
+      lineupMode: "dynamic",
+      matchFormat: fmt,
+      sports: [{ sportId, sportName: "Table Tennis", davisCupFormatId: "rapid_rallies_s1", matchFormat: fmt }],
+      courts: courtDefs.map((c) => ({ _id: OID(), name: c.name, isActive: true, assignedUmpire: c.assignedUmpire || { refereeId: null, name: null } })),
+    });
+    return { tournamentId, sportId };
+  }
+
+  test("RR ties are distributed across the tournament's active courts", async () => {
+    const { tournamentId } = await seedWithCourts([{ name: "Table 1" }, { name: "Table 2" }, { name: "Table 3" }]);
+    await TeamKnockoutTeams.collection.insertMany([makeTeam(tournamentId, "A"), makeTeam(tournamentId, "B"), makeTeam(tournamentId, "C"), makeTeam(tournamentId, "D")]);
+    const res = mockRes();
+    await controller.generateRoundRobinMatches({ body: { tournamentId: tournamentId.toString(), scheduleDetails: schedule } }, res);
+    expect(res.statusCode).toBe(201);
+    const matches = await TeamKnockoutMatches.find({ tournamentId }).lean();
+    expect(matches).toHaveLength(6); // 4 teams → 6 ties
+    expect([...new Set(matches.map((m) => m.courtNumber))].sort()).toEqual(["Table 1", "Table 2", "Table 3"]);
+  });
+
+  test("court-based auth: assigned umpire is authorized on their court only", async () => {
+    const umpireId = OID();
+    const { tournamentId } = await seedWithCourts([
+      { name: "Table 1", assignedUmpire: { refereeId: umpireId, name: "Ump A" } },
+      { name: "Table 2" },
+    ]);
+    const onCourt = await isUmpireAuthorizedForMatch(umpireId, { _id: OID(), tournamentId, courtNumber: "Table 1" });
+    expect(onCourt).toMatchObject({ authorized: true, via: "court-grant" });
+    const otherCourt = await isUmpireAuthorizedForMatch(umpireId, { _id: OID(), tournamentId, courtNumber: "Table 2" });
+    expect(otherCourt.authorized).toBe(false);
+    const otherUser = await isUmpireAuthorizedForMatch(OID(), { _id: OID(), tournamentId, courtNumber: "Table 1" });
+    expect(otherUser.authorized).toBe(false);
+  });
+
+  test("assignUmpireToCourt sets then unassigns the court umpire", async () => {
+    const umpUser = OID();
+    await User.collection.insertOne({ _id: umpUser, name: "Ump B" });
+    await Referee.collection.insertOne({ _id: OID(), userId: umpUser });
+    const { tournamentId } = await seedWithCourts([{ name: "Table 1" }]);
+    const t = await Tournament.findById(tournamentId).lean();
+    const courtId = t.courts[0]._id;
+    const params = { tournamentId: tournamentId.toString(), courtId: courtId.toString() };
+
+    let res = mockRes();
+    await courtController.assignUmpireToCourt({ params, body: { refereeUserId: umpUser.toString() } }, res);
+    expect(res.statusCode).toBe(200);
+    let after = await Tournament.findById(tournamentId).lean();
+    expect(String(after.courts[0].assignedUmpire.refereeId)).toBe(String(umpUser));
+    expect(after.courts[0].assignedUmpire.name).toBe("Ump B");
+
+    res = mockRes();
+    await courtController.assignUmpireToCourt({ params, body: { refereeUserId: null } }, res);
+    expect(res.statusCode).toBe(200);
+    after = await Tournament.findById(tournamentId).lean();
+    expect(after.courts[0].assignedUmpire.refereeId).toBeFalsy();
+  });
+});

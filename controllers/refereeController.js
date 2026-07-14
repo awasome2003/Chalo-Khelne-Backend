@@ -663,13 +663,22 @@ exports.getMyAuthorizations = async (req, res) => {
       .map((a) => a.matchId?.toString())
       .filter(Boolean);
 
+    // Court-based grants — courts in this tournament whose assigned umpire is
+    // this user. The umpire is authorized for every match on these courts.
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
+    const tourn = await Tournament.findById(tournamentId).select("courts").lean();
+    const courts = (tourn?.courts || [])
+      .filter((c) => c?.assignedUmpire?.refereeId && String(c.assignedUmpire.refereeId) === String(userId))
+      .map((c) => c.name);
+
     return res.status(200).json({
       userId,
       tournamentId,
-      hasAnyGrant: stages.length > 0 || matchIds.length > 0,
+      hasAnyGrant: stages.length > 0 || matchIds.length > 0 || courts.length > 0,
       stages,
       stagesSource,
       matchIds,
+      courts,
     });
   } catch (error) {
     console.error("getMyAuthorizations error:", error);

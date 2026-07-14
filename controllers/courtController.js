@@ -275,6 +275,62 @@ exports.updateCourt = async (req, res) => {
   }
 };
 
+// PATCH /api/tournaments/:tournamentId/courts/:courtId/umpire
+//   Assign (or, with refereeUserId null, unassign) the umpire responsible for
+//   this court. One umpire per court — they're authorized to score every match
+//   played on it (utils/umpireAuth.js path C).
+exports.assignUmpireToCourt = async (req, res) => {
+  try {
+    const tournamentId = _validTournamentId(req, res);
+    if (!tournamentId) return;
+
+    const { courtId } = req.params;
+    const { refereeUserId } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(courtId)) {
+      return res.status(400).json({ success: false, message: "Invalid courtId" });
+    }
+
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: "Tournament not found" });
+    }
+    const court = tournament.courts.id(courtId);
+    if (!court) {
+      return res.status(404).json({ success: false, message: "Court not found on this tournament" });
+    }
+
+    // Unassign
+    if (!refereeUserId) {
+      court.assignedUmpire = { refereeId: null, name: null };
+      tournament.markModified("courts");
+      await tournament.save({ validateModifiedOnly: true });
+      return res.status(200).json({ success: true, message: "Umpire unassigned from court", court });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(refereeUserId)) {
+      return res.status(400).json({ success: false, message: "Invalid refereeUserId" });
+    }
+    const Referee = require("../src/modules/catalog/models/Referee");
+    const User = require("../src/modules/identity/models/User");
+    const referee = await Referee.findOne({ userId: refereeUserId });
+    if (!referee) {
+      return res.status(404).json({ success: false, message: "Umpire has no referee profile" });
+    }
+    const user = await User.findById(refereeUserId).select("name");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Umpire user not found" });
+    }
+
+    court.assignedUmpire = { refereeId: refereeUserId, name: user.name };
+    tournament.markModified("courts");
+    await tournament.save({ validateModifiedOnly: true });
+    return res.status(200).json({ success: true, message: `Umpire assigned to ${court.name}`, court });
+  } catch (err) {
+    console.error("[COURTS] assignUmpireToCourt error:", err);
+    return res.status(500).json({ success: false, message: "Failed to assign umpire to court", error: err.message });
+  }
+};
+
 // GET /api/tournaments/:tournamentId/courts/utilization
 //   Per-court status counts across all 5 match collections, plus an
 //   "unassigned" bucket for matches whose courtNumber doesn't match any

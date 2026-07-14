@@ -775,6 +775,24 @@ const teamKnockoutController = {
         maxPointsCap: tf.maxPointsCap || null,
       };
 
+      // Court pool — ties are round-robin distributed across these so each
+      // court/table hosts a share of the league (and its assigned umpire covers
+      // them). Priority: manager-selected subset → tournament's active courts →
+      // legacy single court → "TBD".
+      const courtPool = (() => {
+        const selected = Array.isArray(scheduleDetails.courtNames)
+          ? scheduleDetails.courtNames.map((c) => String(c).trim()).filter(Boolean)
+          : [];
+        if (selected.length) return selected;
+        const active = (tournament.courts || [])
+          .filter((c) => c && c.isActive !== false && c.name)
+          .map((c) => String(c.name).trim())
+          .filter(Boolean);
+        if (active.length) return active;
+        const single = scheduleDetails.courtNumber ? String(scheduleDetails.courtNumber).trim() : "";
+        return single ? [single] : ["TBD"];
+      })();
+
       // Determine format
       const useTwoPlayerFormat = teams.every(
         (t) => !t.playerPositions.C || t.playerPositions.C === null
@@ -865,7 +883,7 @@ const teamKnockoutController = {
             format: rrFormatName,
             gameRules: gameRulesFromTournament,
             matchDate: matchStartTime,
-            courtNumber: scheduleDetails.courtNumber || "TBD",
+            courtNumber: courtPool[matchIndex % courtPool.length],
             status: "SCHEDULED",
             isBye: false,
             sets: matchSets,

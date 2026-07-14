@@ -2,12 +2,15 @@
  * umpireAuth — Phase 4 authorization helper for umpire scoring.
  *
  * Determines whether a given umpire (userId) is authorized to score a given match.
- * Two paths to authorization:
+ * Three paths to authorization:
  *
  *   A. Match-level grant — an accepted Assignment doc for this specific match.
  *   B. Stage-level grant — an accepted StaffApplication for the tournament,
  *      where `stages` either includes the match's stage or is empty (= all stages,
  *      backward-compat for pre-Phase-4 accepted applications).
+ *   C. Court-based grant — the umpire is the assigned umpire of the match's
+ *      court/table (Tournament.courts[].assignedUmpire). One umpire per court,
+ *      responsible for every match played on it.
  *
  * Match "stage" is derived structurally: presence of `groupId` = "group-stage",
  * absence = "knockout".
@@ -76,6 +79,21 @@ async function isUmpireAuthorizedForMatch(userId, match) {
     const stageAllowed = !hasExplicitStages || staffApp.stages.includes(stage);
     if (stageAllowed) {
       return { authorized: true, via: "stage-grant", stage };
+    }
+  }
+
+  // C. Court-based grant — the umpire is the assigned umpire of this match's
+  // court/table (one umpire per court, responsible for every match on it).
+  const rawCourt = match.courtNumber != null ? String(match.courtNumber).trim() : "";
+  if (rawCourt && rawCourt !== "TBD" && rawCourt !== "BYE") {
+    const Tournament = require("../src/modules/tournaments/models/Tournament");
+    const t = await Tournament.findById(match.tournamentId).select("courts").lean();
+    const target = rawCourt.toLowerCase();
+    const court = (t?.courts || []).find(
+      (c) => c && c.name && String(c.name).trim().toLowerCase() === target
+    );
+    if (court?.assignedUmpire?.refereeId && String(court.assignedUmpire.refereeId) === String(userId)) {
+      return { authorized: true, via: "court-grant", stage, court: court.name };
     }
   }
 
