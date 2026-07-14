@@ -26,7 +26,7 @@ describe("createStudent", () => {
 
     expect(repo.countStudents).toHaveBeenCalledWith("club1", "V");
     expect(repo.createStudent).toHaveBeenCalledWith({
-      clubId: "club1", standard: "V", name: "Aarav", rollNo: "", order: 2,
+      clubId: "club1", standard: "V", name: "Aarav", rollNo: "", section: "", order: 2,
     });
     expect(student.name).toBe("Aarav");
   });
