@@ -376,6 +376,14 @@ router.post  (
   courtController.bulkCreateCourts
 );
 router.get   ("/:tournamentId/courts/utilization", courtController.getCourtUtilization);
+// Round-robin existing matches across the active courts (fixes matches
+// generated before courts were created / renamed).
+router.post  (
+  "/:tournamentId/courts/distribute",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  courtController.distributeMatchesToCourts
+);
 router.put   (
   "/:tournamentId/courts/:courtId",
   requirePermission("tournament:manage"),

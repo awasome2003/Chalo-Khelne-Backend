@@ -2,15 +2,16 @@
  * umpireAuth — Phase 4 authorization helper for umpire scoring.
  *
  * Determines whether a given umpire (userId) is authorized to score a given match.
- * Three paths to authorization:
+ * Grant paths (evaluated in order):
  *
  *   A. Match-level grant — an accepted Assignment doc for this specific match.
- *   B. Stage-level grant — an accepted StaffApplication for the tournament,
- *      where `stages` either includes the match's stage or is empty (= all stages,
- *      backward-compat for pre-Phase-4 accepted applications).
- *   C. Court-based grant — the umpire is the assigned umpire of the match's
- *      court/table (Tournament.courts[].assignedUmpire). One umpire per court,
- *      responsible for every match played on it.
+ *      Always wins (explicit override).
+ *   C. Court-based grant (EXCLUSIVE) — if the umpire is assigned to ANY court in
+ *      the tournament (Tournament.courts[].assignedUmpire), they are STRICTLY
+ *      limited to their court(s): authorized only when match.courtNumber is one
+ *      of their courts, and the stage grant below is suppressed for them.
+ *   B. Stage-level grant — for NON-court umpires only: an accepted
+ *      StaffApplication whose `stages` include the match's stage (empty = all).
  *
  * Match "stage" is derived structurally: presence of `groupId` = "group-stage",
  * absence = "knockout".
@@ -47,7 +48,7 @@ async function isUmpireAuthorizedForMatch(userId, match) {
 
   const stage = getMatchStage(match);
 
-  // A. Match-level grant
+  // A. Match-level grant — an explicit per-match assignment always wins.
   const matchAssignment = await Assignment.findOne({
     refereeId: userId,
     matchId: match._id,
@@ -64,7 +65,26 @@ async function isUmpireAuthorizedForMatch(userId, match) {
     };
   }
 
-  // B. Stage-level grant via accepted StaffApplication
+  // Court-scoping check. If this umpire is assigned to ANY court in the
+  // tournament, they are STRICTLY limited to their court(s): they can score a
+  // match only if it's played on one of their courts — the blanket stage grant
+  // is suppressed for them. (Non-court umpires fall through to the stage path.)
+  const Tournament = require("../src/modules/tournaments/models/Tournament");
+  const t = await Tournament.findById(match.tournamentId).select("courts").lean();
+  const myCourts = (t?.courts || [])
+    .filter((c) => c?.assignedUmpire?.refereeId && String(c.assignedUmpire.refereeId) === String(userId))
+    .map((c) => String(c.name).trim().toLowerCase());
+
+  if (myCourts.length > 0) {
+    // C. Court-based grant — exclusive: only this umpire's court(s).
+    const rawCourt = match.courtNumber != null ? String(match.courtNumber).trim() : "";
+    if (rawCourt && rawCourt !== "TBD" && rawCourt !== "BYE" && myCourts.includes(rawCourt.toLowerCase())) {
+      return { authorized: true, via: "court-grant", stage, court: rawCourt };
+    }
+    return { authorized: false, courtScoped: true, courts: myCourts };
+  }
+
+  // B. Stage-level grant via accepted StaffApplication (non-court umpires only).
   const staffApp = await StaffApplication.findOne({
     userId,
     tournamentId: match.tournamentId,
@@ -79,21 +99,6 @@ async function isUmpireAuthorizedForMatch(userId, match) {
     const stageAllowed = !hasExplicitStages || staffApp.stages.includes(stage);
     if (stageAllowed) {
       return { authorized: true, via: "stage-grant", stage };
-    }
-  }
-
-  // C. Court-based grant — the umpire is the assigned umpire of this match's
-  // court/table (one umpire per court, responsible for every match on it).
-  const rawCourt = match.courtNumber != null ? String(match.courtNumber).trim() : "";
-  if (rawCourt && rawCourt !== "TBD" && rawCourt !== "BYE") {
-    const Tournament = require("../src/modules/tournaments/models/Tournament");
-    const t = await Tournament.findById(match.tournamentId).select("courts").lean();
-    const target = rawCourt.toLowerCase();
-    const court = (t?.courts || []).find(
-      (c) => c && c.name && String(c.name).trim().toLowerCase() === target
-    );
-    if (court?.assignedUmpire?.refereeId && String(court.assignedUmpire.refereeId) === String(userId)) {
-      return { authorized: true, via: "court-grant", stage, court: court.name };
     }
   }
 

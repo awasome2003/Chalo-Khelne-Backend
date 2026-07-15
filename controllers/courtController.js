@@ -443,6 +443,102 @@ exports.getCourtUtilization = async (req, res) => {
   }
 };
 
+// POST /api/tournaments/:tournamentId/courts/distribute
+//   Round-robins existing matches across the tournament's ACTIVE courts.
+//   Solves the common "added courts after generating fixtures" case where
+//   matches carry a legacy court label (e.g. "1") that doesn't match the
+//   catalog names (e.g. "Table 1") — so they show as "unassigned" and never
+//   surface for the court's umpire.
+//
+//   Body (all optional):
+//     onlyUnassigned  (default true)  — only touch matches whose courtNumber
+//                                        isn't already an active catalog name.
+//     includeCompleted(default false) — leave finished matches on their
+//                                        original court unless explicitly asked.
+//     sportId         (optional)      — restrict distribution to courts of one
+//                                        sport (falls back to all active courts).
+exports.distributeMatchesToCourts = async (req, res) => {
+  try {
+    const tournamentId = _validTournamentId(req, res);
+    if (!tournamentId) return;
+
+    const tournament = await Tournament.findById(tournamentId).select("courts").lean();
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: "Tournament not found" });
+    }
+
+    const { onlyUnassigned = true, includeCompleted = false, sportId = null } = req.body || {};
+
+    // Court pool = active courts (optionally scoped to a sport), in catalog order.
+    let active = (tournament.courts || []).filter((c) => c.isActive !== false);
+    active = _filterBySport(active, sportId);
+    const pool = active.map((c) => String(c.name).trim()).filter(Boolean);
+    if (pool.length === 0) {
+      return res.status(400).json({ success: false, message: "No active courts to distribute across. Add courts first." });
+    }
+    const poolLower = new Set(pool.map((n) => n.toLowerCase()));
+
+    const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
+    const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
+    const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+    const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
+    const TeamKnockoutMatches = require("../src/modules/tournaments/models/TeamKnockoutMatches");
+    const collections = [
+      ["match", Match],
+      ["superMatch", SuperMatch],
+      ["directKnockout", DirectKnockoutMatch],
+      ["knockout", KnockoutMatch],
+      ["teamKnockout", TeamKnockoutMatches],
+    ];
+
+    const isCompleted = (s) => String(s || "").toUpperCase().replace(/-/g, "_") === "COMPLETED";
+    const perCollection = {};
+    let totalUpdated = 0;
+    // Single rolling index so distribution stays balanced ACROSS collections,
+    // not restarting per collection.
+    let idx = 0;
+
+    for (const [key, Model] of collections) {
+      const docs = await Model.find({ tournamentId }, "courtNumber status roundNumber matchNumber")
+        .sort({ roundNumber: 1, matchNumber: 1, _id: 1 })
+        .lean();
+
+      const ops = [];
+      for (const d of docs) {
+        if (!includeCompleted && isCompleted(d.status)) continue;
+        const cur = d.courtNumber != null ? String(d.courtNumber).trim().toLowerCase() : "";
+        // Skip matches already sitting on a valid active court, unless the
+        // caller asked to reshuffle everything (onlyUnassigned=false).
+        if (onlyUnassigned && cur && poolLower.has(cur)) continue;
+
+        const target = pool[idx % pool.length];
+        idx++;
+        if (String(d.courtNumber || "") === target) continue; // no-op
+        ops.push({ updateOne: { filter: { _id: d._id }, update: { $set: { courtNumber: target } } } });
+      }
+
+      if (ops.length > 0) {
+        await Model.bulkWrite(ops, { ordered: false });
+      }
+      perCollection[key] = ops.length;
+      totalUpdated += ops.length;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: totalUpdated > 0
+        ? `Distributed ${totalUpdated} match${totalUpdated === 1 ? "" : "es"} across ${pool.length} court${pool.length === 1 ? "" : "s"}.`
+        : "Nothing to distribute — all matches already sit on an active court.",
+      totalUpdated,
+      courts: pool,
+      perCollection,
+    });
+  } catch (err) {
+    console.error("[COURTS] distributeMatchesToCourts error:", err);
+    return res.status(500).json({ success: false, message: "Failed to distribute matches", error: err.message });
+  }
+};
+
 // DELETE /api/tournaments/:tournamentId/courts/:courtId
 //   v1 = soft-delete only. Sets isActive: false. Past match assignments
 //   keep displaying the name. Hard-delete deferred to v2 if ever needed.

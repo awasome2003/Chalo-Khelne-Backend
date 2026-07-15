@@ -671,12 +671,18 @@ exports.getMyAuthorizations = async (req, res) => {
       .filter((c) => c?.assignedUmpire?.refereeId && String(c.assignedUmpire.refereeId) === String(userId))
       .map((c) => c.name);
 
+    // STRICT court-scoping: a court-assigned umpire is limited to their court(s)
+    // — suppress the blanket stage grant so the client won't offer other matches.
+    const courtScoped = courts.length > 0;
+    const effStages = courtScoped ? [] : stages;
+    const effStagesSource = courtScoped ? "court-scoped" : stagesSource;
+
     return res.status(200).json({
       userId,
       tournamentId,
-      hasAnyGrant: stages.length > 0 || matchIds.length > 0 || courts.length > 0,
-      stages,
-      stagesSource,
+      hasAnyGrant: effStages.length > 0 || matchIds.length > 0 || courts.length > 0,
+      stages: effStages,
+      stagesSource: effStagesSource,
       matchIds,
       courts,
     });
