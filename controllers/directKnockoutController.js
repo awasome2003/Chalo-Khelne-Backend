@@ -1702,6 +1702,48 @@ const resetBracket = async (req, res) => {
   }
 };
 
+// Edit player name in a match
+const updatePlayerName = async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { playerSlot, playerName } = req.body;
+
+    if (!matchId || !playerSlot || !playerName) {
+      return res.status(400).json({
+        success: false,
+        message: "matchId, playerSlot ('player1' or 'player2'), and playerName are required",
+      });
+    }
+
+    const match = await DirectKnockoutMatch.findOne({
+      $or: [
+        { matchId },
+        { _id: mongoose.Types.ObjectId.isValid(matchId) ? matchId : undefined },
+      ].filter(Boolean),
+    });
+
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Match not found" });
+    }
+
+    if (!match[playerSlot]) {
+      match[playerSlot] = {};
+    }
+    match[playerSlot].playerName = playerName.trim();
+    match.markModified(playerSlot);
+    await match.save({ validateModifiedOnly: true });
+
+    return res.json({
+      success: true,
+      message: `Updated player name to "${playerName.trim()}"`,
+      match,
+    });
+  } catch (err) {
+    console.error("[DK_UPDATE_PLAYER] Error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   // Original (post-group stage)
   validatePlayerSelection,
@@ -1719,6 +1761,7 @@ module.exports = {
   bulkUploadScores,
   giveBye,
   resetBracket,
+  updatePlayerName,
 
   // Utilities
   isPowerOfTwo,

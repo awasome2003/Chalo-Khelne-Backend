@@ -292,6 +292,13 @@ router.post(
   directKnockoutController.giveBye
 );
 
+// Edit player name in a match
+router.put(
+  "/direct-knockout/matches/:matchId/player-name",
+  requirePermission("tournament:manage"),
+  directKnockoutController.updatePlayerName
+);
+
 // Bulk score upload for Direct Knockout
 router.post(
   "/direct-knockout/bulk-upload-scores",
