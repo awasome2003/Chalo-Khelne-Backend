@@ -9,6 +9,8 @@ const ClubBooking = require("../src/modules/club/models/ClubBooking");
 const ClubFinance = require("../src/modules/club/models/ClubFinance");
 const ClubAudit = require("../src/modules/club/models/ClubAudit");
 const ClubMember = require("../src/modules/club/models/ClubMember");
+const ClubCoach = require("../src/modules/club/models/ClubCoach");
+const ClubStaff = require("../src/modules/club/models/ClubStaff");
 const { resolveClubId } = require("../src/modules/club/scope");
 
 exports.summary = async (req, res) => {
@@ -17,12 +19,14 @@ exports.summary = async (req, res) => {
     if (!clubId) return res.status(403).json({ success: false, message: "No club context" });
     const today = new Date().toISOString().slice(0, 10);
 
-    const [courts, bookings, finance, audit, members] = await Promise.all([
+    const [courts, bookings, finance, audit, members, coaches, staff] = await Promise.all([
       ClubCourt.find({ clubId }).lean(),
       ClubBooking.find({ clubId, status: "Confirmed" }).lean(),
       ClubFinance.find({ clubId, type: "Income" }).lean(),
       ClubAudit.find({ clubId }).sort({ createdAt: -1 }).limit(6).lean(),
       ClubMember.find({ clubId }).lean(),
+      ClubCoach.find({ clubId }).lean(),
+      ClubStaff.find({ clubId }).lean(),
     ]);
 
     const unpaid = bookings.filter((b) => !b.isPaid);
@@ -39,7 +43,8 @@ exports.summary = async (req, res) => {
       upcomingTournaments: 0,
       availableCourts: courts.filter((c) => c.status === "Available").length,
       totalCourts: courts.length,
-      coachesAvailable: 0, staffOnDuty: 0, totalStaff: 0,
+      coachesAvailable: coaches.filter((c) => c.attendanceToday === "Present" && c.status !== "On Leave").length,
+      staffOnDuty: staff.filter((s) => s.attendanceToday === "Present").length, totalStaff: staff.length,
       newMemberRequests: members.filter((m) => m.status === "Pending").length,
       liveActivity: occupied.map((c) => ({ tag: "COURT IN USE", title: `${c.name} (${c.sport})`, subtitle: `${c.isIndoor ? "Indoor" : "Outdoor"} • ${c.operatingHours}` })),
       pendingPayments: unpaid.slice(0, 8).map((b) => ({ customerName: b.customerName, courtName: b.courtName, startTime: b.startTime, amount: b.amount })),

@@ -49,12 +49,10 @@ function isOwner(chat, userId) {
   return String(chat.createdBy) === String(userId);
 }
 
-function isMember(chat, userId) {
-  return (
-    String(chat.createdBy) === String(userId) ||
-    (chat.members || []).some((m) => String(m.userId) === String(userId))
-  );
-}
+// isMember now lives in utils/chatMembership.js so the socket layer enforces
+// the identical rule before letting a socket into `gchat_<id>`. Do not
+// re-inline it here.
+const { isMember } = require("../utils/chatMembership");
 
 // ════════════════════════════════════
 // SEARCH USERS (for adding members) — authenticated only
@@ -234,8 +232,18 @@ router.post("/:id/remove", async (req, res) => {
     const io = req.app.get("io");
     if (io) {
       io.to(`gchat_${chat._id}`).emit("gchat:updated", { chatId: chat._id, action: "member_removed", userId });
-      // Kick removed user from socket room
       io.to(`gchat_${chat._id}`).emit("gchat:kicked", { chatId: chat._id, userId });
+
+      // The emit above is advisory — it asks the client to leave and a client
+      // that ignores it keeps receiving messages. Force the removed user's
+      // live sockets out of the room server-side. Every socket joins
+      // `user_<id>` at connect, so that room addresses exactly their sockets.
+      try {
+        const sockets = await io.in(`user_${userId}`).fetchSockets();
+        for (const s of sockets) s.leave(`gchat_${chat._id}`);
+      } catch (_) {
+        /* best-effort — membership is re-checked on the next join */
+      }
     }
 
     res.json({ success: true, chat });

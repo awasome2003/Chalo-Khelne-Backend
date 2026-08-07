@@ -572,21 +572,29 @@ const getDirectKnockoutMatches = async (req, res) => {
         if (!m.nextMatchId) continue;
         const nextMatch = byMatchId.get(m.nextMatchId);
         if (!nextMatch) continue;
-        const winnerId =
-          m.result?.winner?.playerId ||
-          m.matchResult?.winner?.playerId ||
-          m.winner?.playerId;
-        if (!winnerId) continue;
-        const winnerIdStr = winnerId.toString();
+        // Winner may be identified by playerId (real users) OR by playerName
+        // only (guest-booking tournaments store playerId: null).
+        const winnerObj =
+          m.result?.winner ||
+          m.matchResult?.winner ||
+          m.winner;
+        const winnerId = winnerObj?.playerId;
+        const winnerName = winnerObj?.playerName;
+        if (!winnerId && (!winnerName || winnerName === "TBD")) continue;
+        const winnerIdStr = winnerId ? winnerId.toString() : null;
         const nextP1Id = nextMatch.player1?.playerId?._id?.toString?.() || nextMatch.player1?.playerId?.toString?.();
         const nextP2Id = nextMatch.player2?.playerId?._id?.toString?.() || nextMatch.player2?.playerId?.toString?.();
-        const alreadyThere = nextP1Id === winnerIdStr || nextP2Id === winnerIdStr;
+        const nextP1Name = nextMatch.player1?.playerName;
+        const nextP2Name = nextMatch.player2?.playerName;
+        const alreadyThere =
+          (winnerIdStr && (nextP1Id === winnerIdStr || nextP2Id === winnerIdStr)) ||
+          (winnerName && (nextP1Name === winnerName || nextP2Name === winnerName));
         if (alreadyThere) continue;
         try {
           // Re-fetch WITHOUT populate — processDirectKnockoutProgression does
           // `match.player1.playerId.toString()` which breaks on populated docs.
           const freshMatch = await DirectKnockoutMatch.findById(m._id);
-          await processDirectKnockoutProgression(freshMatch, winnerId);
+          await processDirectKnockoutProgression(freshMatch, winnerId || winnerObj);
           healed = true;
         } catch (progErr) {
           console.warn(`[HEAL] Progression error for ${m.matchId}:`, progErr.message);
@@ -690,7 +698,10 @@ const getDirectKnockoutMatches = async (req, res) => {
 };
 
 // 🛠️ Helper: Process Direct Knockout Progression Logic
-const processDirectKnockoutProgression = async (match, winnerId) => {
+// winnerRef may be a playerId (string/ObjectId) OR a winner object
+// { playerId, playerName }. Guest-booking tournaments have playerId: null,
+// so we fall back to matching by playerName.
+const processDirectKnockoutProgression = async (match, winnerRef) => {
   try {
     // If we only have matchId, fetch the doc
     if (typeof match === 'string') {
@@ -706,18 +717,31 @@ const processDirectKnockoutProgression = async (match, winnerId) => {
       return { success: false, message: "Next match found in ID but not in DB" };
     }
 
+    // Normalize winnerRef → { id, name }
+    let winnerIdStr = null;
+    let winnerNameRef = null;
+    if (winnerRef && typeof winnerRef === "object" && !mongoose.isValidObjectId(winnerRef)) {
+      winnerIdStr = winnerRef.playerId ? winnerRef.playerId.toString() : null;
+      winnerNameRef = winnerRef.playerName || null;
+    } else if (winnerRef) {
+      winnerIdStr = winnerRef.toString();
+    }
+
     // Get winner info directly from the match (not TopPlayers — works for both standalone and post-group)
-    const winnerIdStr = winnerId.toString();
     const p1Id = match.player1?.playerId?.toString();
     const p2Id = match.player2?.playerId?.toString();
 
     let winnerData;
-    if (p1Id === winnerIdStr) {
+    if (winnerIdStr && p1Id === winnerIdStr) {
       winnerData = { playerId: match.player1.playerId, playerName: match.player1.playerName };
-    } else if (p2Id === winnerIdStr) {
+    } else if (winnerIdStr && p2Id === winnerIdStr) {
+      winnerData = { playerId: match.player2.playerId, playerName: match.player2.playerName };
+    } else if (winnerNameRef && match.player1?.playerName === winnerNameRef) {
+      winnerData = { playerId: match.player1.playerId, playerName: match.player1.playerName };
+    } else if (winnerNameRef && match.player2?.playerName === winnerNameRef) {
       winnerData = { playerId: match.player2.playerId, playerName: match.player2.playerName };
     } else {
-      return { success: false, message: "Winner ID does not match either player in this match" };
+      return { success: false, message: "Winner does not match either player in this match" };
     }
 
     // Determine which player slot to fill in next match

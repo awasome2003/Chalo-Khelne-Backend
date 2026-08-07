@@ -174,11 +174,22 @@ function assertSportSelections(payload) {
         `sportSelections[${i}].categoryName is required`
       );
     }
-    if (s.fee === undefined || s.fee === null
-        || typeof s.fee !== "number" || !Number.isFinite(s.fee)) {
+    // `fee` is OPTIONAL and, where it matters, ignored.
+    //
+    // It used to be required here, which put the API boundary in direct
+    // contradiction with the controller: createBooking now derives every fee
+    // from the tournament's category (§2.4) and never reads the submitted
+    // value. Demanding a field we then discard forces clients to invent a
+    // number and makes the payload look authoritative when it is not.
+    //
+    // A submitted value is still type-checked so an obviously malformed
+    // payload fails fast, but its absence is fine and its presence changes
+    // nothing about what the player is charged.
+    if (s.fee !== undefined && s.fee !== null
+        && (typeof s.fee !== "number" || !Number.isFinite(s.fee))) {
       throw new SportContextError(
         ERR.SPORT_SELECTIONS_REQUIRED,
-        `sportSelections[${i}].fee must be a number`
+        `sportSelections[${i}].fee must be a number when provided`
       );
     }
   }

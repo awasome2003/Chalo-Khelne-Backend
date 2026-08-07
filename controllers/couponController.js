@@ -1,6 +1,7 @@
 const Coupon = require("../src/modules/commerce/models/Coupon");
 const CouponUsage = require("../src/modules/commerce/models/CouponUsage");
 const mongoose = require("mongoose");
+const { quoteCoupon } = require("../services/couponService");
 
 const couponController = {
   // ═══════════════════════════════════════════
@@ -93,13 +94,22 @@ const couponController = {
   },
 
   // ═══════════════════════════════════════════
-  // VALIDATE COUPON (Player applies during booking)
+  // VALIDATE COUPON — preview only, no side effects
   // ═══════════════════════════════════════════
+  //
+  // §2.7(b): the per-user limit used to be checked against `user_id` from the
+  // REQUEST BODY, inside `if (user_id) { … }` — so omitting the field skipped
+  // the guard entirely. The route is authenticated; the user now comes from the
+  // token and the body value is ignored.
+  //
+  // This endpoint no longer decides anything binding. It renders a price for
+  // the UI; the authoritative evaluation happens again inside redeemCoupon at
+  // booking time, in the same transaction as the booking write.
   validate: async (req, res) => {
     try {
-      const { code, applicable_id, applicable_type, total_amount, user_id } = req.body;
+      const { code, applicable_id, applicable_type, total_amount } = req.body;
 
-      if (!code || !total_amount) {
+      if (!code || total_amount === undefined || total_amount === null) {
         return res.status(400).json({
           success: false,
           valid: false,
@@ -107,119 +117,31 @@ const couponController = {
         });
       }
 
-      const coupon = await Coupon.findOne({ code: code.toUpperCase().trim() });
+      const userId = req.user?.id || req.user?._id || req.user?.userId;
 
-      if (!coupon) {
-        return res.json({
-          success: true,
-          valid: false,
-          message: "Invalid coupon code",
-        });
+      const quote = await quoteCoupon({
+        code,
+        userId,
+        applicableTo: applicable_type,
+        applicableId: applicable_id,
+        totalAmount: total_amount,
+      });
+
+      if (!quote.valid) {
+        return res.json({ success: true, valid: false, message: quote.message });
       }
 
-      // Check active
-      if (!coupon.isActive) {
-        return res.json({
-          success: true,
-          valid: false,
-          message: "This coupon is no longer active",
-        });
-      }
-
-      // Check expiry
-      if (new Date(coupon.expiryDate) <= new Date()) {
-        return res.json({
-          success: true,
-          valid: false,
-          message: "This coupon has expired",
-        });
-      }
-
-      // Check global usage limit
-      if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
-        return res.json({
-          success: true,
-          valid: false,
-          message: "This coupon has reached its usage limit",
-        });
-      }
-
-      // Check applicability
-      if (coupon.applicableTo !== "all" && applicable_type) {
-        if (coupon.applicableTo !== applicable_type) {
-          return res.json({
-            success: true,
-            valid: false,
-            message: `This coupon is only valid for ${coupon.applicableTo} bookings`,
-          });
-        }
-      }
-
-      // Check specific ID applicability
-      if (coupon.applicableId && applicable_id) {
-        if (coupon.applicableId.toString() !== applicable_id.toString()) {
-          return res.json({
-            success: true,
-            valid: false,
-            message: "This coupon is not valid for this item",
-          });
-        }
-      }
-
-      // Check minimum amount
-      if (total_amount < coupon.minAmount) {
-        return res.json({
-          success: true,
-          valid: false,
-          message: `Minimum order amount is ₹${coupon.minAmount}`,
-        });
-      }
-
-      // Check per-user usage limit
-      if (user_id) {
-        const userUsageCount = await CouponUsage.countDocuments({
-          couponId: coupon._id,
-          userId: user_id,
-        });
-        if (userUsageCount >= coupon.perUserLimit) {
-          return res.json({
-            success: true,
-            valid: false,
-            message: `You have already used this coupon${coupon.perUserLimit > 1 ? ` ${coupon.perUserLimit} times` : ""}`,
-          });
-        }
-      }
-
-      // Calculate discount
-      let discountAmount;
-      if (coupon.discountType === "percentage") {
-        discountAmount = Math.round((total_amount * coupon.discountValue) / 100);
-        // Apply max discount cap
-        if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
-          discountAmount = coupon.maxDiscount;
-        }
-      } else {
-        discountAmount = coupon.discountValue;
-      }
-
-      // Ensure discount doesn't exceed total
-      if (discountAmount > total_amount) {
-        discountAmount = total_amount;
-      }
-
-      const finalAmount = total_amount - discountAmount;
-
-      res.json({
+      return res.json({
         success: true,
         valid: true,
-        message: `Coupon applied! You save ₹${discountAmount}`,
-        coupon_id: coupon._id,
-        code: coupon.code,
-        discount_type: coupon.discountType,
-        discount_value: coupon.discountValue,
-        discount_amount: discountAmount,
-        final_amount: finalAmount,
-        original_amount: total_amount,
+        message: quote.message,
+        coupon_id: quote.coupon._id,
+        code: quote.coupon.code,
+        discount_type: quote.coupon.discountType,
+        discount_value: quote.coupon.discountValue,
+        discount_amount: quote.discountAmount,
+        final_amount: quote.finalAmount,
+        original_amount: Math.round(Number(total_amount)),
       });
     } catch (err) {
       res.status(500).json({ success: false, valid: false, message: err.message });
@@ -227,50 +149,21 @@ const couponController = {
   },
 
   // ═══════════════════════════════════════════
-  // RECORD USAGE (called after successful booking/payment)
+  // RECORD USAGE — REMOVED (§2.7c)
   // ═══════════════════════════════════════════
-  recordUsage: async (req, res) => {
-    try {
-      const {
-        coupon_id,
-        user_id,
-        applied_to,
-        applied_id,
-        original_amount,
-        discount_amount,
-        final_amount,
-      } = req.body;
-
-      if (!coupon_id || !user_id || !applied_to || !applied_id) {
-        return res.status(400).json({ success: false, message: "Missing required fields" });
-      }
-
-      const coupon = await Coupon.findById(coupon_id);
-      if (!coupon) {
-        return res.status(404).json({ success: false, message: "Coupon not found" });
-      }
-
-      // Create usage record
-      await CouponUsage.create({
-        couponId: coupon._id,
-        userId: user_id,
-        couponCode: coupon.code,
-        appliedTo: applied_to,
-        appliedId: applied_id,
-        originalAmount: original_amount,
-        discountAmount: discount_amount,
-        finalAmount: final_amount,
-      });
-
-      // Increment used count
-      coupon.usedCount += 1;
-      await coupon.save();
-
-      res.json({ success: true, message: "Coupon usage recorded" });
-    } catch (err) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  },
+  //
+  // This used to be a second, unlinked call that the client was trusted to
+  // make after a booking. Nothing tied it to the booking it was supposedly
+  // recording: no reservation, no booking reference, no expiry. A client that
+  // validated and never called it kept the coupon good forever for everyone,
+  // because usedCount never rose and no CouponUsage row was written. It also
+  // wrote originalAmount/discountAmount/finalAmount straight from the request
+  // body into the ledger the manager's analytics endpoint sums.
+  //
+  // Redemption is now part of creating the booking — see
+  // services/couponService.js#redeemCoupon, called inside the booking
+  // transaction in BookingController.createBooking. Do not reintroduce a
+  // standalone client-driven redemption endpoint.
 
   // ═══════════════════════════════════════════
   // LIST COUPONS (Manager dashboard)

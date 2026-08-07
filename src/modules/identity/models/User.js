@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// Roles that use the age-gated social features and therefore must have a DOB
+// (Families Policy). Exported so routes/guards enforce the same list.
+const AGE_GATED_ROLES = ["Player", "Trainer", "Referee"];
+
 const UserSchema = new mongoose.Schema({
   // Basic Information
   playerId: { type: String }, // unique+sparse index declared below (avoid dup)
@@ -10,10 +14,21 @@ const UserSchema = new mongoose.Schema({
   // DOB is only required for end-user/individual roles that use the age-gated
   // social features (Families Policy). Business/admin accounts (ClubAdmin,
   // corporate_admin, Organization, etc.) are onboarded without a DOB.
+  //
+  // OAuth exemption: Google never returns a birthday, and the account row is
+  // created BY the OAuth callback — there is no session in which to ask first.
+  // Such accounts are created with `dobRequired: true`, which locks them out of
+  // every age-gated route (see middleware/requireDob.js) until the app's DOB
+  // screen fills it in. Same deferred-completion shape as `mobile: "pending"`
+  // + `needsMobileUpdate` on the very same code path.
+  //
+  // NOTE: email/password signup does NOT rely on this validator — /register
+  // rejects a missing DOB explicitly with a 400. Do not weaken that check.
   dateOfBirth: {
     type: Date,
     required: function () {
-      return ["Player", "Trainer", "Referee"].includes(this.role);
+      if (this.dobRequired) return false; // OAuth account pending DOB capture
+      return AGE_GATED_ROLES.includes(this.role);
     },
   },
   age: { type: Number },
@@ -155,6 +170,10 @@ const UserSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   profilePicture: { type: String }, // For Google profile pictures
   needsMobileUpdate: { type: Boolean, default: false },
+  // True while an OAuth-provisioned account still has no DOB. Set at Google
+  // account creation, cleared the moment a DOB is saved (pre-save hook below).
+  // While true the account is blocked from every age-gated route.
+  dobRequired: { type: Boolean, default: false },
 
   // Child Safety & Parental Controls
   isMinor: { type: Boolean, default: false },
@@ -206,6 +225,8 @@ UserSchema.pre("save", async function (next) {
     } else {
       this.ageGroup = "adult";
     }
+    // DOB has now been captured — lift the OAuth age-gate lock.
+    this.dobRequired = false;
   }
 
   // Hash parental PIN if modified
@@ -290,4 +311,10 @@ UserSchema.pre("deleteOne", { document: false, query: true }, async function (ne
   next();
 });
 
-module.exports = mongoose.model("User", UserSchema);
+const User = mongoose.model("User", UserSchema);
+
+// Named export alongside the model (the model stays the default export so the
+// ~100 existing `require("...User")` call sites keep working unchanged).
+User.AGE_GATED_ROLES = AGE_GATED_ROLES;
+
+module.exports = User;

@@ -67,6 +67,22 @@ const BookingSchema = new mongoose.Schema(
       enum: ["cash", "online"], // ✅ Only two methods allowed
       lowercase: true,
     },
+    // Payment reference the player types for a UPI / bank transfer.
+    //
+    // §2.6: BookingController has assigned `bookingData.transactionId` since
+    // the manual-online payment path was written, but this schema never
+    // declared the path. Mongoose runs in strict mode by default, so every
+    // assignment was silently dropped at save time — no error, no warning, no
+    // stored value. The platform held no record of any UPI reference anywhere:
+    // the only schema declaring transactionId was PlayerPayment, and no
+    // PlayerPayment document could be created (§2.5). A payment dispute had no
+    // evidence on either side, while the app had asked for the reference and
+    // accepted it.
+    transactionId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     cancellationReason: String,
     cancellationDate: Date,
     team: {
@@ -120,8 +136,26 @@ const BookingSchema = new mongoose.Schema(
     }],
     // Total across all sportSelections (plus any other charges). Set by
     // the booking controller; falls back to paymentAmount for legacy
-    // bookings.
+    // bookings. This is the price BEFORE any coupon discount.
     totalFee: { type: Number, default: 0 },
+
+    // Coupon actually redeemed against this booking.
+    //
+    // §2.7(a): coupons were decorative. No coupon field existed here and
+    // BookingController never read one, so applying a coupon changed a number
+    // on the client and nothing on the server — the player still owed the full
+    // totalFee and the manager's screen still showed it. CouponUsage also
+    // stored appliedTo/appliedId as free-form client values with no ref and no
+    // integrity check (§7.4).
+    //
+    // paymentAmount = totalFee - coupon.discountAmount. The reference below is
+    // what makes that arithmetic auditable after the fact.
+    coupon: {
+      couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon", default: null },
+      code: { type: String, default: null, trim: true, uppercase: true },
+      discountAmount: { type: Number, default: 0, min: 0 },
+      usageId: { type: mongoose.Schema.Types.ObjectId, ref: "CouponUsage", default: null },
+    },
     employeeId: {
       type: String,
     },
@@ -133,6 +167,18 @@ const BookingSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    // §2.6 — money schemas fail loudly on an undeclared path.
+    //
+    // The default (strict: true) DROPS assignments to undeclared fields with
+    // no error at all, which is how `transactionId` was written by the
+    // controller and silently lost for the life of the feature. "throw" turns
+    // the next such mistake into an immediate exception in development and
+    // test, instead of data that quietly never existed.
+    //
+    // NOTE: this applies to writes through the Mongoose document API. Legacy
+    // documents that already carry undeclared fields (e.g. the removed
+    // `selectedCategories`) still READ fine — strict mode governs writes.
+    strict: "throw",
   }
 );
 

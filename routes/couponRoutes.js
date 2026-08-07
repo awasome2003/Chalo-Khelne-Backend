@@ -45,8 +45,17 @@ router.get("/available", authenticate, async (req, res) => {
   }
 });
 
-// Authenticated — record usage after booking
-router.post("/record-usage", authenticate, couponController.recordUsage);
+// POST /record-usage REMOVED (§2.7c).
+//
+// It was a client-driven, unlinked second call: a client that validated a
+// coupon and never called this kept usedCount at zero and wrote no CouponUsage
+// row, so both the global cap and the per-user cap stayed untouched and the
+// coupon was good forever, for everyone. It also wrote client-supplied amounts
+// into the ledger the manager's analytics endpoint sums.
+//
+// Redemption now happens server-side inside the booking transaction —
+// services/couponService.js#redeemCoupon. Nothing in the web or mobile clients
+// ever called this route.
 
 // Manager — CRUD
 router.post("/create", managerAuth, couponController.create);

@@ -7,6 +7,7 @@ const Tournament = require("../src/modules/tournaments/models/Tournament");
 const { validateTeamSize } = require("../utils/teamValidation");
 const { assertSportSelections, handleSportContextError } = require("../middleware/requireSportContext");
 const { eligibilityFor, findCategory } = require("../utils/eligibility");
+const { redeemCoupon, CouponError } = require("../services/couponService");
 
 const bookingController = {
 
@@ -19,13 +20,18 @@ const bookingController = {
         tournamentName,
         team,
         paymentId,
-        paymentAmount,
+        // paymentAmount is deliberately NOT destructured from the body any
+        // more. The amount owed is _totalFee, derived from the tournament's
+        // category fees. Re-adding it here is how §2.4 comes back.
         paymentMethod,
         tournamentType,
         selectedCategories,
         // Multi-sport: forward-looking shape. Either or both may be sent.
         // Accepted shape: [{ sportId, sportName, categoryName, fee }]
         sportSelections,
+        // Coupon CODE only. The discount, the caps and the ledger amounts are
+        // all derived server-side at redemption time (§2.7).
+        couponCode,
       } = req.body;
 
       // Basic validation
@@ -183,7 +189,9 @@ const bookingController = {
           sportId: resolvedSportId,
           sportName: resolvedSportName,
           categoryName: s.categoryName,
-          fee: Number(s.fee),
+          // NOTE: no `fee` here on purpose. It is resolved from the tournament
+          // below — see the category-resolution pass. `s.fee` from the request
+          // body is never read.
         };
       });
 
@@ -191,7 +199,7 @@ const bookingController = {
       // greys out ineligible categories, but never trust the client. Runs
       // before payment so we don't have to refund anything on rejection.
       const eligibilityUser = await User.findById(userId)
-        .select("dateOfBirth sex")
+        .select("dateOfBirth sex email mobile phone")
         .lean();
       if (!eligibilityUser) {
         return res.status(404).json({
@@ -199,11 +207,37 @@ const bookingController = {
           message: "Player profile not found",
         });
       }
+
+      // ── Category resolution: price AND eligibility from the same lookup ────
+      //
+      // The fee used to be taken straight from req.body — `fee: Number(s.fee)`
+      // — and summed into totalFee under a comment claiming it was
+      // server-authoritative. A player could post fee: 1 for a ₹2,500 category
+      // and the booking, the manager's payment notification and the club-admin
+      // finance aggregate would all read ₹1 forever, because nothing
+      // downstream ever re-derived the real price.
+      //
+      // findCategory() was already being called here for the eligibility gate
+      // and the category object it returns carries the authoritative fee
+      // (Tournament.js declares `fee` required on every category). It was used
+      // for eligibility and thrown away. Now one pass does both.
+      //
+      // An unresolvable category is also now a hard reject. It used to
+      // `continue`, which skipped the age/gender gate entirely for a category
+      // name the tournament does not contain — and then let the client price it.
       const eligibilityFailures = [];
+      const unknownCategories = [];
       try {
-        for (const sel of _sportSelections) {
+        _sportSelections = _sportSelections.map((sel) => {
           const category = findCategory(tournament, sel.sportId, sel.categoryName);
-          if (!category) continue; // unknown category — leave existing validation paths to handle
+          if (!category) {
+            unknownCategories.push({
+              sportName: sel.sportName,
+              categoryName: sel.categoryName,
+            });
+            return sel;
+          }
+
           const result = eligibilityFor(eligibilityUser, category, tournament.startDate);
           if (!result.eligible) {
             eligibilityFailures.push({
@@ -212,7 +246,9 @@ const bookingController = {
               reason: result.reason,
             });
           }
-        }
+
+          return { ...sel, fee: Number(category.fee ?? 0) };
+        });
       } catch (err) {
         if (err.code === "TOURNAMENT_DATE_INVALID") {
           return res.status(500).json({
@@ -222,6 +258,15 @@ const bookingController = {
         }
         throw err;
       }
+
+      if (unknownCategories.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: "One or more selected categories do not exist in this tournament",
+          unknownCategories,
+        });
+      }
+
       if (eligibilityFailures.length > 0) {
         return res.status(403).json({
           success: false,
@@ -230,7 +275,8 @@ const bookingController = {
         });
       }
 
-      // totalFee is server-authoritative — sum of sportSelections.fee.
+      // totalFee is server-authoritative — every `fee` above came from
+      // findCategory(), never from the request body.
       const _totalFee = _sportSelections.reduce(
         (sum, s) => sum + Number(s.fee),
         0
@@ -239,6 +285,17 @@ const bookingController = {
       let bookingData = {
         userId,
         userName,
+        // §5.4 — contact details come from the User record, not the request.
+        //
+        // The mobile app sends `userEmail: "player@example.com"` and
+        // `userPhone: "N/A"` as defaults when the profile fields are missing.
+        // Those placeholders were never written here at all (only the manager
+        // bulk-upload path set these fields), so a manager looking at a
+        // self-registered player's booking saw no contact details whatsoever.
+        // Reading them from the account is both authoritative and immune to
+        // whatever the client decided to send.
+        userEmail: eligibilityUser.email || null,
+        userPhone: eligibilityUser.mobile || eligibilityUser.phone || null,
         tournamentId,
         tournamentName,
         status: "pending",
@@ -257,7 +314,10 @@ const bookingController = {
       // Handle payment
       let paymentRecord;
       let newPayment = null; // a newly-created Payment to persist inside the transaction
-      if (paymentAmount === 0 && normalizedPaymentMethod !== "cash") {
+      // "Is this free?" is decided by the server-derived total, not by the
+      // client's paymentAmount — otherwise posting paymentAmount: 0 against a
+      // paid tournament took the free-registration branch.
+      if (_totalFee === 0 && normalizedPaymentMethod !== "cash") {
         // Free tournament (but not cash)
         paymentRecord = new Payment({
           userId,
@@ -422,6 +482,40 @@ const bookingController = {
       try {
         let savedBooking;
         await session.withTransaction(async () => {
+          // ── Coupon redemption (§2.7) ────────────────────────────────────
+          // Evaluation and claim happen HERE, inside the booking transaction,
+          // against the server-derived _totalFee. Previously the client called
+          // /validate for a price and was trusted to call /record-usage
+          // afterwards — two unlinked calls, so a coupon that was never
+          // "recorded" stayed good forever, and the discount never reached the
+          // booking at all.
+          //
+          // If the coupon is not redeemable, redeemCoupon throws and the whole
+          // transaction aborts: no booking is created that believes it got a
+          // discount it never claimed.
+          if (couponCode) {
+            const redemption = await redeemCoupon(
+              {
+                code: couponCode,
+                userId, // from the token via forceSelfBody, never the body
+                appliedTo: "tournament",
+                appliedId: tournamentId,
+                totalAmount: _totalFee,
+              },
+              { session }
+            );
+
+            bookingData.coupon = {
+              couponId: redemption.couponId,
+              code: redemption.code,
+              discountAmount: redemption.discountAmount,
+              usageId: redemption.usageId,
+            };
+            // totalFee stays the pre-discount price; paymentAmount is what the
+            // player actually owes.
+            bookingData.paymentAmount = redemption.finalAmount;
+          }
+
           if (newPayment) await newPayment.save({ session });
           const booking = new Booking(bookingData);
           await booking.save({ session });
@@ -438,6 +532,14 @@ const bookingController = {
           return res.status(409).json({
             success: false,
             message: "You have already registered for this tournament",
+          });
+        }
+        // A rejected coupon is the player's problem to fix, not a 500.
+        if (txErr instanceof CouponError) {
+          return res.status(400).json({
+            success: false,
+            message: txErr.message,
+            code: txErr.code,
           });
         }
         throw txErr; // other errors handled by the outer catch (500)

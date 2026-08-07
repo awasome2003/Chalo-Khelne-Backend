@@ -9,7 +9,13 @@ const {
     getNotificationsForManager,
 } = require("../controllers/managerPaymentController");
 const bookingController = require("../controllers/BookingController");
-const { getManagerPendingPayments, verifyPayment } = require("../controllers/playerPaymentController");
+const {
+    getManagerPendingPayments,
+    verifyPayment,
+    uploadPaymentProof,
+    getPlayerPaymentHistory,
+    getTournamentPaymentHistory,
+} = require("../controllers/playerPaymentController");
 const { uploadMiddleware } = require("../middleware/uploads");
 const { managerAuth, allowUserOrManager } = require("../middleware/authMiddleware");
 const { requireSelf, forceSelfBody } = require("../middleware/authz");
@@ -32,9 +38,34 @@ router.delete("/setup/delete", managerAuth, forceSelfBody("managerId"), deletePa
 router.patch("/booking/update-status", managerAuth, bookingController.updateBookingStatus);
 router.patch("/booking/bulk-update", managerAuth, bookingController.bulkUpdateBookingStatus);
 
+// ── Payment-proof submission (player) ──
+//
+// §2.5: uploadPaymentProof, getPendingPayments, getPlayerPaymentHistory and
+// getTournamentPaymentHistory were all written and none of them were routed.
+// No PlayerPayment document could be created, so the manager's "Payment
+// Reviews" screen could only ever be empty — and the emptiness was silent.
+//
+// playerId is taken from the token inside the controller, never from the body,
+// so a player can only ever submit their own proof.
+router.post(
+    "/proofs",
+    allowUserOrManager,
+    uploadMiddleware.single("screenshot"),
+    uploadPaymentProof
+);
+
+// Player's own proof history.
+router.get(
+    "/proofs/history/:playerId",
+    allowUserOrManager,
+    requireSelf("playerId"),
+    getPlayerPaymentHistory
+);
+
 // ── Payment-proof review (manager reviews UPI/QR screenshots) ──
 // Inbox of this manager's own pending proofs; verify is ownership-checked in the controller.
 router.get("/proofs/pending/:managerId", managerAuth, requireSelf("managerId"), getManagerPendingPayments);
+router.get("/proofs/tournament/:tournamentId", managerAuth, getTournamentPaymentHistory);
 router.patch("/proofs/:paymentId/verify", managerAuth, verifyPayment);
 router.get("/:managerId/booking-notifications", managerAuth, requireSelf("managerId"), async (req, res) => {
   try {
@@ -62,23 +93,33 @@ router.get("/:managerId/notifications", managerAuth, requireSelf("managerId"), g
 router.post("/:managerId/:tournamentId/notify", allowUserOrManager, async (req, res) => {
   try {
     const { managerId, tournamentId } = req.params;
-    const { userId, amount, registrationId, paymentMethod } = req.body;
+    const { userId, registrationId, paymentMethod } = req.body;
 
     const Notification = require("../src/modules/social/models/Notification");
     const User = require("../src/modules/identity/models/User");
     const Tournament = require("../src/modules/tournaments/models/Tournament");
+    const Booking = require("../src/modules/tournaments/models/BookingModel");
 
     const user = await User.findById(userId).select("name").lean();
     const tournament = await Tournament.findById(tournamentId).select("title").lean();
+
+    // Derive the amount server-side from the player's booking fee. A client-
+    // supplied amount is NOT trusted: it only feeds a display string, but a
+    // spoofed value could mislead the manager reviewing the proof. Falls back
+    // totalFee → paymentAmount → 0. (Same lookup verifyPayment uses.)
+    const booking = await Booking.findOne({ userId, tournamentId })
+      .select("totalFee paymentAmount")
+      .lean();
+    const amount = booking ? booking.totalFee || booking.paymentAmount || 0 : 0;
 
     const notification = await Notification.create({
       managerId,
       tournamentId,
       userId,
       registrationId: registrationId || `reg_${Date.now()}`,
-      amount: amount || 0,
+      amount,
       paymentMethod: paymentMethod === "online" ? "online" : "cash",
-      message: `${user?.name || "A player"} registered for "${tournament?.title || "tournament"}" via ${paymentMethod || "cash"} (₹${amount || 0})`,
+      message: `${user?.name || "A player"} registered for "${tournament?.title || "tournament"}" via ${paymentMethod || "cash"} (₹${amount})`,
     });
 
     res.json({

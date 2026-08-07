@@ -66,10 +66,30 @@ const ROUTES = [
   ["/api/follow",                   "./followRoutes"],
 ];
 
+// Families Policy: mount points whose features are age-gated (social graph,
+// messaging, user-generated content). An account with no known age is blocked
+// here — see middleware/requireDob.js. Inert until ENFORCE_DOB_GATE=true.
+//
+// NOT included: /api/tournaments. It serves the public tournament list and
+// other read-only browsing, so gating the whole prefix would be far too broad;
+// the registration/booking endpoints there should get `requireDob` individually.
+const AGE_GATED_PREFIXES = new Set([
+  "/api/posts",
+  "/api/chat",
+  "/api/group-chat",
+  "/api/stories",
+  "/api/follow",
+]);
+
 function mountAll(app) {
+  const { requireDob } = require("../middleware/requireDob");
   ROUTES.forEach(([prefix, modulePath]) => {
     try {
-      app.use(prefix, require(modulePath));
+      if (AGE_GATED_PREFIXES.has(prefix)) {
+        app.use(prefix, requireDob, require(modulePath));
+      } else {
+        app.use(prefix, require(modulePath));
+      }
     } catch (err) {
       console.error(`[routes] Failed to mount ${prefix} from ${modulePath}:`, err.message);
     }

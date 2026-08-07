@@ -3,6 +3,10 @@ const Tournament = require("../src/modules/tournaments/models/Tournament");
 const Booking = require("../src/modules/tournaments/models/BookingModel");
 const Manager = require("../src/modules/identity/models/ClubManager").Manager;
 const { findMatchById } = require("../utils/matchUtils");
+const {
+  canJoinGroupChat,
+  canJoinConversation,
+} = require("../utils/chatMembership");
 
 module.exports = function setupSocket(io) {
   // ── Authenticate + resolve tenant for the socket ─────────────────────
@@ -94,8 +98,15 @@ module.exports = function setupSocket(io) {
       });
     });
 
-    // Join conversation room
-    socket.on("join:conversation", ({ conversationId }) => {
+    // Join conversation room — participant-checked. The HTTP layer already
+    // refuses non-participants; without this the room was the way around it.
+    socket.on("join:conversation", async ({ conversationId }) => {
+      if (!(await canJoinConversation(userId, conversationId))) {
+        return socket.emit("join:denied", {
+          room: `conv_${conversationId}`,
+          reason: "forbidden",
+        });
+      }
       socket.join(`conv_${conversationId}`);
     });
 
@@ -135,19 +146,22 @@ module.exports = function setupSocket(io) {
       socket.leave(`tournament_${tournamentId}`);
     });
 
-    // Forum chat rooms — social membership rooms (cross-tenant by design),
-    // not tenant-scoped. Membership/authorization for these is a separate
-    // concern from club tenancy and is handled at the message API layer.
-    socket.on("join:forum", ({ forumId }) => {
-      socket.join(`forum_${forumId}`);
-    });
+    // Forum rooms removed — routes/forumChatRoutes.js was never mounted and has
+    // been deleted. The join:forum handler deferred authorization to "the
+    // message API layer", but the room broadcast was the leak, not the API.
 
-    socket.on("leave:forum", ({ forumId }) => {
-      socket.leave(`forum_${forumId}`);
-    });
-
-    // Group chat rooms
-    socket.on("join:gchat", ({ chatId }) => {
+    // Group chat rooms — membership-checked against the same helper the HTTP
+    // layer uses (groupChatRoutes.js), so the two cannot drift apart again.
+    // Note this is checked at join time only: removing a member revokes the API
+    // immediately but leaves an already-joined socket in the room until it
+    // reconnects. removeMember kicks the room to close that window.
+    socket.on("join:gchat", async ({ chatId }) => {
+      if (!(await canJoinGroupChat(userId, chatId))) {
+        return socket.emit("join:denied", {
+          room: `gchat_${chatId}`,
+          reason: "forbidden",
+        });
+      }
       socket.join(`gchat_${chatId}`);
     });
 

@@ -12,12 +12,25 @@ async function resolveBookingForPayment(payment) {
     return Booking.findOne({ userId: payment.playerId, tournamentId: payment.tournamentId });
 }
 
-// 1️⃣ Player uploads payment proof
+// 1️⃣ Player uploads payment proof.
+//
+// §2.5 — this function existed, was carefully written, and NOTHING ROUTED TO
+// IT. Searching the whole server for the symbol found it only in its own
+// definition, so no PlayerPayment document could ever be created. The manager's
+// "Payment Reviews" screen therefore polled an inbox nothing could populate:
+// the query ran fine and returned zero rows, which is indistinguishable from
+// "no one has paid yet". It is now reachable at
+//   POST /api/manager-payment/proofs
+//
+// Everything that decides money or identity is derived server-side:
+//   • playerId  — from the token, never the body (a player may only submit
+//                 their own proof)
+//   • managerId — from the tournament, never the body
+//   • amount    — from the linked Booking (§7.4: the proof carried no monetary
+//                 value at all, so there was nothing to reconcile against)
 exports.uploadPaymentProof = async (req, res) => {
     try {
         const {
-            playerId,
-            managerId,
             tournamentId,
             paymentMethod,
             managerPaymentOptionId,
@@ -26,51 +39,104 @@ exports.uploadPaymentProof = async (req, res) => {
             bookingId,       // optional — explicit link to the registration
         } = req.body;
 
-        if (!playerId || !managerId || !tournamentId || !paymentMethod) {
-            return res.status(400).json({ message: "Missing required fields" });
+        // Identity comes from the token. allowUserOrManager sets req.user to the
+        // full User document; authenticate sets it to the decoded JWT payload.
+        const playerId = req.user?._id || req.user?.id || req.user?.userId;
+        if (!playerId) {
+            return res.status(401).json({ message: "Authentication required" });
+        }
+
+        if (!tournamentId || !paymentMethod) {
+            return res.status(400).json({
+                message: "tournamentId and paymentMethod are required",
+            });
+        }
+        if (!["qr", "upi", "offline"].includes(paymentMethod)) {
+            return res.status(400).json({ message: "Invalid paymentMethod" });
+        }
+        if (!transactionId || !String(transactionId).trim()) {
+            return res.status(400).json({ message: "transactionId is required" });
         }
 
         // Reject malformed ids early — clean 400 instead of a CastError 500.
         if (
-            !mongoose.isValidObjectId(playerId) ||
-            !mongoose.isValidObjectId(managerId) ||
             !mongoose.isValidObjectId(tournamentId) ||
             (bookingId && !mongoose.isValidObjectId(bookingId))
         ) {
             return res.status(400).json({ message: "Invalid id in request" });
         }
 
-        let screenshot = null;
-        if (req.file) {
-            screenshot = req.file.path;
+        // Resolve the booking this proof pays for. Without one there is no
+        // amount to review against, so this is a hard requirement rather than a
+        // silent zero.
+        const booking = bookingId
+            ? await Booking.findOne({ _id: bookingId, userId: playerId })
+            : await Booking.findOne({ userId: playerId, tournamentId });
+
+        if (!booking) {
+            return res.status(404).json({
+                message:
+                    "No registration found for this tournament. Register before submitting payment proof.",
+            });
         }
 
-        // Link to the player's booking for this tournament. Use the explicit
-        // bookingId if the client sent one, otherwise resolve it so the
-        // proof→booking link exists for the verify step.
-        let resolvedBookingId = bookingId || null;
-        if (!resolvedBookingId) {
-            const existingBooking = await Booking.findOne({
-                userId: playerId,
-                tournamentId,
-            }).select("_id").lean();
-            if (existingBooking) resolvedBookingId = existingBooking._id;
+        // The manager who owns the tournament — from the tournament document,
+        // not from the request. A player could otherwise address their proof to
+        // any manager, putting it in a stranger's review inbox.
+        const Tournament = require("../src/modules/tournaments/models/Tournament");
+        const tournament = await Tournament.findById(tournamentId)
+            .select("managerId clubId")
+            .lean();
+        if (!tournament) {
+            return res.status(404).json({ message: "Tournament not found" });
         }
 
-        // Create new payment record
+        const managerId =
+            (Array.isArray(tournament.managerId) ? tournament.managerId[0] : tournament.managerId)
+            || tournament.clubId;
+        if (!managerId) {
+            return res.status(409).json({
+                message:
+                    "This tournament has no manager assigned to review payments. Contact the organizer.",
+            });
+        }
+
+        // Amount owed, server-derived. paymentAmount is post-coupon (§2.7);
+        // totalFee is the pre-discount price and is only a fallback for legacy
+        // bookings written before paymentAmount was populated.
+        const amount = booking.paymentAmount ?? booking.totalFee ?? 0;
+
+        const screenshot = req.file
+            ? `uploads/payment-proofs/${req.file.filename}`
+            : null;
+
+        if (paymentMethod !== "offline" && !screenshot) {
+            return res.status(400).json({
+                message: "A payment screenshot is required for QR and UPI payments",
+            });
+        }
+
         const payment = new PlayerPayment({
             playerId,
             managerId,
             tournamentId,
-            bookingId: resolvedBookingId || undefined,
+            bookingId: booking._id,
             paymentMethod,
-            managerPaymentOptionId,
-            transactionId,
+            managerPaymentOptionId: managerPaymentOptionId || undefined,
+            transactionId: String(transactionId).trim(),
+            amount,
             screenshot,
             offlineReceiver: paymentMethod === "offline" ? offlineReceiver : undefined,
         });
 
         await payment.save();
+
+        // Mirror the reference onto the booking so it is visible wherever the
+        // booking is (§2.6 declared the path; this keeps the two in step).
+        if (!booking.transactionId) {
+            booking.transactionId = payment.transactionId;
+            await booking.save();
+        }
 
         res.status(201).json({
             success: true,
@@ -78,6 +144,14 @@ exports.uploadPaymentProof = async (req, res) => {
             data: payment,
         });
     } catch (error) {
+        // The partial-unique index on transactionId (§7.4) surfaces here.
+        if (error && error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "This transaction reference has already been submitted. Check the reference and try again.",
+            });
+        }
         console.error("Error uploading payment proof:", error);
         res.status(500).json({ success: false, message: "Server Error" });
     }

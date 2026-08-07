@@ -103,7 +103,25 @@ router.post("/register", registerLimiter, async (req, res) => {
     if (m < 0 || (m === 0 && t.getDate() < d.getDate())) a--;
     return a;
   };
+  // DOB is MANDATORY for self-registration into an age-gated role. This used to
+  // be enforced only by the Mongoose `required` validator, which (a) surfaced as
+  // an opaque ValidationError and (b) had to be relaxed for OAuth accounts, where
+  // no DOB can exist at row-creation time. Enforcing it here keeps email/password
+  // signup strict and independent of that exemption.
+  if (User.AGE_GATED_ROLES.includes(role) && !dateOfBirth) {
+    return res.status(400).json({
+      code: "DOB_REQUIRED",
+      message: "Date of birth is required to create this account.",
+    });
+  }
+
   const selfSignupAge = computeAge(dateOfBirth);
+  if (dateOfBirth && selfSignupAge == null) {
+    return res.status(400).json({
+      code: "DOB_INVALID",
+      message: "Date of birth is not a valid date.",
+    });
+  }
   if (selfSignupAge != null && selfSignupAge < 13) {
     return res.status(400).json({
       code: "UNDER_13_SELF_SIGNUP",
@@ -592,11 +610,17 @@ router.post("/google-login", authLimiter, async (req, res) => {
         profilePicture: googleUserInfo.picture || null,
         mobile: "pending",
         needsMobileUpdate: true,
+        // Google does not return a birthday, so the account is created locked:
+        // every age-gated route rejects it until the app's DOB screen posts one.
+        dobRequired: true,
       });
 
       try {
         await user.save();
       } catch (saveError) {
+        // Previously swallowed — a schema change here surfaced as a bare 500
+        // with no stack, which made the DOB regression very hard to trace.
+        console.error("[GOOGLE] account creation failed:", saveError?.message, saveError?.errors ? Object.keys(saveError.errors) : "");
         return res.status(500).json({
           message: "Failed to create account",
           requiresMobile: true,
@@ -609,6 +633,12 @@ router.post("/google-login", authLimiter, async (req, res) => {
         user.authProvider = "google";
         if (googleUserInfo.picture && !user.profilePicture) {
           user.profilePicture = googleUserInfo.picture;
+        }
+        // Legacy accounts created before DOB was mandatory would otherwise fail
+        // validation on this save and surface as a misleading 401. Flag them
+        // instead so they hit the DOB screen like any other incomplete account.
+        if (!user.dateOfBirth && User.AGE_GATED_ROLES.includes(user.role)) {
+          user.dobRequired = true;
         }
         await user.save();
       }
@@ -649,6 +679,10 @@ router.post("/google-login", authLimiter, async (req, res) => {
         profilePicture: user.profilePicture,
         mobile: user.mobile,
         needsMobileUpdate: user.needsMobileUpdate || user.mobile === "pending",
+        // The app MUST present a blocking, non-dismissible DOB screen when this
+        // is true — the account is locked out of every age-gated route until a
+        // DOB is posted (Families Policy neutral age screen).
+        requiresDob: user.dobRequired === true || (!user.dateOfBirth && User.AGE_GATED_ROLES.includes(user.role)),
       },
     });
   } catch (error) {
@@ -971,9 +1005,24 @@ router.delete(
 
 // Certificate retrieval route — authenticated only (filenames are multer-random
 // so guessing is hard, but never serve PII certs over a public URL).
-router.get("/certificates/:filename", authenticate, (req, res) => {
+router.get("/certificates/:filename", authenticate, async (req, res) => {
   try {
-    const filename = req.params.filename;
+    // basename() collapses traversal: an encoded "../../.env" reaches us as a
+    // decoded path and would otherwise escape certificatesDir via path.join.
+    const filename = path.basename(req.params.filename);
+
+    // "Authenticated" was not enough — any logged-in user could read any
+    // professional's certificate. Same owner-or-reviewer rule as the
+    // /uploads/certificates handler, from the one shared authorizer.
+    const { AUTHORIZERS } = require("../middleware/serveUploads");
+    const allowed = await AUTHORIZERS.certificates(
+      req,
+      `uploads/certificates/${filename}`
+    );
+    if (!allowed) {
+      return res.status(404).json({ message: "Certificate not found" });
+    }
+
     const filepath = path.join(certificatesDir, filename);
 
     if (!fs.existsSync(filepath)) {
@@ -990,6 +1039,8 @@ router.get("/certificates/:filename", authenticate, (req, res) => {
       }[ext] || "application/octet-stream";
 
     res.setHeader("Content-Type", contentType);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
 
     const fileStream = fs.createReadStream(filepath);

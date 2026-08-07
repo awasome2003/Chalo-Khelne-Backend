@@ -20,6 +20,7 @@ let helmet = null;
 try { helmet = require("helmet"); } catch (_) { /* not installed yet */ }
 
 const { mountAll } = require("./routes");
+const serveUploads = require("./middleware/serveUploads");
 const errorHandler = require("./middleware/errorHandler");
 const scrubErrorResponses = require("./middleware/scrubErrorResponses");
 
@@ -102,7 +103,10 @@ function createApp() {
       exposedHeaders: ["X-Total-Count", "X-Total-Pages", "X-Page", "X-Limit"],
     })
   );
-  app.use("/uploads", express.static(uploadsDir));
+  // /uploads is NOT blanket-static. Public categories are served statically;
+  // identity-docs, certificates and group-chat attachments require auth plus an
+  // ownership check. See middleware/serveUploads.js.
+  app.use("/uploads", serveUploads(uploadsDir));
 
   app.locals.directories = {
     uploads: uploadsDir,

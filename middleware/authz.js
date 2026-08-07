@@ -217,8 +217,11 @@ const scopeTournamentCreate = async (req, res, next) => {
     // wrapped by an AgencyEvent in the Event OS.
     if (req.userRole === "User") {
       const u = await mongoose.model("User").findById(me).select("role").lean();
-      const AGENCY_ROLES = ["AgencyAdmin", "agency_admin", "EventManager", "event_manager", "Coordinator", "coordinator"];
-      if (u && AGENCY_ROLES.includes(u.role)) {
+      // Agency (Event OS) + facility Club (Club OS) users create tournaments
+      // under their own id, same as a Manager. The tournament is owned by them
+      // via managerId=[self] and surfaced in their own dashboard.
+      const SELF_OWNER_ROLES = ["AgencyAdmin", "agency_admin", "EventManager", "event_manager", "Coordinator", "coordinator", "club_admin"];
+      if (u && SELF_OWNER_ROLES.includes(u.role)) {
         req.body.managerId = [String(me)];
         return next();
       }

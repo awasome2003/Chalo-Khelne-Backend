@@ -1,6 +1,7 @@
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 
 // Create directories with proper paths.
 // UPLOADS_DIR lets ops point this at a mounted persistent disk (Render) without
@@ -16,6 +17,10 @@ const eventsDir = path.join(uploadsDir, "events");
 const turfsDir = path.join(uploadsDir, "turfs");
 const storiesDir = path.join(uploadsDir, "stories");
 const equipmentDir = path.join(uploadsDir, "equipment");
+// Payment-proof screenshots (§2.5). PRIVATE — these are financial evidence
+// showing a player's UPI app, reference and often their name/handle. Served
+// only through the authenticated handler in serveUploads.js.
+const paymentProofsDir = path.join(uploadsDir, "payment-proofs");
 // Create upload path
 const uploadPath = path.join(process.cwd(), "uploads/qrcodes");
 if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
@@ -31,6 +36,7 @@ if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
   turfsDir,
   storiesDir,
   equipmentDir,
+  paymentProofsDir,
 ].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
@@ -52,8 +58,47 @@ const ALLOWED_CERTIFICATE_TYPES = [
   "application/pdf",
   "application/msword",                                                    // .doc
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
-  "application/octet-stream",                                              // React Native fallback
+  // "application/octet-stream" is still accepted (React Native genuinely sends
+  // it) but it is NO LONGER a way to pick your own extension — see
+  // safeExtension() below, which only ever writes an extension from
+  // EXTENSION_ALLOWLIST regardless of what the client declares or names.
+  "application/octet-stream",
 ];
+
+// ── Stored extension is derived, never taken from the client ────────────────
+// Previously the stored name used path.extname(file.originalname) verbatim.
+// Combined with the octet-stream escape hatch above, a file named payload.html
+// was written as .html and later served as text/html from the API origin (CSP
+// is disabled) — stored XSS. The stored extension now comes from the declared
+// MIME type, and for octet-stream from the original extension ONLY if that
+// extension is itself on the allowlist. Anything unrecognised becomes .bin.
+const MIME_TO_EXT = {
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/png": ".png",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "application/pdf": ".pdf",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+};
+
+const EXTENSION_ALLOWLIST = new Set([
+  ".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".doc", ".docx",
+]);
+
+function safeExtension(file) {
+  const mapped = MIME_TO_EXT[file.mimetype];
+  if (mapped) return mapped;
+
+  // octet-stream (or anything else that slipped past the filter): fall back to
+  // the client's extension only when it is on the allowlist. ".html", ".svg",
+  // ".js" and friends are not, so they can never be written.
+  const claimed = path.extname(file.originalname || "").toLowerCase();
+  if (EXTENSION_ALLOWLIST.has(claimed)) return claimed === ".jpeg" ? ".jpg" : claimed;
+
+  return ".bin";
+}
 
 const ALLOWED_IDENTITY_TYPES = [
   "image/jpeg",
@@ -86,14 +131,19 @@ const storage = multer.diskStorage({
       cb(null, storiesDir);
     } else if (file.fieldname === "equipmentImages") {
       cb(null, equipmentDir);
+    } else if (file.fieldname === "screenshot") {
+      // Payment proof (§2.5) — private directory.
+      cb(null, paymentProofsDir);
     } else {
       cb(null, uploadsDir);
     }
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + "-" + uniqueSuffix + ext);
+    // crypto-random, not Date.now()+Math.random(): these names are the only
+    // thing standing between a private file and a lucky guess.
+    const uniqueSuffix =
+      Date.now() + "-" + crypto.randomBytes(12).toString("hex");
+    cb(null, file.fieldname + "-" + uniqueSuffix + safeExtension(file));
   },
 });
 
@@ -121,6 +171,14 @@ const fileFilter = (req, file, cb) => {
   } else if (file.fieldname === "certificate") {
     if (!ALLOWED_CERTIFICATE_TYPES.includes(file.mimetype)) {
       return cb(new Error("Invalid certificate type"), false);
+    }
+    cb(null, true);
+  } else if (file.fieldname === "screenshot") {
+    // Payment proof: an image of the player's UPI/bank confirmation. Images
+    // only — a PDF or Word "receipt" is not what this flow reviews.
+    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)
+        && file.mimetype !== "application/octet-stream") {
+      return cb(new Error("Payment proof must be an image"), false);
     }
     cb(null, true);
   } else if (file.fieldname === "identity-document") {
@@ -155,6 +213,7 @@ module.exports = {
   turfsDir,
   storiesDir,
   equipmentDir,
+  paymentProofsDir,
   cleanupFile: async (filePath) => {
     try {
       if (filePath && fs.existsSync(filePath)) {

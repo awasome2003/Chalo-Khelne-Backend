@@ -20,7 +20,23 @@ function computeIsMinor(user) {
       return a < 18;
     }
   }
-  return user.isMinor === true;
+  if (user.isMinor === true) return true;
+
+  // No usable DOB. Historically this returned false — i.e. an unknown-age user
+  // was treated as an ADULT and got unrestricted contact. That is the wrong way
+  // to fail under the Families Policy, so with the gate enabled we fail CLOSED
+  // and treat unknown age as a minor (most restrictive).
+  //
+  // Flag-gated because ~70% of existing age-gated accounts have no DOB; turning
+  // this on before the app ships its DOB screen would restrict them with no way
+  // to resolve it. Flip ENFORCE_DOB_GATE=true once that build is live.
+  return isDobGateEnabled();
+}
+
+// Read at call time (not module load) so tests and a `pm2 restart` pick up the
+// env change without a code edit.
+function isDobGateEnabled() {
+  return String(process.env.ENFORCE_DOB_GATE).toLowerCase() === "true";
 }
 
 function mutualFollow(a, b) {
@@ -62,4 +78,4 @@ async function conversationAllowed(aId, bId) {
   };
 }
 
-module.exports = { isKnownContact, conversationAllowed, computeIsMinor };
+module.exports = { isKnownContact, conversationAllowed, computeIsMinor, isDobGateEnabled };
