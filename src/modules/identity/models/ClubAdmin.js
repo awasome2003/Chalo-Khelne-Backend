@@ -49,4 +49,9 @@ const ClubAdminSchema = new mongoose.Schema(
 
 const ClubAdmin = mongoose.model("ClubAdmin", ClubAdminSchema);
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// club profile by account
+ContactSchema.index({ userId: 1 });
+
 module.exports = ClubAdmin;

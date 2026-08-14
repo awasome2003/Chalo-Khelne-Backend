@@ -65,4 +65,9 @@ const OrganizerSchema = new mongoose.Schema(
 
 const Organizer = mongoose.model("Organizer", OrganizerSchema);
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// organiser profile by account
+OrganizerSchema.index({ userId: 1 });
+
 module.exports = Organizer;

@@ -11,4 +11,9 @@ const bookingTopGroupSchema = new mongoose.Schema({
   ],
 });
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// top-player groups per tournament
+bookingTopGroupSchema.index({ tournamentId: 1 });
+
 module.exports = mongoose.model('BookingTopGroup', bookingTopGroupSchema);

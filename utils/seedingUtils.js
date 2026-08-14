@@ -23,6 +23,8 @@
  *       (size + 1) when fully seeded.
  */
 
+const { shuffle: uniformShuffle } = require("./shuffle");
+
 const VALID_DRAW_SIZES = [4, 8, 16, 32, 64, 128];
 
 /**
@@ -183,9 +185,7 @@ const buildR1SlotAssignment = ({ drawSize, numberOfSeeds, players, shuffle }) =>
   const seedCount = Math.max(0, Math.min(numberOfSeeds || 0, playerCount));
   const numberOfByes = calculateByes(playerCount, drawSize);
 
-  const rand = typeof shuffle === "function"
-    ? shuffle
-    : (arr) => [...arr].sort(() => Math.random() - 0.5);
+  const rand = typeof shuffle === "function" ? shuffle : uniformShuffle;
 
   const seedOrder = getSeedOrder(drawSize);
   const slots = new Array(drawSize).fill(null);

@@ -3,6 +3,15 @@ const nodemailer = require("nodemailer");
 const bcrypt = require("bcryptjs");
 const User = require("../src/modules/identity/models/User");
 
+// §3.2 — these were the wrong routes to leave unlimited: verify-otp has no
+// attempt counter of its own and an OTP is a short numeric code, while
+// send-otp is an unmetered outbound-email trigger.
+const {
+  otpSendLimiter,
+  otpVerifyLimiter,
+  passwordResetLimiter,
+} = require("../middleware/rateLimiters");
+
 const router = express.Router();
 
 // In-memory storage for OTPs
@@ -32,7 +41,7 @@ const transporter = nodemailer.createTransport({
 const emailConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
 
 /* ==================== EMAIL VERIFICATION ==================== */
-router.post("/send-otp", async (req, res) => {
+router.post("/send-otp", otpSendLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     const otp = generateOTP();
@@ -58,7 +67,7 @@ router.post("/send-otp", async (req, res) => {
   }
 });
 
-router.post("/verify-otp", async (req, res) => {
+router.post("/verify-otp", otpVerifyLimiter, async (req, res) => {
   try {
     const { email, otp } = req.body;
 
@@ -80,7 +89,7 @@ router.post("/verify-otp", async (req, res) => {
 
 
 /* ==================== FORGOT PASSWORD WITH OTP ==================== */
-router.post("/forgot-password/send-otp", async (req, res) => {
+router.post("/forgot-password/send-otp", otpSendLimiter, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -147,7 +156,7 @@ router.post("/forgot-password/send-otp", async (req, res) => {
 });
 
 /* ==================== VERIFY OTP ==================== */
-router.post("/forgot-password/verify-otp", async (req, res) => {
+router.post("/forgot-password/verify-otp", otpVerifyLimiter, async (req, res) => {
   const { email, otp } = req.body;
 
   if (!otpStore[email]) {
@@ -178,7 +187,7 @@ router.post("/forgot-password/verify-otp", async (req, res) => {
   res.json({ message: "OTP verified successfully!" });
 });
 
-router.post("/forgot-password/reset", async (req, res) => {
+router.post("/forgot-password/reset", passwordResetLimiter, async (req, res) => {
   try {
     const { email, newPassword } = req.body;
 

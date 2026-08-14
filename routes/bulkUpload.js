@@ -28,10 +28,14 @@ router.get("/template", async (req, res) => {
       fs.mkdirSync(templateDir, { recursive: true });
     }
 
+    // dateOfBirth is required — User.dateOfBirth is mandatory for the age-gated
+    // roles (Player/Trainer/Referee) and every imported account is a Player.
+    // `role` is deliberately absent: the importer always creates Players and
+    // ignores any role column, so offering one in the template only misleads.
     const data = [
-      ["name", "email", "mobile", "password", "role", "age", "sex"],
-      ["John Doe", "john@example.com", "9876543210", "password123", "Player", "25", "male"],
-      ["Jane Smith", "jane@example.com", "9123456780", "password123", "Manager", "30", "female"],
+      ["name", "email", "mobile", "password", "dateOfBirth", "sex"],
+      ["John Doe", "john@example.com", "9876543210", "password123", "1998-04-23", "male"],
+      ["Jane Smith", "jane@example.com", "9123456780", "password123", "2001-11-02", "female"],
     ];
 
     await writeAoaToFile(data, templatePath, "Users");
@@ -115,12 +119,23 @@ router.post("/", upload.single("file"), async (req, res) => {
       return res.status(400).json({ success: false, message: "File is empty or invalid format" });
     }
 
-    const { successCount, errorCount } = await processUserUpload(jsonArray);
+    const report = await processUserUpload(jsonArray);
     fs.unlinkSync(filePath);
 
     res.json({
       success: true,
-      message: `Bulk upload complete. Successfully created ${successCount} users. Errors: ${errorCount}`,
+      // `message` is kept for any caller that only reads the summary string.
+      message:
+        `Bulk upload complete. Created ${report.successCount}, ` +
+        `skipped ${report.skippedCount} (already existed), failed ${report.errorCount}.`,
+      created: report.successCount,
+      skipped: report.skippedCount,
+      failed: report.errorCount,
+      totalRows: report.totalRows,
+      // Per-row outcomes for everything that was NOT created, so the operator
+      // can fix the sheet instead of guessing which rows were rejected.
+      rows: report.rows,
+      truncated: report.truncated,
     });
   } catch (error) {
     console.error("Upload Error:", error);
@@ -140,6 +155,19 @@ router.post("/single", async (req, res) => {
       return res.status(400).json({ success: false, message: "Please fill all required fields" });
     }
 
+    // Required for the Player role this endpoint always creates. Returned as a
+    // 400 with a specific message — it used to fall through to User.create and
+    // surface as an opaque 500.
+    const dateOfBirth = parseDob(b.dateOfBirth);
+    if (!dateOfBirth) {
+      return res.status(400).json({
+        success: false,
+        message: b.dateOfBirth
+          ? "Date of birth is not a valid date — use YYYY-MM-DD or DD/MM/YYYY"
+          : "Date of birth is required",
+      });
+    }
+
     const existingUser = await User.findOne({ email: String(b.email) });
     if (existingUser) {
       return res.status(400).json({ success: false, message: "User with this email already exists" });
@@ -148,12 +176,14 @@ router.post("/single", async (req, res) => {
     // Allowlist input — never accept role/isApproved/permissions from the client.
     // Imported users are created as approved Players; elevate later via the
     // guarded role endpoint (/api/update/user-role).
+    // `age` is intentionally not taken from the client: the User pre-save hook
+    // derives it from dateOfBirth, along with isMinor and ageGroup.
     const userData = {
       name: b.name,
       email: b.email,
       mobile: b.mobile,
       password: b.password,
-      age: b.age,
+      dateOfBirth,
       sex: b.sex,
       role: "Player",
       isApproved: true,
@@ -168,12 +198,60 @@ router.post("/single", async (req, res) => {
   }
 });
 
+// Cap on the per-row detail returned to the client. A 5MB sheet can hold tens
+// of thousands of rows; the counts stay exact, only the itemised list is
+// truncated (the response says how many were omitted).
+const MAX_REPORTED_ROWS = 100;
+
+// dateOfBirth is required because every imported account is created as a
+// Player, and User.dateOfBirth is mandatory for the age-gated roles. It also
+// drives isMinor / ageGroup, which the Families Policy gating reads.
+const REQUIRED_COLUMNS = ["name", "email", "mobile", "password", "dateOfBirth"];
+
+/**
+ * Coerce a spreadsheet cell to a Date. Accepts a real Date (xlsx cells often
+ * parse as one), an ISO string, or DD/MM/YYYY — the format the rest of the
+ * platform uses for dates typed by hand. Returns null when unusable, so the
+ * row is reported rather than silently saved with a bad date.
+ */
+function parseDob(raw) {
+  if (!raw) return null;
+  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
+
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  const dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (dmy) {
+    const [, dd, mm, yyyy] = dmy;
+    const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  const iso = new Date(s);
+  if (Number.isNaN(iso.getTime())) return null;
+  // Guard against a future date of birth — almost always a swapped DD/MM.
+  if (iso.getTime() > Date.now()) return null;
+  return iso;
+}
+
 async function processUserUpload(jsonArray) {
   const userSchemaFields = Object.keys(User.schema.paths);
   let successCount = 0;
   let errorCount = 0;
+  let skippedCount = 0;
+  const rows = [];
 
-  for (const entry of jsonArray) {
+  // Row numbers are 1-based and count the header, so they line up with what
+  // the operator sees in Excel.
+  const addRow = (index, email, status, reason) => {
+    if (rows.length < MAX_REPORTED_ROWS) {
+      rows.push({ row: index + 2, email: email || null, status, reason });
+    }
+  };
+
+  for (let i = 0; i < jsonArray.length; i++) {
+    const entry = jsonArray[i];
     const entryKeys = Object.keys(entry);
     const fieldMap = miniAIMatch(entryKeys, userSchemaFields);
 
@@ -189,29 +267,61 @@ async function processUserUpload(jsonArray) {
     delete userObj.permissions;
 
     try {
-      // Basic validation
-      if (userObj.name && userObj.email && userObj.mobile && userObj.password) {
-        // Check if user already exists
-        const existing = await User.findOne({ email: String(userObj.email) });
-        if (!existing) {
-          userObj.playerId = "PLR" + Math.floor(Math.random() * 1000000) + Date.now();
-          userObj.role = "Player";
-          userObj.isApproved = true;
-          await User.create(userObj);
-          successCount++;
-        } else {
-          errorCount++;
-        }
-      } else {
+      const missing = REQUIRED_COLUMNS.filter((f) => !userObj[f]);
+      if (missing.length > 0) {
         errorCount++;
+        addRow(
+          i,
+          userObj.email,
+          "failed",
+          `Missing required ${missing.length === 1 ? "value" : "values"}: ${missing.join(", ")}`
+        );
+        continue;
       }
+
+      const dob = parseDob(userObj.dateOfBirth);
+      if (!dob) {
+        errorCount++;
+        addRow(
+          i,
+          userObj.email,
+          "failed",
+          `Could not read the date of birth "${userObj.dateOfBirth}" — use YYYY-MM-DD or DD/MM/YYYY`
+        );
+        continue;
+      }
+      userObj.dateOfBirth = dob;
+
+      const existing = await User.findOne({ email: String(userObj.email) });
+      if (existing) {
+        // A duplicate is not a malformed row — the operator re-uploaded a sheet
+        // that overlaps existing users. Counted separately so a re-run of the
+        // same file reads as "nothing to do", not "50 errors".
+        skippedCount++;
+        addRow(i, userObj.email, "skipped", "A user with this email already exists");
+        continue;
+      }
+
+      userObj.playerId = "PLR" + Math.floor(Math.random() * 1000000) + Date.now();
+      userObj.role = "Player";
+      userObj.isApproved = true;
+      await User.create(userObj);
+      successCount++;
     } catch (err) {
       console.log("Save Error:", err.message);
       errorCount++;
+      addRow(i, userObj.email, "failed", err.message || "Could not be saved");
     }
   }
 
-  return { successCount, errorCount };
+  return {
+    successCount,
+    errorCount,
+    skippedCount,
+    rows,
+    totalRows: jsonArray.length,
+    truncated: Math.max(0, errorCount + skippedCount - rows.length),
+  };
 }
 
 module.exports = router;

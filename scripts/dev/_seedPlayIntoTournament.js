@@ -31,13 +31,13 @@ const SPORTS = [
   await mongoose.connect(process.env.MONGO_URI);
   // Register Tournament FIRST — it defines the "Score" model; loading it before
   // Match/BookingGroup avoids the OverwriteModelError during recalc.
-  require("./src/modules/tournaments/models/Tournament");
-  const BookingGroup = require("./src/modules/tournaments/models/bookinggroup");
-  const Match = require("./src/modules/tournaments/models/Tournnamentmatch");
-  const GroupStandings = require("./src/modules/tournaments/models/GroupStandings");
-  const Booking = require("./src/modules/tournaments/models/BookingModel");
-  const User = require("./src/modules/identity/models/User");
-  const { recalculateGroupStandings } = require("./controllers/groupStageScoreboardController");
+  require("../../src/modules/tournaments/models/Tournament");
+  const BookingGroup = require("../../src/modules/tournaments/models/bookinggroup");
+  const Match = require("../../src/modules/tournaments/models/Tournnamentmatch");
+  const GroupStandings = require("../../src/modules/tournaments/models/GroupStandings");
+  const Booking = require("../../src/modules/tournaments/models/BookingModel");
+  const User = require("../../src/modules/identity/models/User");
+  const { recalculateGroupStandings } = require("../../controllers/groupStageScoreboardController");
 
   const tId = OID(T_ID);
   const pname = (p) => (p.name || p.userName || "Player").trim();

@@ -22,7 +22,7 @@ function parseTournamentDate(raw) {
   if (!Number.isNaN(native.getTime())) return native;
 
   // Fallback: DD-MM-YYYY or DD/MM/YYYY (the format the spec uses for DOB).
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (m) {
     const [, dd, mm, yyyy] = m;
     const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));

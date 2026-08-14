@@ -101,7 +101,7 @@ const DEFAULT_ROLES = [
     isSystem: true,
     permissionKeys: [
       "tournament:read", "tournament:create", "tournament:update", "tournament:delete",
-      "tournament:manage", "tournament:export", "tournament:bulk_register",
+      "tournament:manage", "tournament:score", "tournament:export", "tournament:bulk_register",
       "turf:read", "turf:create", "turf:update", "turf:delete",
       "booking:read", "booking:approve",
       "player:read", "player:view_all",

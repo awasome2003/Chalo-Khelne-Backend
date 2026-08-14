@@ -26,4 +26,9 @@ const NotificationSchema = new mongoose.Schema({
 
 const Notification = mongoose.model('Notification', NotificationSchema);
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// unread task badge
+NotificationSchema.index({ managerId: 1, read: 1 });
+
 module.exports = Notification;

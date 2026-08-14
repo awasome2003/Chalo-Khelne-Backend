@@ -295,10 +295,27 @@ const expenseController = {
       const managerId = req.user._id || req.user.id;
       const { expenseId, amount, paymentMode, paymentDate, transactionId, notes, status } = req.body;
 
-      if (!expenseId || !amount || !paymentMode || !paymentDate) {
+      if (!expenseId || amount === undefined || amount === null || !paymentMode || !paymentDate) {
         return res.status(400).json({
           success: false,
           message: "expenseId, amount, paymentMode, and paymentDate are required",
+        });
+      }
+
+      // §3.4 — `amount` was checked ONLY for presence.
+      //
+      // It was never validated as a number, never coerced from string, and
+      // never bounded. A negative value reduced totalPaid and could flip a
+      // settled expense back to Partial; a value larger than the balance
+      // overpaid it silently. The surrounding code is otherwise careful — the
+      // write runs in a real transaction with a session — which made the
+      // missing input validation the only thing between a typo and a corrupted
+      // ledger.
+      const paymentAmount = Number(amount);
+      if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "amount must be a positive number",
         });
       }
 
@@ -309,26 +326,54 @@ const expenseController = {
         return res.status(404).json({ success: false, message: "Expense not found" });
       }
 
+      // Cap the payment at what is actually outstanding. Overpaying an expense
+      // is always a mistake, and silently accepting it corrupts the ledger.
+      const outstanding = Math.max(0, (expense.amount || 0) - (expense.totalPaid || 0));
+      if (paymentAmount > outstanding) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: `Payment exceeds the outstanding balance of ₹${outstanding}`,
+          outstanding,
+        });
+      }
+
+      // §3.4 — the status guard was inverted in spirit: `status !== "Failed"`
+      // credited the payment for ANY unrecognised string, including a typo.
+      // Match the schema's enum explicitly and default to "Paid".
+      const PAYMENT_STATUSES = ["Pending", "Paid", "Failed"];
+      const normalizedStatus = PAYMENT_STATUSES.includes(status) ? status : "Paid";
+      if (status !== undefined && status !== null && !PAYMENT_STATUSES.includes(status)) {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: `status must be one of: ${PAYMENT_STATUSES.join(", ")}`,
+        });
+      }
+
       // Create payment record
       const payment = await ExpensePayment.create(
         [
           {
             expense: expenseId,
-            amount,
+            amount: paymentAmount,
             paymentMode,
             paymentDate: new Date(paymentDate),
             transactionId: transactionId || "",
             notes: notes || "",
-            status: status || "Paid",
+            status: normalizedStatus,
             recordedBy: managerId,
           },
         ],
         { session }
       );
 
-      // Update expense totalPaid and paymentStatus
-      if (status !== "Failed") {
-        expense.totalPaid += amount;
+      // Update expense totalPaid and paymentStatus. Only a genuinely settled
+      // payment moves the balance — "Pending" and "Failed" do not.
+      if (normalizedStatus === "Paid") {
+        expense.totalPaid += paymentAmount;
       }
 
       if (expense.totalPaid >= expense.amount) {

@@ -1,7 +1,7 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Match = require("./src/modules/tournaments/models/Tournnamentmatch");
-const Tournament = require("./src/modules/tournaments/models/Tournament");
+const Match = require("../../src/modules/tournaments/models/Tournnamentmatch");
+const Tournament = require("../../src/modules/tournaments/models/Tournament");
 
 (async () => {
   await mongoose.connect(process.env.MONGO_URI);

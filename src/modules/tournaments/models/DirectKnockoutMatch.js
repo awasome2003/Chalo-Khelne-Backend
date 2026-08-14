@@ -43,7 +43,11 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
       "round-of-4",
       "quarter-final",
       "semi-final",
-      "final"
+      "final",
+      // Optional 3rd-place play-off between the two semi-final losers. Created
+      // on demand after both semis finish, never during bracket generation.
+      // Terminal: it has no nextMatchId, so nothing progresses out of it.
+      "third-place"
     ],
     required: true
   },
@@ -180,7 +184,13 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
     serviceRule: {
       pointsPerService: { type: Number, default: 2 },
       deuceServicePoints: { type: Number, default: 1 }
-    }
+    },
+
+    // Multi-sport fields the factory freezes onto every match (totalSets,
+    // scoringType, board/innings/time config). Undeclared paths are dropped
+    // silently by Mongoose, so without these the computed format was written
+    // and immediately lost. See shared/matchFormatFields.js.
+    ...require("./shared/matchFormatFields").multiSportFormatFields,
   },
 
   // Live Match State
@@ -242,6 +252,15 @@ const DirectKnockoutMatchSchema = new mongoose.Schema({
 
   // Sport identification
   sportName: { type: String, default: null },
+
+  // Bracket category (e.g. "Open", "Above 40"). Null = the tournament's single
+  // undifferentiated bracket for this sport (legacy + single-category events).
+  // Stamped at generation so multiple category brackets can coexist under one
+  // tournament+sport; generation and reset scope their deletes on it.
+  category: {
+    type: String,
+    default: null,
+  },
 
   // STEP 17f — sportId required. Boundary validator (16d) enforces on
   // create. Audit confirms 0 orphan DirectKnockoutMatch docs.
@@ -318,6 +337,8 @@ DirectKnockoutMatchSchema.index({ tournamentId: 1, status: 1 });
 DirectKnockoutMatchSchema.index({ tournamentId: 1, mode: 1 });
 // Multi-sport scoping index. Non-unique — STEP 9a additive.
 DirectKnockoutMatchSchema.index({ tournamentId: 1, sportId: 1 });
+// Per-category bracket scoping — backs the generate/reset delete filter.
+DirectKnockoutMatchSchema.index({ tournamentId: 1, sportId: 1, category: 1 });
 
 // Multi-tenant scoping (Phase 1.1) — SHADOW MODE. Plugin auto-adds clubId
 // (derived via tournamentId → Tournament.clubId by the backfill).

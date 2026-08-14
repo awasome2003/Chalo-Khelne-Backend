@@ -28,6 +28,13 @@ router.get("/availability/today", turfController.getTodaysAvailability);
 // SuperAdmin: turfs awaiting approval (kept above /:id so it isn't captured as an id)
 router.get("/admin/pending", requireSuperAdmin, turfController.getPendingTurfs);
 
+// SuperAdmin: ALL turfs (approved + pending) for the turf-management list.
+router.get("/admin/all", requireSuperAdmin, turfController.getAllTurfsAdmin);
+
+// SuperAdmin: bulk booking switch — flip online booking for EVERY turf at once.
+// Kept above /:id so "admin" isn't captured as a turf id.
+router.patch("/admin/booking-mode/all", requireSuperAdmin, turfController.bulkToggleBookingMode);
+
 // Get a single turf by ID
 router.get("/:id", turfController.getTurfById);
 
@@ -53,6 +60,10 @@ router.post(
 // SuperAdmin: approve / unapprove a turf for the public marketplace
 router.patch("/:id/approve", requireSuperAdmin, turfController.approveTurf);
 
+// SuperAdmin: contact-only switch — when on, players can't book (button →
+// "Contact Turf") and the booking API rejects create attempts on this turf.
+router.patch("/:id/booking-mode", requireSuperAdmin, turfController.toggleBookingMode);
+
 // Update a turf. allowUserOrManager (ClubAdmin or Manager); the controller
 // authorizes the caller against the turf owner via callerOwnsTurf().
 router.put(
@@ -70,6 +81,15 @@ router.post("/:id/reviews", allowUserOrManager, turfController.addReview);
 
 // Toggle active/inactive. allowUserOrManager — ownership verified in controller.
 router.patch("/:id/toggle-status", allowUserOrManager, turfController.toggleTurfStatus);
+
+// Turf-owner payment collection details (UPI / QR image) + contact fallback.
+// Ownership verified in the controller. Optional QR image field: "qrImage".
+router.patch(
+  "/:id/payment-details",
+  allowUserOrManager,
+  uploadMiddleware.single("qrImage"),
+  turfController.updateTurfPaymentDetails
+);
 
 // Assign / remove a manager on a turf (club owner manages turf staff). The
 // controllers existed but were never routed → the frontend got 404s.

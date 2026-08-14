@@ -6,6 +6,9 @@ const Assignment = require("../src/modules/tournaments/models/Assignment");
 const { cleanupFile } = require("../middleware/uploads");
 const path = require("path");
 
+// §3.10.3 — list endpoints are paginated with a default limit.
+const { paginatedFind } = require("../utils/pagination");
+
 // Get referee profile
 // Behavior: by default returns 404 if no profile exists.
 // Pass ?createIfMissing=true to opt into auto-create (used by "Become a Referee" flow).
@@ -726,9 +729,10 @@ exports.updateAvailability = async (req, res) => {
 exports.getAllReferees = async (req, res) => {
   try {
     // Find all users with referee role and join with their referee profiles
-    const referees = await Referee.find()
-      .populate("userId", "name email profileImage")
-      .select("-certificates -emergencyContact -emergencyContactName");
+    const referees = await paginatedFind(Referee, req, res, {
+      select: "-certificates -emergencyContact -emergencyContactName",
+      populate: [{ path: "userId", select: "name email profileImage" }],
+    });
 
     res.json(referees);
   } catch (error) {

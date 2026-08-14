@@ -61,8 +61,8 @@ const row = (name, got, want) => {
   console.log("\n── B. requireDob middleware (both flag states) ──");
   const mongoose = require("mongoose");
   await mongoose.connect(process.env.MONGO_URI);
-  const User = require("./src/modules/identity/models/User");
-  const { requireDob } = require("./middleware/requireDob");
+  const User = require("../../src/modules/identity/models/User");
+  const { requireDob } = require("../../middleware/requireDob");
 
   const player = await User.findOne({ email: EMAIL });
   const admin = await User.findOne({ email: `e${EMAIL}` });

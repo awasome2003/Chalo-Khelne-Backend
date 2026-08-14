@@ -3,6 +3,26 @@ const router = express.Router();
 const { requireSuperAdmin } = require("../middleware/authMiddleware");
 const { findMatchById, readMatchResult, getSchemaName } = require("../utils/matchUtils");
 
+// §3.10.6 — debug endpoints are gated TWICE: by role and by environment.
+//
+// They were already correctly behind requireSuperAdmin, but they were also
+// mounted in production and return raw schema internals. An endpoint that
+// exists only to dump internal state should not be reachable in production at
+// all, regardless of who is asking — a compromised or careless SuperAdmin
+// session should not be one request away from the raw match documents.
+//
+// Set ENABLE_DEBUG_ROUTES=1 to turn them on (e.g. temporarily, to diagnose a
+// live issue). They are always available outside production.
+router.use((req, res, next) => {
+  const enabled =
+    process.env.NODE_ENV !== "production" ||
+    process.env.ENABLE_DEBUG_ROUTES === "1";
+  if (!enabled) {
+    return res.status(404).json({ success: false, message: "Not found" });
+  }
+  next();
+});
+
 // Debug endpoints expose internal match/tournament state — superadmin only.
 router.use(requireSuperAdmin);
 const { getScoringType } = require("../utils/matchFormatUtils");

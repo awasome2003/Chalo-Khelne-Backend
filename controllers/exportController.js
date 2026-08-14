@@ -40,7 +40,9 @@ function dateRange(t) {
 
 // Excel sheet names: ≤31 chars, no \ / ? * [ ] : , and unique within the book.
 function uniqueSheetName(base, used) {
-  let name = String(base || "Sheet").replace(/[\\/\?\*\[\]:]/g, "-").slice(0, 28) || "Sheet";
+  // Characters Excel forbids in a sheet name. Inside a character class only
+  // \\ and \] need escaping; ? * [ are literal.
+  let name = String(base || "Sheet").replace(/[\\/?*[\]:]/g, "-").slice(0, 28) || "Sheet";
   let candidate = name;
   let i = 2;
   while (used.has(candidate)) candidate = `${name} ${i++}`.slice(0, 31);

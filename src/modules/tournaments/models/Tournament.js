@@ -56,7 +56,9 @@ const sportTrackSchema = new mongoose.Schema(
     // while Football is "knockout".
     type: {
       type: String,
-      enum: ["knockout", "group stage", "knockout + group stage"],
+      // "swiss" — fixed number of rounds, nobody eliminated, standings decide
+      // the result. Additive: the existing values and their flows are unchanged.
+      enum: ["knockout", "group stage", "knockout + group stage", "swiss"],
       default: null,
     },
 
@@ -78,6 +80,35 @@ const sportTrackSchema = new mongoose.Schema(
       minAge: { type: Number, default: null },
       maxAge: { type: Number, default: null },
       gender: { type: String, enum: ["male", "female", "any"], default: "any" },
+
+      // Per-category format overrides. A sport track carries one format for
+      // all its categories, which cannot express "Men's Singles is singles,
+      // Men's Doubles is doubles" inside one Table Tennis track. When set,
+      // these win over the sport-level values; when null the sport-level
+      // value applies. Resolved through sportTrackUtils.getGroupStageFormat
+      // — never read these directly.
+      //
+      // Enums mirror the sport-level fields below. They were previously
+      // written to the database by seed scripts using the native driver, so
+      // some documents already carry values here; declaring them makes those
+      // values visible to non-lean queries and survivable across a save().
+      type: {
+        type: String,
+        // "swiss" — fixed number of rounds, nobody eliminated, standings decide
+        // the result. Additive: existing values and their flows are unchanged.
+        enum: ["knockout", "group stage", "knockout + group stage", "swiss", null],
+        default: null,
+      },
+      groupStageFormat: {
+        type: String,
+        enum: ["Singles", "Doubles", "Teams", null],
+        default: null,
+      },
+      knockoutFormat: {
+        type: String,
+        enum: ["Singles", "Doubles", "Teams", "Teams Knockout", "Davis Cup", null],
+        default: null,
+      },
     }],
 
     groupStageFormat: {

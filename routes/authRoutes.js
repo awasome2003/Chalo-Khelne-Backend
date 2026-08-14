@@ -36,38 +36,10 @@ const { authenticate } = require("../middleware/authMiddleware");
 const { requireSelf, forceSelfBody } = require("../middleware/authz");
 const { signAccessToken, signAccessTokenFor, issueRefreshToken, rotateRefreshToken, revokeRefreshToken } = require("../utils/tokens");
 
-// ── Rate limiting (Phase 1) ──
-// Defensive require: server still boots if the package isn't installed yet.
-// Install with:  npm install express-rate-limit
-let rateLimit;
-try {
-  rateLimit = require("express-rate-limit");
-} catch (_e) {
-  console.warn(
-    "[auth] express-rate-limit not installed — auth rate limiting DISABLED. Run: npm install express-rate-limit"
-  );
-  rateLimit = () => (_req, _res, next) => next(); // no-op fallback
-}
-// Multi-instance-safe store when REDIS_URL is set; else per-process in-memory.
-const rateLimitStore = require("../middleware/rateLimitStore");
-const authStore = rateLimitStore("rl:auth:");
-const registerStore = rateLimitStore("rl:register:");
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 20, // generous: real users won't hit it, brute force will
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: "Too many attempts. Please try again later." },
-  ...(authStore ? { store: authStore } : {}),
-});
-const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, message: "Too many attempts. Please try again later." },
-  ...(registerStore ? { store: registerStore } : {}),
-});
+// ── Rate limiting ──
+// Limiters moved to middleware/rateLimiters.js so the OTP and password-reset
+// routes use the same definitions instead of going unlimited (§3.2).
+const { authLimiter, registerLimiter } = require("../middleware/rateLimiters");
 
 // Register a new user
 router.post("/register", registerLimiter, async (req, res) => {
@@ -895,6 +867,9 @@ router.post(
 );
 
 // Error handling middleware
+// multer is referenced below for MulterError; without this require the handler
+// throws ReferenceError and turns a clean 400 into a 500.
+const multer = require("multer");
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {

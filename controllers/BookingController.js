@@ -128,7 +128,7 @@ const bookingController = {
         // Normalize mobile — strip +, spaces, dashes, country code — keep last 10 digits
         const normalizeMobile = (m) => {
           if (!m) return "";
-          return m.toString().replace(/[\s\-\+]/g, "").slice(-10);
+          return m.toString().replace(/[\s\-+]/g, "").slice(-10);
         };
 
         const isWhitelisted = tournament.whitelist.some(emp => {
@@ -331,7 +331,15 @@ const bookingController = {
           transactionDetails: {
             paymentMode: "FREE_TOURNAMENT",
             merchantTransactionId: `FREE_${Date.now()}`,
-            gatewayResponse: { status: "success" },
+            // §3.10.4 — do NOT fabricate a gateway response.
+            //
+            // This used to write `gatewayResponse: { status: "success" }` for a
+            // transaction that never happened, which is indistinguishable from
+            // a real settlement to any future reconciliation job. A free
+            // registration has no gateway leg at all, so the record says so.
+            gatewayResponse: null,
+            isSynthetic: true,
+            syntheticReason: "free_tournament_no_gateway_transaction",
           },
         });
 
@@ -816,12 +824,33 @@ const bookingController = {
 
       const tournamentType = tournament.type || "knockout";
 
-      // Check for existing bookings in this tournament to avoid duplicates
+      // Check for existing bookings in this tournament to avoid duplicates.
+      // Employee ID is the strong key when present — two genuinely different
+      // people can share a name, and name-only dedupe silently dropped one.
+      //
+      // Doubles pairs register as a single booking named "A & B". The same pair
+      // can legitimately be typed either way round, so the name key sorts the
+      // partners: without it, "Rahul & Amit" and "Amit & Rahul" are two
+      // bookings and the pair enters the bracket twice. Mirrors entryKey() in
+      // sports_app/src/Manager/bulkParse.js.
+      const nameKey = (raw) => {
+        const parts = String(raw == null ? "" : raw)
+          .split("&")
+          .map((p) => p.trim().toLowerCase().replace(/\s+/g, " "))
+          .filter(Boolean);
+        if (parts.length < 2) return parts[0] || "";
+        return parts.sort().join(" & ");
+      };
+
       const existingBookings = await Booking.find({ tournamentId });
-      const existingNames = new Set(existingBookings.map(b => b.userName?.toLowerCase().trim()));
+      const existingNames = new Set(existingBookings.map(b => nameKey(b.userName)));
+      const existingEmpIds = new Set(
+        existingBookings.map(b => (b.employeeId || "").trim().toLowerCase()).filter(Boolean)
+      );
 
       const created = [];
       const skipped = [];
+      const toInsert = [];
 
       for (const player of players) {
         const name = (player.name || "").trim();
@@ -830,8 +859,14 @@ const bookingController = {
           continue;
         }
 
-        // Skip duplicates
-        if (existingNames.has(name.toLowerCase())) {
+        // Skip duplicates — by employee ID when the row has one, else by name.
+        const rowEmpId = (player.employeeId || "").trim().toLowerCase();
+        if (rowEmpId) {
+          if (existingEmpIds.has(rowEmpId)) {
+            skipped.push({ ...player, reason: "Already registered (employee ID)" });
+            continue;
+          }
+        } else if (existingNames.has(nameKey(name))) {
           skipped.push({ ...player, reason: "Already registered" });
           continue;
         }
@@ -848,14 +883,23 @@ const bookingController = {
         const employeeId = (player.employeeId || "").trim() || null;
 
         // STEP 16c — bulk path now writes both shapes.
-        // Resolve the matching category from sports[0] (multi-sport
-        // canonical) with a legacy tournament.category fallback for
-        // any pre-migration tournament that somehow slipped through.
-        // Multi-sport bulk upload (per-row sport selection) is a
-        // separate feature — for now bulk uses sports[0] uniformly.
-        const track0 = Array.isArray(tournament.sports) && tournament.sports.length > 0
-          ? tournament.sports[0]
-          : null;
+        // Per-row sport: the Excel `Sport` column picks which of the
+        // tournament's sports this registration belongs to, matched by name
+        // (case/space-insensitive). Rows with no Sport value — and
+        // single-sport tournaments — fall back to sports[0].
+        //
+        // This matters beyond convenience: the knockout player picker filters
+        // registrants by the ACTIVE sport, so hard-coding sports[0] made
+        // bulk-uploaded players invisible whenever the manager was building a
+        // bracket for any other sport.
+        const allSports = Array.isArray(tournament.sports) ? tournament.sports : [];
+        const _norm = (s) => String(s || "").toLowerCase().replace(/[\s_-]+/g, "");
+        let track0 = allSports.length > 0 ? allSports[0] : null;
+        if (player.sport && allSports.length > 0) {
+          const wanted = _norm(player.sport);
+          const matchedSport = allSports.find((s) => _norm(s.sportName) === wanted);
+          if (matchedSport) track0 = matchedSport;
+        }
 
         // STEP 17c — read categories off sports[0] only. Legacy
         // tournament.category fallback removed; every tournament has
@@ -911,7 +955,12 @@ const bookingController = {
           };
         }
 
-        const booking = new Booking({
+        // Seeding rank from the Excel `Seed` column. Only positive integers
+        // count; anything else means unseeded.
+        const seedRaw = Number(player.seed);
+        const seed = Number.isFinite(seedRaw) && seedRaw > 0 ? Math.floor(seedRaw) : null;
+
+        toInsert.push({
           userId: null,
           userName: name,
           userEmail: email,
@@ -924,19 +973,31 @@ const bookingController = {
           paymentAmount: 0,
           paymentMethod: "cash",
           employeeId,
+          seed,
           isGuestBooking: true,
           sportSelections,
           totalFee,
           team: teamData,
         });
 
-        await booking.save();
-        existingNames.add(name.toLowerCase());
-        created.push({
-          _id: booking._id,
-          userName: booking.userName,
-          userEmail: booking.userEmail,
-          employeeId: booking.employeeId,
+        // Reserve the keys so duplicates WITHIN this upload are caught too.
+        existingNames.add(nameKey(name));
+        if (rowEmpId) existingEmpIds.add(rowEmpId);
+      }
+
+      // Single batched write instead of one round trip per player — a 128-row
+      // sheet was 128 sequential saves. tenantScope stamps clubId via its
+      // pre("insertMany") hook, so tenancy behaviour is unchanged.
+      if (toInsert.length > 0) {
+        const inserted = await Booking.insertMany(toInsert);
+        inserted.forEach((b) => {
+          created.push({
+            _id: b._id,
+            userName: b.userName,
+            userEmail: b.userEmail,
+            employeeId: b.employeeId,
+            seed: b.seed,
+          });
         });
       }
 

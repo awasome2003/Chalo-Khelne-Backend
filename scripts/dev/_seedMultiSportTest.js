@@ -28,12 +28,12 @@ const SPORTS = [
 
 (async () => {
   await mongoose.connect(process.env.MONGO_URI);
-  const Tournament = require("./src/modules/tournaments/models/Tournament");
-  const BookingGroup = require("./src/modules/tournaments/models/bookinggroup");
-  const Match = require("./src/modules/tournaments/models/Tournnamentmatch");
-  const GroupStandings = require("./src/modules/tournaments/models/GroupStandings");
-  const User = require("./src/modules/identity/models/User");
-  const { recalculateGroupStandings } = require("./controllers/groupStageScoreboardController");
+  const Tournament = require("../../src/modules/tournaments/models/Tournament");
+  const BookingGroup = require("../../src/modules/tournaments/models/bookinggroup");
+  const Match = require("../../src/modules/tournaments/models/Tournnamentmatch");
+  const GroupStandings = require("../../src/modules/tournaments/models/GroupStandings");
+  const User = require("../../src/modules/identity/models/User");
+  const { recalculateGroupStandings } = require("../../controllers/groupStageScoreboardController");
 
   // ── cleanup prior runs ──
   const prior = await Tournament.find({ title: TITLE }).select("_id").lean();

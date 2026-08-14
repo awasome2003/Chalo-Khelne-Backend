@@ -9,6 +9,7 @@ const Organizer = require("../src/modules/tournaments/models/Organizermodel");
 const User = require("../src/modules/identity/models/User");
 const Inquiry = require("../src/modules/commerce/models/Inquiry");
 const { requireSuperAdmin } = require("../middleware/authMiddleware");
+const { parsePaging, pageMeta, searchFilter } = require("../utils/paginate");
 
 // Every route in this file is a SuperAdmin control-plane action (approve/
 // reject users, change roles, platform overview). Guard the whole router —
@@ -46,9 +47,18 @@ router.put('/user-role/:id', async (req, res) => {
 
 router.get("/pending-approval", async (req, res) => {
   try {
-    // Find users where isApproved is false
-    const pendingUsers = await User.find({ isApproved: false });
-    res.status(200).json(pendingUsers);
+    const filter = { isApproved: false, ...searchFilter(req, ["name", "email", "clubName"]) };
+    const { paged, page, limit, skip } = parsePaging(req);
+    // Legacy shape (no ?page/?limit) — untouched for existing callers.
+    if (!paged) {
+      const pendingUsers = await User.find(filter);
+      return res.status(200).json(pendingUsers);
+    }
+    const [items, total] = await Promise.all([
+      User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      User.countDocuments(filter),
+    ]);
+    return res.status(200).json({ items, ...pageMeta(total, page, limit) });
   } catch (error) {
     console.error("Error fetching pending users:", error);
     res.status(500).json({ message: "Server error", error });
@@ -94,8 +104,20 @@ router.post("/reject/:id", async (req, res) => {
 
 router.get("/approved-users", async (req, res) => {
   try {
-    const approvedUsers = await User.find({ isApproved: true });
-    res.status(200).json(approvedUsers);
+    const filter = { isApproved: true, ...searchFilter(req, ["name", "email", "clubName"]) };
+    // Optional server-side role filter (so it spans the whole dataset, not just
+    // the current page). "All"/empty = no role constraint.
+    if (req.query.role && req.query.role !== "All") filter.role = req.query.role;
+    const { paged, page, limit, skip } = parsePaging(req);
+    if (!paged) {
+      const approvedUsers = await User.find(filter);
+      return res.status(200).json(approvedUsers);
+    }
+    const [items, total] = await Promise.all([
+      User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      User.countDocuments(filter),
+    ]);
+    return res.status(200).json({ items, ...pageMeta(total, page, limit) });
   } catch (error) {
     res.status(500).json({ message: "Server error", error });
   }

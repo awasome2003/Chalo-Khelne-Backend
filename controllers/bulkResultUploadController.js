@@ -171,7 +171,7 @@ function extractSingleResult(row) {
   const result = (row.result || "").trim().toLowerCase();
   const VALID = { "1-0": "player1", "0-1": "player2", "draw": null, "0.5-0.5": null };
 
-  if (!VALID.hasOwnProperty(result)) {
+  if (!Object.prototype.hasOwnProperty.call(VALID, result)) {
     throw new Error(`Invalid result "${result}". Must be: 1-0, 0-1, draw, or 0.5-0.5`);
   }
 

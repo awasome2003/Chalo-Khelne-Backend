@@ -34,4 +34,11 @@ const reminderSchema = new mongoose.Schema({
   },
 });
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// the reminder cron's due-rows query
+reminderSchema.index({ status: 1, reminderTime: 1 });
+// reminders for a match
+reminderSchema.index({ matchId: 1 });
+
 module.exports = mongoose.model("Reminder", reminderSchema);

@@ -1,6 +1,7 @@
 const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
 const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
 const DirectKnockoutMatch = require("../src/modules/tournaments/models/DirectKnockoutMatch");
+const SwissMatch = require("../src/modules/tournaments/models/SwissMatch");
 const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
 const User = require("../src/modules/identity/models/User");
 const Score = require("../src/modules/tournaments/models/Score");
@@ -719,24 +720,34 @@ const getLiveMatchState = async (req, res) => {
       }
     }
 
+    // Swiss last: it lives in its own collection, so every existing match
+    // type resolves above and this only runs when nothing else matched.
+    if (!match) {
+      match = await SwissMatch.findById(matchId);
+    }
+
     if (!match) {
       return res.status(404).json({
         success: false,
-        message: "Match not found in any collection (Match, SuperMatch, or DirectKnockoutMatch)"
+        message: "Match not found in any collection (Match, SuperMatch, DirectKnockoutMatch, or SwissMatch)"
       });
     }
 
     // Check if auto-initialization is requested (via query parameter)
     const autoInit = req.query.autoInit === 'true';
-    const forceRefreshFormat = req.query.refreshFormat === 'true';
+    // Kept for the documented ?refreshFormat=true query param, but the reload
+    // below is unconditional, so nothing reads it. Underscore-prefixed per the
+    // repo's unused-vars convention.
+    const _forceRefreshFormat = req.query.refreshFormat === 'true';
 
     // 🔥 ALWAYS ENSURE MATCH HAS CURRENT TOURNAMENT FORMAT
-    // Always reload tournament format to ensure dynamic settings changes are reflected
-    if (!match.matchFormat ||
-      (!match.matchFormat.totalSets && !match.matchFormat.maxSets) ||
-      (!match.matchFormat.totalGames && !match.matchFormat.maxGames) ||
-      forceRefreshFormat ||
-      true) { // 🚨 ALWAYS REFRESH for dynamic settings support
+    // Always reload the tournament format so dynamic settings changes are
+    // reflected. This used to be a four-clause guard ending in `|| true`, which
+    // made every clause above it dead — the block ran unconditionally anyway.
+    // A bare block says that outright and keeps the scoping identical;
+    // no-constant-condition (correctly) rejected the `|| true`.
+    // `forceRefreshFormat` (?refreshFormat=true) is therefore already implied.
+    {
 
       // Load tournament format if not already loaded or missing new fields.
       // STEP 17c — root matchFormat/sportsType removed; read per-sport from
@@ -872,6 +883,12 @@ const updateLiveScore = async (req, res) => {
       }
     }
 
+    // Swiss last: it lives in its own collection, so every existing match
+    // type resolves above and this only runs when nothing else matched.
+    if (!match) {
+      match = await SwissMatch.findById(matchId);
+    }
+
     if (!match) {
       return res.status(404).json({
         success: false,
@@ -957,6 +974,12 @@ const completeGame = async (req, res) => {
       if (match) {
         isKnockoutMatch = true;
       }
+    }
+
+    // Swiss last: it lives in its own collection, so every existing match
+    // type resolves above and this only runs when nothing else matched.
+    if (!match) {
+      match = await SwissMatch.findById(matchId).session(session);
     }
 
     if (!match) {
@@ -1931,6 +1954,11 @@ const getMatchScores = async (req, res) => {
       }
     }
 
+    // Swiss last — see note in getLiveMatchState.
+    if (!match) {
+      match = await SwissMatch.findById(matchId);
+    }
+
     if (!match) {
       return res.status(404).json({
         success: false,
@@ -2393,6 +2421,11 @@ const bulkUploadScores = async (req, res) => {
           match = await KnockoutMatch.findById(matchId);
           if (match) matchKind = "legacyKO";
         }
+        // Swiss last — see note in getLiveMatchState.
+        if (!match) {
+          match = await SwissMatch.findById(matchId);
+          if (match) matchKind = "swiss";
+        }
         if (!match) {
           errors.push({ matchId, error: "Match not found" });
           continue;
@@ -2475,7 +2508,11 @@ const bulkUploadScores = async (req, res) => {
           continue;
         }
 
-        const setsToWin = match.matchFormat.setsToWin || 1;
+        // Resolve rather than trust the stored value. matchFormat.setsToWin
+        // defaults to 3 in every match model (paired with maxSets: 5), so a
+        // best-of-3 match created without an explicit format demanded all
+        // three sets and rejected a perfectly valid 2-0.
+        const setsToWin = require("../utils/matchFormatUtils").resolveSetsToWin(match.matchFormat);
 
         // Validate: need enough sets submitted to determine a winner
         let p1SetsWon = 0;
@@ -2505,7 +2542,10 @@ const bulkUploadScores = async (req, res) => {
         }
 
         if (p1SetsWon < setsToWin && p2SetsWon < setsToWin) {
-          errors.push({ matchId, error: `Not enough sets to determine winner. Need ${setsToWin} sets to win.` });
+          errors.push({
+            matchId,
+            error: `Not enough sets to decide the match — ${setsToWin} set win${setsToWin === 1 ? "" : "s"} needed, got ${p1SetsWon}-${p2SetsWon}.`,
+          });
           continue;
         }
 
@@ -2706,6 +2746,7 @@ async function _loadScoringMatch(req, matchId, session) {
   let isKnockoutMatch = false;
   if (!match) { match = await SuperMatch.findById(matchId).session(session); if (match) isKnockoutMatch = true; }
   if (!match) { match = await DirectKnockoutMatch.findById(matchId).session(session); if (match) isKnockoutMatch = true; }
+  if (!match) { match = await SwissMatch.findById(matchId).session(session); }
   if (!match) return { error: { status: 404, message: "Match not found" } };
 
   const callerId = req.user?._id?.toString() || req.user?.id?.toString();

@@ -29,6 +29,7 @@ const { createSuperMatch, createLegacyKnockoutMatch } = require("../factories/Ma
 const { sanitizeMatchFormat, validateMatchFormat: validateSportMatchFormat } = require("../utils/sportFieldConfig");
 const { assertNonEmptySports, assertSportInTournament, assertGroupHasSport, handleSportContextError } = require("../middleware/requireSportContext");
 const { getSeedOrder, buildR1SlotAssignment } = require("../utils/seedingUtils");
+const { shuffle } = require("../utils/shuffle");
 
 // Per-tournament generation lock — prevents concurrent /knockout/generate
 // requests (frontend timeout + retry) from racing each other.
@@ -2743,7 +2744,7 @@ const generateKnockoutBracket = async (players, tournamentId, matchType, round, 
     console.log(`Total players: ${totalPlayers}, Next power of 2: ${nextPowerOf2}, Byes needed: ${byesNeeded}`);
 
     // Shuffle players for fair bracket distribution
-    const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+    const shuffledPlayers = shuffle(players);
 
     // For seeded players, place them strategically to avoid early encounters
     if (matchType === "main_knockout") {
@@ -4892,7 +4893,7 @@ exports.createDirectKnockoutMatches = async (req, res) => {
     const totalMatches = playerCount - 1;
 
     // Shuffle players for random first round matchups
-    const shuffledPlayers = [...selectedPlayers].sort(() => Math.random() - 0.5);
+    const shuffledPlayers = shuffle(selectedPlayers);
 
     const matches = [];
     let matchCounter = 1;

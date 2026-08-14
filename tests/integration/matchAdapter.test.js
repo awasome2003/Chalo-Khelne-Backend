@@ -74,7 +74,12 @@ beforeEach(async () => {
   await seedAllTypes();
 });
 
-test("registry covers all 6 match kinds (Semifinals no longer omitted)", () => {
+// Deliberately exhaustive: adding a match model must fail here until it is
+// acknowledged, because a kind missing from the registry is invisible to every
+// finder and leaderboard — the exact bug that once hid Semifinals.
+// SWISS joined when the Swiss-system format was added (own collection, so the
+// group-stage queries cannot pick it up; the registry is how it stays findable).
+test("registry covers all 7 match kinds (Semifinals and Swiss included)", () => {
   const kinds = MATCH_MODELS.map((m) => m.kind).sort();
   expect(kinds).toEqual(
     [
@@ -84,6 +89,7 @@ test("registry covers all 6 match kinds (Semifinals no longer omitted)", () => {
       MATCH_KINDS.SEMIFINAL,
       MATCH_KINDS.SUPER,
       MATCH_KINDS.TEAM_KNOCKOUT,
+      MATCH_KINDS.SWISS,
     ].sort()
   );
 });

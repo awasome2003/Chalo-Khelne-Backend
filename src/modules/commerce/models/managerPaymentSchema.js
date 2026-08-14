@@ -66,4 +66,11 @@ const managerPaymentSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// a manager's payment setup
+managerPaymentSchema.index({ managerId: 1 });
+// per-tournament payment options
+managerPaymentSchema.index({ managerId: 1, tournamentId: 1 });
+
 module.exports = mongoose.model("ManagerPayment", managerPaymentSchema);

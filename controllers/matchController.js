@@ -320,9 +320,15 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
     ? group.matchFormat
     : null;
 
-  // STEP 17b.iv — Determine match type from per-sport groupStageFormat.
+  // STEP 17b.iv — Determine match type from the groupStageFormat that applies
+  // to THIS group's category. Resolving from the sport track alone gave every
+  // category in a sport the same match type, so a Table Tennis track set to
+  // "Doubles" generated doubles fixtures for Men's Singles, and a track set to
+  // the combined "Singles, Doubles" failed the equality test below and
+  // generated singles for every doubles category.
   const { getGroupStageFormat } = require("../utils/sportTrackUtils");
-  const isDoubles = getGroupStageFormat(tournament, group?.sportId) === "Doubles";
+  const isDoubles =
+    getGroupStageFormat(tournament, group?.sportId, group?.category) === "Doubles";
   const players = group.players;
   const matchDocuments = [];
   let matchCount = 0;

@@ -169,7 +169,14 @@ const matchSchema = new mongoose.Schema({
     // Board-based sports (Carrom)
     boardsToWin: { type: Number, default: null },
     pointsPerBoard: { type: Number, default: null },
-    queenValue: { type: Number, default: null }
+    queenValue: { type: Number, default: null },
+
+    // Remaining multi-sport fields the factory freezes on. This model already
+    // declared the innings/board pair above; the spread adds what was still
+    // missing — notably totalSets and scoringType, without which the scoring
+    // engine cannot tell how many sets the match needs. Overlapping keys are
+    // defined identically. See shared/matchFormatFields.js.
+    ...require("./shared/matchFormatFields").multiSportFormatFields,
   },
 
   // Live Match State

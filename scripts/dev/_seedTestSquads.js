@@ -5,7 +5,7 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Match = require("./src/modules/tournaments/models/Tournnamentmatch");
+const Match = require("../../src/modules/tournaments/models/Tournnamentmatch");
 
 const TID = "6a3a17250f55b4daf886f967";
 

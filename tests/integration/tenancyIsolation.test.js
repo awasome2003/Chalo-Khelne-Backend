@@ -83,3 +83,56 @@ test("Test 2 — Club A cannot read Club B's data via an aggregate pipeline", as
   const total = aByStandard.reduce((s, r) => s + r.count, 0);
   expect(total).toBe(3); // not 5 — B's rows are invisible to A
 });
+
+// ── §3.9 — aggregate() is scoped STRUCTURALLY, not by convention ───────────
+//
+// Tests 1 and 2 above prove the manual tenantMatchStage() helper works. That
+// helper appeared at only 10 of 27 aggregate() call sites; the other 17 were
+// safe merely because they happened to constrain on an id list produced by a
+// plugin-scoped query. Nothing failed when a new aggregate was added without
+// the stage, and nothing tested for it.
+//
+// These assert the property the plugin now guarantees: a pipeline with NO
+// manual tenant stage is still isolated.
+
+test("§3.9 — an unguarded aggregate() is scoped by the plugin", async () => {
+  // NOTE the `async` + `await`: the plugin's aggregate hook runs at exec time,
+  // so the pipeline must be EXECUTED inside the tenant context — which is
+  // exactly what a request handler does (`await Model.aggregate(...)` inside
+  // the runWithTenant-wrapped request). Building the Aggregate inside the
+  // context and awaiting it outside loses the AsyncLocalStorage store.
+  const countFor = (ctx) =>
+    runWithTenant(ctx, async () =>
+      Student.aggregate([
+        // Deliberately no tenantMatchStage() — this is the pattern that used to
+        // leak across tenants.
+        { $group: { _id: null, count: { $sum: 1 } } },
+      ])
+    );
+
+  const [aAgg] = await countFor(ctxA);
+  const [bAgg] = await countFor(ctxB);
+  expect(aAgg.count).toBe(3);
+  expect(bAgg.count).toBe(2);
+});
+
+test("§3.9 — an unguarded aggregate() never returns another tenant's rows", async () => {
+  const rows = await runWithTenant(ctxA, async () =>
+    Student.aggregate([{ $match: { standard: "V" } }, { $project: { name: 1, clubId: 1 } }])
+  );
+  expect(rows.every((r) => String(r.clubId) === String(clubA))).toBe(true);
+  expect(rows.map((r) => r.name)).not.toContain("B1");
+});
+
+test("§3.9 — a hand-scoped pipeline is not double-matched", async () => {
+  // The 10 existing tenantMatchStage() call sites must keep working unchanged.
+  const rows = await runWithTenant(ctxA, async () =>
+    Student.aggregate([...tenantMatchStage(), { $group: { _id: null, count: { $sum: 1 } } }])
+  );
+  expect(rows[0].count).toBe(3);
+});
+
+test("§3.9 — no tenant context still sees everything (SuperAdmin / public path)", async () => {
+  const rows = await Student.aggregate([{ $group: { _id: null, count: { $sum: 1 } } }]);
+  expect(rows[0].count).toBe(5);
+});

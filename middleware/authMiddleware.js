@@ -12,15 +12,42 @@ const { runWithTenant, contextForUser } = require("../utils/tenantContext");
 // documents. Returns true if the request was rejected (and the response was
 // sent); caller must return immediately. Returns false if the user is active.
 // ═══════════════════════════════════════════════════════════════
+// §3.10.1 — the outcome used to be decided by "is it exactly 'suspended'?",
+// with EVERY other non-active value falling through to "account rejected". A
+// typo, a legacy value, or a future state such as "pending" locked the account
+// out with a message that did not describe what had happened.
+//
+// Status is now matched explicitly. Only the two states the User schema
+// declares (`suspended`, `rejected`) deny access; an unrecognised value is
+// logged and treated as active, because failing an account out of the platform
+// on a value nobody meant to be terminal is the worse error.
+const DENIED_STATUSES = {
+  suspended: {
+    code: "ACCOUNT_SUSPENDED",
+    message: "Your account has been suspended. Contact support.",
+  },
+  rejected: {
+    code: "ACCOUNT_REJECTED",
+    message: "Your account has been rejected. Contact support.",
+  },
+};
+
 function rejectIfSuspended(account, res) {
   if (!account || !account.status || account.status === "active") return false;
-  const suspended = account.status === "suspended";
+
+  const denial = DENIED_STATUSES[account.status];
+  if (!denial) {
+    console.warn(
+      `[AUTH] Unrecognised account status "${account.status}" on ${account._id} — ` +
+        `treating as active. Add it to DENIED_STATUSES if it should deny access.`
+    );
+    return false;
+  }
+
   return res.status(403).json({
     success: false,
-    code: suspended ? "ACCOUNT_SUSPENDED" : "ACCOUNT_REJECTED",
-    message: suspended
-      ? "Your account has been suspended. Contact support."
-      : "Your account has been rejected. Contact support.",
+    code: denial.code,
+    message: denial.message,
     reason: account.suspensionReason || null,
   });
 }
@@ -81,10 +108,25 @@ exports.authenticate = async (req, res, next) => {
 
     if (user) {
       if (rejectIfSuspended(user, res)) return;
-      req.user = decoded;
+
+      // §3.1 — the ROLE comes from the database record, not the token.
+      //
+      // This used to be `req.user = decoded`, which meant every downstream role
+      // check (including requireRole, which reuses req.user when present)
+      // trusted a claim minted when the token was issued. There is no token
+      // version, no denylist and no refresh-token rotation, so a demoted
+      // manager kept every manager-gated route working until their token
+      // lapsed. Suspension was caught — that was read from the database on
+      // every request — but a role change was not.
+      //
+      // The record is already loaded to check suspension, so `user.role` was
+      // selected and then discarded. Using it is free.
+      const effectiveRole = user.role || decoded.role;
+      req.user = { ...decoded, role: effectiveRole };
+
       // Tenant context: owner roles (ClubAdmin/corporate_admin) scope to their own
       // id; players & other roles carry no clubId (cross-tenant) and aren't scoped.
-      return runWithTenant(contextForUser(decoded.role, decoded.id), () => next());
+      return runWithTenant(contextForUser(effectiveRole, decoded.id), () => next());
     }
 
     // Substitute — a temporary stand-in for a coach. Same active+accepted gate
@@ -218,19 +260,31 @@ exports.requireSuperAdmin = async (req, res, next) => {
  *   router.post("/x", requireRole("corporate_admin", "superadmin"), handler)
  */
 exports.requireRole = (...allowed) => async (req, res, next) => {
-  let decoded = req.user;
-  if (!decoded || typeof decoded !== "object") {
-    const authHeader = req.header("Authorization");
-    if (!authHeader) {
-      return res.status(401).json({ success: false, message: "Authorization denied. No token provided." });
-    }
-    try {
-      decoded = jwt.verify(authHeader.replace("Bearer ", ""), process.env.JWT_SECRET, { algorithms: ["HS256"] });
-    } catch (err) {
-      return res.status(401).json({ success: false, message: "Invalid token." });
-    }
+  // §3.10.2 — the token is ALWAYS re-verified here.
+  //
+  // This used to reuse `req.user` whenever it was already set, without
+  // re-verifying it. That is correct today because every caller runs an auth
+  // middleware first — but the function is documented as being able to stand
+  // alone on a route, and in that configuration it would accept whatever a
+  // previous middleware happened to attach. Verifying the header costs one
+  // HMAC and removes the assumption entirely.
+  const authHeader = req.header("Authorization");
+  if (!authHeader) {
+    return res.status(401).json({ success: false, message: "Authorization denied. No token provided." });
   }
-  let role = decoded.role;
+
+  let decoded;
+  try {
+    decoded = jwt.verify(authHeader.replace("Bearer ", ""), process.env.JWT_SECRET, { algorithms: ["HS256"] });
+  } catch (err) {
+    return res.status(401).json({ success: false, message: "Invalid token." });
+  }
+
+  // §3.1 — prefer the role an upstream auth middleware resolved from the
+  // DATABASE over the token's claim. authenticate() sets req.user.role from the
+  // User record precisely so a demotion takes effect immediately.
+  let role =
+    (req.user && typeof req.user === "object" && req.user.role) || decoded.role;
   // /superadminlogin tokens carry no role — resolve membership from the collection.
   if (!role) {
     const id = decoded.userId || decoded.id;

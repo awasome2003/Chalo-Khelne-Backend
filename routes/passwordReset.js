@@ -7,6 +7,9 @@ const User = require("../src/modules/identity/models/User");
 const bcrypt = require("bcryptjs");
 const path = require("path");
 
+// §3.2 — password reset was unlimited.
+const { passwordResetLimiter } = require("../middleware/rateLimiters");
+
 // Configure email transporter
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -34,7 +37,7 @@ const FORGOT_PASSWORD_OK = {
   message: "If an account exists for that email, a reset link has been sent.",
 };
 
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -102,7 +105,7 @@ router.post("/forgot-password", async (req, res) => {
 });
 
 // Reset password
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", passwordResetLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
 

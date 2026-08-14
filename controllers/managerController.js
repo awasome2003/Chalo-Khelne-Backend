@@ -3,6 +3,9 @@ const nodemailer = require("nodemailer");
 const { Manager, Group } = require("../src/modules/identity/models/ClubManager");
 const User = require("../src/modules/identity/models/User");
 
+// §3.10.3 — list endpoints are paginated with a default limit.
+const { paginatedFind } = require("../utils/pagination");
+
 // Create a Nodemailer transporter
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -72,7 +75,9 @@ exports.addManager = async (req, res) => {
 
 exports.getAllManagers = async (req, res) => {
   try {
-    const managers = await Manager.find();
+    const managers = await paginatedFind(Manager, req, res, {
+      sort: { createdAt: -1 },
+    });
     res.status(200).json(managers);
   } catch (error) {
     console.error("Error fetching managers:", error);

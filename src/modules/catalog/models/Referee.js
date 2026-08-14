@@ -153,4 +153,11 @@ RefereeSchema.pre("save", function (next) {
   next();
 });
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// profile lookup by user
+RefereeSchema.index({ userId: 1 });
+// authorising a certificate download (§2.2)
+RefereeSchema.index({ 'certificates.certificateUrl': 1 });
+
 module.exports = mongoose.model("Referee", RefereeSchema);

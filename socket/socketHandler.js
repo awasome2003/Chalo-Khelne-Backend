@@ -3,6 +3,7 @@ const Tournament = require("../src/modules/tournaments/models/Tournament");
 const Booking = require("../src/modules/tournaments/models/BookingModel");
 const Manager = require("../src/modules/identity/models/ClubManager").Manager;
 const { findMatchById } = require("../utils/matchUtils");
+const User = require("../src/modules/identity/models/User");
 const {
   canJoinGroupChat,
   canJoinConversation,
@@ -79,6 +80,34 @@ module.exports = function setupSocket(io) {
     return false;
   }
 
+  // Presence fan-out, scoped to the user's social graph (§3.5).
+  //
+  // Everyone joins their own `user_<id>` room at connect, so emitting to those
+  // rooms reaches exactly the followers/following who have a presence
+  // indicator to update — instead of every socket in the deployment.
+  async function emitPresence(socket, userId, online) {
+    try {
+      const me = await User.findById(userId)
+        .select("followers following")
+        .lean();
+      if (!me) return;
+
+      const audience = new Set(
+        [...(me.followers || []), ...(me.following || [])].map(String)
+      );
+      audience.delete(String(userId)); // don't tell them about themselves
+      if (audience.size === 0) return;
+
+      const payload = { userId, online };
+      for (const otherId of audience) {
+        socket.to(`user_${otherId}`).emit("user:online", payload);
+      }
+    } catch (err) {
+      // Presence is cosmetic — never let it break the connection lifecycle.
+      console.error("[SOCKET] presence emit failed:", err.message);
+    }
+  }
+
   io.on("connection", (socket) => {
     const userId = socket.userId;
 
@@ -86,8 +115,19 @@ module.exports = function setupSocket(io) {
     socket.join(`user_${userId}`);
     console.log(`[SOCKET] User ${userId} connected`);
 
-    // Broadcast online status
-    socket.broadcast.emit("user:online", { userId, online: true });
+    // Presence — announced only to people who can actually see this user.
+    //
+    // §3.5: this was `socket.broadcast.emit(...)`, i.e. every connection and
+    // disconnection announced itself to EVERY other connected socket in the
+    // deployment. That leaked the online status and user id of every user of
+    // every club to every other user, and made connection churn quadratic — at
+    // N concurrent sockets each connect emitted N−1 messages.
+    //
+    // The audience is the user's social graph: the people they follow and the
+    // people who follow them. Those are the only clients with a presence dot to
+    // update. Emitting into each person's own `user_<id>` room keeps the fan-out
+    // proportional to the graph rather than to the deployment.
+    emitPresence(socket, userId, true);
 
     // Handle typing indicator
     socket.on("user:typing", ({ conversationId, isTyping }) => {
@@ -171,7 +211,8 @@ module.exports = function setupSocket(io) {
 
     // Disconnect
     socket.on("disconnect", () => {
-      socket.broadcast.emit("user:online", { userId, online: false });
+      // Same scoped fan-out as connect (§3.5) — not a deployment-wide blast.
+      emitPresence(socket, userId, false);
       console.log(`[SOCKET] User ${userId} disconnected`);
     });
   });

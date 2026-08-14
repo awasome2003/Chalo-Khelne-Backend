@@ -81,4 +81,13 @@ AssignmentSchema.pre("save", function (next) {
   next();
 });
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// umpire authorisation checks run per match write
+AssignmentSchema.index({ refereeId: 1, status: 1 });
+// per-match assignment
+AssignmentSchema.index({ matchId: 1 });
+// tournament staffing
+AssignmentSchema.index({ tournamentId: 1 });
+
 module.exports = mongoose.model("Assignment", AssignmentSchema);

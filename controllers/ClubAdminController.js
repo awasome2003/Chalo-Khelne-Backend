@@ -2,6 +2,7 @@ const ClubAdmin = require("../src/modules/org/models/ClubAdminProfile");
 const User = require("../src/modules/identity/models/User");
 const bcrypt = require("bcryptjs");
 const nodemailer = require("nodemailer");
+const { parsePaging, pageMeta, searchFilter } = require("../utils/paginate");
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -97,9 +98,9 @@ exports.getClubAdminProfile = async (req, res) => {
 
 //     // Build update object for User
 //     const userUpdateFields = {};
-//     if (req.body.hasOwnProperty('name')) userUpdateFields.name = name;
-//     if (req.body.hasOwnProperty('email')) userUpdateFields.email = email;
-//     if (req.body.hasOwnProperty('mobile')) userUpdateFields.mobile = mobile;
+//     if (Object.prototype.hasOwnProperty.call(req.body, 'name')) userUpdateFields.name = name;
+//     if (Object.prototype.hasOwnProperty.call(req.body, 'email')) userUpdateFields.email = email;
+//     if (Object.prototype.hasOwnProperty.call(req.body, 'mobile')) userUpdateFields.mobile = mobile;
 
 //     // Update User document first
 //     const updatedUser = await User.findByIdAndUpdate(
@@ -140,9 +141,9 @@ exports.updateClubAdminProfile = async (req, res) => {
     const { name, email, mobile, ...clubAdminData } = req.body;
 
     const userUpdateFields = {};
-    if (req.body.hasOwnProperty('name')) userUpdateFields.name = name;
-    if (req.body.hasOwnProperty('email')) userUpdateFields.email = email;
-    if (req.body.hasOwnProperty('mobile')) userUpdateFields.mobile = mobile;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'name')) userUpdateFields.name = name;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'email')) userUpdateFields.email = email;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'mobile')) userUpdateFields.mobile = mobile;
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
@@ -355,26 +356,37 @@ exports.onboardClubAdmin = async (req, res) => {
 
 exports.getAllClubAdmins = async (req, res) => {
   try {
-    const users = await User.find({ role: "ClubAdmin" }).select("-password");
-    
-    // Get profiles for all club admins
-    const clubProfiles = await ClubAdmin.find({
-      userId: { $in: users.map((u) => u._id) },
-    });
+    const filter = { role: "ClubAdmin", ...searchFilter(req, ["name", "email", "clubName"]) };
+    const { paged, page, limit, skip } = parsePaging(req);
 
-    // Merge User and Profile data
-    const mergedData = users.map((user) => {
-      const profile = clubProfiles.find(
-        (p) => p.userId.toString() === user._id.toString()
-      );
-      
-      return {
-        ...user.toObject(),
-        profile: profile ? profile.toObject() : null,
-      };
-    });
+    // Merge each User with its ClubAdmin profile (shared helper).
+    const mergeProfiles = async (users) => {
+      const clubProfiles = await ClubAdmin.find({
+        userId: { $in: users.map((u) => u._id) },
+      });
+      return users.map((user) => {
+        const profile = clubProfiles.find(
+          (p) => p.userId.toString() === user._id.toString()
+        );
+        return {
+          ...user.toObject(),
+          profile: profile ? profile.toObject() : null,
+        };
+      });
+    };
 
-    res.json(mergedData);
+    if (!paged) {
+      const users = await User.find(filter).select("-password");
+      const mergedData = await mergeProfiles(users);
+      return res.json(mergedData); // legacy shape (raw array)
+    }
+
+    const [users, total] = await Promise.all([
+      User.find(filter).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limit),
+      User.countDocuments(filter),
+    ]);
+    const items = await mergeProfiles(users);
+    return res.json({ items, ...pageMeta(total, page, limit) });
   } catch (error) {
     console.error("Error fetching all club admins:", error);
     res.status(500).json({ message: "Server error" });

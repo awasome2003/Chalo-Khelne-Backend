@@ -40,4 +40,9 @@ const InquirySchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// the inquiry list sorts newest-first
+InquirySchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model("Inquiry", InquirySchema);

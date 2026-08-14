@@ -27,12 +27,12 @@ const DOUBLES_COUNT = 8; // pairs
 
 (async () => {
   await mongoose.connect(process.env.MONGO_URI);
-  const Tournament = require("./src/modules/tournaments/models/Tournament");
-  const Booking = require("./src/modules/tournaments/models/BookingModel");
-  const BookingGroup = require("./src/modules/tournaments/models/bookinggroup");
-  const Match = require("./src/modules/tournaments/models/Tournnamentmatch");
-  const GroupStandings = require("./src/modules/tournaments/models/GroupStandings");
-  const User = require("./src/modules/identity/models/User");
+  const Tournament = require("../../src/modules/tournaments/models/Tournament");
+  const Booking = require("../../src/modules/tournaments/models/BookingModel");
+  const BookingGroup = require("../../src/modules/tournaments/models/bookinggroup");
+  const Match = require("../../src/modules/tournaments/models/Tournnamentmatch");
+  const GroupStandings = require("../../src/modules/tournaments/models/GroupStandings");
+  const User = require("../../src/modules/identity/models/User");
 
   const players = await User.find({ role: "Player" }).select("_id name userName").limit(40).lean();
   if (players.length < SINGLES_COUNT + DOUBLES_COUNT * 2) throw new Error("Not enough players");

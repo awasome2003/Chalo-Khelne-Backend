@@ -2,7 +2,7 @@
 // Run: node _runSeedRbac.js
 require("dotenv").config();
 const mongoose = require("mongoose");
-const seedRbac = require("./scripts/seedRbac");
+const seedRbac = require("../../scripts/seedRbac");
 
 (async () => {
   if (!process.env.MONGO_URI) { console.error("MONGO_URI missing from .env"); process.exit(1); }

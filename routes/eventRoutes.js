@@ -4,6 +4,9 @@ const router = express.Router();
 const { uploadMiddleware, cleanupFile } = require("../middleware/uploads");
 const { authenticate } = require("../middleware/authMiddleware");
 
+// §3.10.3 — list endpoints are paginated with a default limit.
+const { paginatedFind } = require("../utils/pagination");
+
 // Add new event with players
 // router.post("/", uploadMiddleware.array("playerImages"), async (req, res) => {
 //   const { title, date, isAllDay, time, court } = req.body;
@@ -38,7 +41,9 @@ const { authenticate } = require("../middleware/authMiddleware");
 // Get all events with players
 router.get("/", async (req, res) => {
   try {
-    const events = await Event.find();
+    const events = await paginatedFind(Event, req, res, {
+      sort: { createdAt: -1 },
+    });
     const updatedEvents = events.map((event) => ({
       ...event.toObject(),
       players: event.players.map((player) => ({

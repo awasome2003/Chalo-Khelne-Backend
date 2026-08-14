@@ -12,8 +12,8 @@
  */
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Match = require("./src/modules/tournaments/models/Tournnamentmatch");
-const { readMatchResult } = require("./utils/matchUtils");
+const Match = require("../../src/modules/tournaments/models/Tournnamentmatch");
+const { readMatchResult } = require("../../utils/matchUtils");
 
 const MATCH_ID = "6a3cb5c45a7e3174b6b3a94e";
 

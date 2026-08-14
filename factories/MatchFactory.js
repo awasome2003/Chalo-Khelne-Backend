@@ -219,6 +219,86 @@ function createGroupStageMatch(opts) {
 }
 
 // ════════════════════════════════════
+// SWISS MATCH
+// ════════════════════════════════════
+
+/**
+ * Creates a normalized Swiss match document.
+ *
+ * A Swiss match is terminal — Swiss has no bracket, so there is no
+ * nextMatchId and nobody progresses out of a result. Rounds are generated one
+ * at a time from the standings, not up front.
+ *
+ * A BYE is stored as a completed match with no player2: the field was odd and
+ * this player sat the round out. It counts as a win, because the player did not
+ * choose to sit out and scoring it lower would penalise them for the field size.
+ *
+ * @param {Object}  opts
+ * @param {Object}  opts.tournament
+ * @param {string}  opts.tournamentId
+ * @param {string}  opts.sportId
+ * @param {number}  opts.swissRound   1-based round number
+ * @param {number}  opts.matchNumber  position within the round
+ * @param {Object}  opts.player1      { playerId, userName }
+ * @param {Object}  [opts.player2]    omitted for a bye
+ * @param {string}  [opts.category]
+ * @param {boolean} [opts.isBye=false]
+ * @param {string}  [opts.courtNumber]
+ * @param {Date}    [opts.matchStartTime]
+ * @param {Date}    [opts.matchEndTime]
+ * @param {Object}  [opts.matchFormatOverride]
+ * @returns {Object} Match document ready for insertMany
+ */
+function createSwissMatch(opts) {
+  const {
+    tournament, tournamentId, sportId, swissRound, matchNumber, totalRounds,
+    player1, player2, category, isBye = false,
+    courtNumber, matchStartTime, matchEndTime, matchType,
+    matchFormatOverride,
+  } = opts;
+
+  const matchFormat = mergeFormatOverride(
+    resolveMatchFormat(tournament, sportId),
+    matchFormatOverride
+  );
+
+  const p1 = player1 || { playerId: null, userName: "TBD" };
+  const winnerOfBye = { playerId: p1.playerId || null, playerName: p1.userName || null };
+
+  return _stamp({
+    tournamentId: tournamentId || tournament._id,
+    sportId,
+    category: category || null,
+    swissRound,
+    matchNumber,
+    totalRounds,
+    matchType: matchType || "singles",
+    player1: p1,
+    player2: isBye ? { playerId: null, userName: null } : (player2 || { playerId: null, userName: null }),
+    isBye: !!isBye,
+    courtNumber: courtNumber || null,
+    matchStartTime: matchStartTime || null,
+    matchEndTime: matchEndTime || null,
+    // A bye needs no scoring — record it as already decided so standings and
+    // the "is the round finished?" check treat it like any other result.
+    status: isBye ? "COMPLETED" : "SCHEDULED",
+    scoringType: matchFormat.scoringType || null,
+    matchResult: null,
+    matchFormat,
+    result: isBye
+      ? {
+          winner: winnerOfBye,
+          finalScore: { player1Sets: 0, player2Sets: 0 },
+          isDraw: false,
+          matchDuration: 0,
+          completedAt: new Date(),
+        }
+      : undefined,
+    notes: isBye ? `BYE — ${p1.userName} sat out round ${swissRound}.` : undefined,
+  }, tournament);
+}
+
+// ════════════════════════════════════
 // KNOCKOUT MATCH (Direct Knockout)
 // ════════════════════════════════════
 
@@ -239,13 +319,46 @@ function createGroupStageMatch(opts) {
  * @param {string} [opts.nextMatchId]
  * @param {string} [opts.bracketPosition]
  * @param {string} [opts.mode]
+ * @param {string} [opts.category] - Bracket category ("Open", "Above 40"). Null
+ *                                   for a single undifferentiated bracket.
  * @returns {Object} Match document ready for insertMany
  */
+/**
+ * Merge a per-round format override onto a resolved base format.
+ *
+ * The bestOf escalation (Bo3 early → Bo5 semi → Bo7 final) supplies only
+ * { totalSets, setsToWin }. Applied naively that breaks the flat-set
+ * invariant: a sport with no games layer encodes it as totalGames ===
+ * totalSets, and hasNestedGames() reads any other relationship as a
+ * Tennis-style nested match.
+ *
+ * So a Bo5 badminton semi ended up totalSets: 5 with totalGames still 3 and
+ * was scored as NESTED — the live scorer demanded games within each set, while
+ * bulk upload recorded one game per set. The same match stored two different
+ * shapes depending on how it was scored.
+ *
+ * Genuinely nested sports (Tennis, which sets gamesPerSet) are untouched:
+ * games per set is independent of how many sets the match runs to.
+ */
+function mergeFormatOverride(base, override) {
+  if (!override || typeof override !== "object") return base;
+  const merged = {
+    ...base,
+    ...override,
+    // scoringType is sport-determined and never overridden.
+    scoringType: base.scoringType,
+  };
+  if (!hasNestedGames(base) && merged.totalSets != null) {
+    merged.totalGames = merged.totalSets;
+  }
+  return freezeMatchFormat(merged);
+}
+
 function createKnockoutMatch(opts) {
   const {
     tournament, tournamentId, matchId, round, roundNumber, matchNumber,
     player1, player2, courtNumber, matchStartTime, matchEndTime, nextMatchId,
-    bracketPosition, mode,
+    bracketPosition, mode, category,
     matchFormatOverride, // partial { totalSets, setsToWin, ... } merged onto resolved format
     sportId, // optional override; _stamp falls back to tournament.sports[0]
   } = opts;
@@ -254,13 +367,7 @@ function createKnockoutMatch(opts) {
   // any override fields (e.g. totalSets/setsToWin from a Bo5 round). scoringType
   // is sport-determined and never overridden — the merge below preserves it.
   let matchFormat = resolveMatchFormat(tournament, sportId);
-  if (matchFormatOverride && typeof matchFormatOverride === "object") {
-    matchFormat = freezeMatchFormat({
-      ...matchFormat,
-      ...matchFormatOverride,
-      scoringType: matchFormat.scoringType,
-    });
-  }
+  matchFormat = mergeFormatOverride(matchFormat, matchFormatOverride);
 
   return _stamp({
     tournamentId: tournamentId || tournament._id,
@@ -277,6 +384,7 @@ function createKnockoutMatch(opts) {
     matchEndTime: matchEndTime || null,
     nextMatchId: nextMatchId || null,
     bracketPosition: bracketPosition || null,
+    category: category || null,
     status: "SCHEDULED",
     winner: null,
     scoringType: matchFormat.scoringType || null,
@@ -316,13 +424,7 @@ function createSuperMatch(opts) {
 
   // Per-round bestOf support — see createKnockoutMatch for the merge contract.
   let matchFormat = resolveMatchFormat(tournament, sportId);
-  if (matchFormatOverride && typeof matchFormatOverride === "object") {
-    matchFormat = freezeMatchFormat({
-      ...matchFormat,
-      ...matchFormatOverride,
-      scoringType: matchFormat.scoringType,
-    });
-  }
+  matchFormat = mergeFormatOverride(matchFormat, matchFormatOverride);
 
   return _stamp({
     tournamentId: tournamentId || tournament._id,
@@ -574,6 +676,7 @@ module.exports = {
   resolveMatchFormat,
   hasNestedGames,
   createGroupStageMatch,
+  createSwissMatch,
   createKnockoutMatch,
   createSuperMatch,
   createTeamKnockoutMatch,

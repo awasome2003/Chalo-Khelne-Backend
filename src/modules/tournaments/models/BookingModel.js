@@ -159,6 +159,13 @@ const BookingSchema = new mongoose.Schema(
     employeeId: {
       type: String,
     },
+    // Seeding rank supplied at registration (manager Excel upload). Lower =
+    // stronger; 1 is the top seed. Null = unseeded. Carried straight into
+    // bracket generation so the manager never re-enters ranking by hand.
+    seed: {
+      type: Number,
+      default: null,
+    },
     // Sport-specific booking data (dynamic fields per sport type)
     customFields: {
       type: mongoose.Schema.Types.Mixed,

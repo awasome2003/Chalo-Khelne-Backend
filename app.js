@@ -42,13 +42,42 @@ function createApp() {
   // and logging see the real client IP, not the proxy's.
   app.set("trust proxy", 1);
 
+  // §3.7 — response compression.
+  //
+  // Tournament, leaderboard and standings responses are large, deeply
+  // repetitive JSON — the shape that compresses five to ten times. On the
+  // mobile app over Indian 4G this is the cheapest available latency win.
+  // Mounted early so every route below is covered.
+  //
+  // Loaded defensively for the same reason helmet is: a missing install should
+  // cost performance, not boot.
+  try {
+    const compression = require("compression");
+    app.use(
+      compression({
+        // Don't waste CPU on payloads too small to benefit.
+        threshold: 1024,
+        filter: (req, res) => {
+          // Honour an explicit opt-out (used by SSE / streaming endpoints).
+          if (req.headers["x-no-compression"]) return false;
+          return compression.filter(req, res);
+        },
+      })
+    );
+  } catch (_) {
+    console.warn("[app] compression not installed — responses will be uncompressed");
+  }
+
   // Structured request logging (winston). Logs method/path/status/duration per
   // request; skips health probes. Placed early so every route is covered.
   const { requestLogger } = require("./utils/logger");
   app.use(requestLogger);
 
   // Middleware
-  app.use(express.json({ limit: "5mb" }));
+  // Capture the raw request buffer so gateway webhooks (Razorpay) can be HMAC-
+  // verified against the exact bytes — re-stringifying the parsed JSON would
+  // change key order/whitespace and break the signature.
+  app.use(express.json({ limit: "5mb", verify: (req, _res, buf) => { req.rawBody = buf; } }));
 
   // Security headers via helmet (when installed). CSP is disabled — this is a
   // JSON API and also serves uploaded images, so a strict CSP belongs at the

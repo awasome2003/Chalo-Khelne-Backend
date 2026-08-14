@@ -18,5 +18,10 @@ const refrequestSchema = new mongoose.Schema({
   notes: { type: String }
 }, { timestamps: true });
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// referee request queues
+refrequestSchema.index({ status: 1, date: -1 });
+
 module.exports = mongoose.models.RefereeRequest || 
                  mongoose.model('RefereeRequest', refrequestSchema);

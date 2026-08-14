@@ -37,12 +37,12 @@ const SPORTS = [
 
 (async () => {
   await mongoose.connect(process.env.MONGO_URI);
-  const Tournament = require("./src/modules/tournaments/models/Tournament");
-  const Booking = require("./src/modules/tournaments/models/BookingModel");
-  const BookingGroup = require("./src/modules/tournaments/models/bookinggroup");
-  const Match = require("./src/modules/tournaments/models/Tournnamentmatch");
-  const GroupStandings = require("./src/modules/tournaments/models/GroupStandings");
-  const User = require("./src/modules/identity/models/User");
+  const Tournament = require("../../src/modules/tournaments/models/Tournament");
+  const Booking = require("../../src/modules/tournaments/models/BookingModel");
+  const BookingGroup = require("../../src/modules/tournaments/models/bookinggroup");
+  const Match = require("../../src/modules/tournaments/models/Tournnamentmatch");
+  const GroupStandings = require("../../src/modules/tournaments/models/GroupStandings");
+  const User = require("../../src/modules/identity/models/User");
 
   const argId = process.argv[2] || null;
 

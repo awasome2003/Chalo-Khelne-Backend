@@ -7,6 +7,9 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const { default: mongoose } = require('mongoose');
 
+// §3.10.3 — list endpoints are paginated with a default limit.
+const { paginatedFind } = require("../utils/pagination");
+
 // Helper function to fetch link preview data
 const fetchLinkPreview = async (url) => {
   try {
@@ -92,15 +95,15 @@ exports.createPost = async (req, res) => {
 // Rest of the controller remains the same
 exports.getAllPosts = async (req, res) => {
   try {
-    const posts = await Post.find()
-      .populate('user', 'name profileImage')
-      .populate('likes', 'name')
-      .populate('saves', 'name')
-      .populate({
-        path: 'comments.user',
-        select: 'name profileImage'
-      })
-      .sort({ createdAt: -1 });
+    const posts = await paginatedFind(Post, req, res, {
+      sort: { createdAt: -1 },
+      populate: [
+        { path: 'user', select: 'name profileImage' },
+        { path: 'likes', select: 'name' },
+        { path: 'saves', select: 'name' },
+        { path: 'comments.user', select: 'name profileImage' },
+      ],
+    });
     res.json(posts);
   } catch (error) {
     res.status(500).json({ message: error.message });

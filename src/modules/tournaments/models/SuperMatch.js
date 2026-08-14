@@ -165,7 +165,13 @@ const SuperMatchSchema = new mongoose.Schema({
     serviceRule: {
       pointsPerService: { type: Number, default: 2 },
       deuceServicePoints: { type: Number, default: 1 }
-    }
+    },
+
+    // Multi-sport fields the factory freezes onto every match (totalSets,
+    // scoringType, board/innings/time config). Undeclared paths are dropped
+    // silently by Mongoose, so without these the computed format was written
+    // and immediately lost. See shared/matchFormatFields.js.
+    ...require("./shared/matchFormatFields").multiSportFormatFields,
   },
 
   // Match Status (UPPERCASE — consistent with all other match schemas)

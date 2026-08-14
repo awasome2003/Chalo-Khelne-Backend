@@ -54,3 +54,6 @@ Thumbs.db
 
 # NOTE: package-lock.json is intentionally NOT ignored — it MUST be committed
 # for reproducible production installs (npm ci).
+
+# A renamed .git from a previous session — never commit a repository as files.
+.git_disabled/

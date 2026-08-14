@@ -99,13 +99,69 @@ function getDrawSize(tournament, sportId) {
   const track = getSportTrack(tournament, sportId);
   return track?.drawSize ?? null;
 }
-function getGroupStageFormat(tournament, sportId) {
-  const track = getSportTrack(tournament, sportId);
-  return track?.groupStageFormat || null;
+// Find one category row on a sport track by name. Matching is
+// case-insensitive and whitespace-trimmed because the name is the only link
+// between a BookingGroup (which stores `category` as a free string) and the
+// category row on the tournament.
+function getCategory(tournament, sportId, categoryName) {
+  if (!categoryName) return null;
+  const wanted = String(categoryName).trim().toLowerCase();
+  if (!wanted) return null;
+  return (
+    getCategories(tournament, sportId).find(
+      (c) => String(c?.name || "").trim().toLowerCase() === wanted
+    ) || null
+  );
 }
-function getKnockoutFormat(tournament, sportId) {
+
+// A sport track holds ONE groupStageFormat/knockoutFormat for all of its
+// categories, and the enum allows the combined value "Singles, Doubles" for
+// tracks that run both. Neither can express which of the two a given category
+// is, so resolution goes, in order:
+//
+//   1. the category's own override, when one is set;
+//   2. the track value, when it names a single format;
+//   3. for the combined "Singles, Doubles", the category name — the only
+//      remaining signal, and reliable in practice because category names come
+//      from SuperAdmin-controlled templates ("Men's Doubles", "Mixed
+//      Doubles", "Singles", ...);
+//   4. null, leaving the default to the caller.
+//
+// Passing no categoryName gives the old track-only behaviour, so existing
+// callers that have no category in hand are unaffected.
+const COMBINED_FORMAT = "Singles, Doubles";
+
+function _resolveFormat(trackValue, categoryValue, categoryName) {
+  if (categoryValue) return categoryValue;
+  if (trackValue && trackValue !== COMBINED_FORMAT) return trackValue;
+  if (trackValue === COMBINED_FORMAT) {
+    // "Men's Doubles" / "Mixed Doubles" / "Doubles" → Doubles; anything else
+    // in a combined track is singles.
+    return /doubles/i.test(String(categoryName || "")) ? "Doubles" : "Singles";
+  }
+  return null;
+}
+
+function getGroupStageFormat(tournament, sportId, categoryName) {
   const track = getSportTrack(tournament, sportId);
-  return track?.knockoutFormat || null;
+  if (!track) return null;
+  const category = getCategory(tournament, sportId, categoryName);
+  return _resolveFormat(
+    track.groupStageFormat || null,
+    category?.groupStageFormat || null,
+    categoryName
+  );
+}
+
+function getKnockoutFormat(tournament, sportId, categoryName) {
+  const track = getSportTrack(tournament, sportId);
+  if (!track) return null;
+  const category = getCategory(tournament, sportId, categoryName);
+  return _resolveFormat(
+    track.knockoutFormat || null,
+    category?.knockoutFormat || null,
+    categoryName
+  );
 }
 function getDavisCupFormatId(tournament, sportId) {
   const track = getSportTrack(tournament, sportId);
@@ -141,6 +197,7 @@ module.exports = {
   resolveSportId,
   getTournamentType,
   getCategories,
+  getCategory,
   getQualifyPerGroup,
   getDrawSize,
   getGroupStageFormat,

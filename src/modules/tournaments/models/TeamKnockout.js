@@ -111,4 +111,9 @@ const teamKnockoutSchema = new mongoose.Schema({
 const tenantScope = require("../../../../utils/tenantScope");
 teamKnockoutSchema.plugin(tenantScope, { field: "clubId", enforce: true });
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// bracket render — was a scan on every load
+teamKnockoutSchema.index({ tournamentId: 1, round: 1 });
+
 module.exports = mongoose.model("TeamKnockout", teamKnockoutSchema);

@@ -89,6 +89,21 @@ const turfSchema = new mongoose.Schema(
       type: String,
       required: false,
     },
+    // ── Turf-owner payment collection (marketplace model) ──
+    // Turf booking money goes to the TURF OWNER, not the platform/club, so turf
+    // is deliberately OUTSIDE the central Razorpay flow (which is store +
+    // tournament only). At booking, the player is shown the owner's UPI/QR to
+    // pay directly; if none are set, the `contact` block is shown instead so the
+    // player can reach the owner to arrange payment.
+    ownerPayment: {
+      upiId: { type: String, default: "" },
+      qrImage: { type: String, default: "" }, // uploaded QR image path (served under /uploads)
+    },
+    contact: {
+      name: { type: String, default: "" },
+      phone: { type: String, default: "" },
+      whatsapp: { type: String, default: "" },
+    },
     facilities: {
       artificialTurf: { type: Boolean, default: false },
       multipleFields: { type: Boolean, default: false },
@@ -122,6 +137,14 @@ const turfSchema = new mongoose.Schema(
     // require SuperAdmin approval before appearing publicly. Existing turfs are
     // backfilled to true (scripts/backfillTurfApproval.js).
     isApproved: {
+      type: Boolean,
+      default: false,
+    },
+    // SuperAdmin "contact-only" switch. When true, players CANNOT book this turf
+    // online — the player-side "Book a Turf" button becomes "Contact Turf" (shows
+    // the owner's contact) and the booking API rejects create attempts. Toggled
+    // by SuperAdmin only (turf listing). Default false = bookable normally.
+    bookingDisabled: {
       type: Boolean,
       default: false,
     },

@@ -180,4 +180,9 @@ knockoutMatchSchema.plugin(tenantScope, { field: "clubId", enforce: true });
 
 const KnockoutMatch = mongoose.model('Semifinals', knockoutMatchSchema);
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// legacy semifinal fixtures per tournament
+teamSchema.index({ tournamentId: 1 });
+
 module.exports = KnockoutMatch;

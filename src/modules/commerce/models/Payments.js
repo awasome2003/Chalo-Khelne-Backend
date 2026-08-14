@@ -63,6 +63,16 @@ const paymentSchema = new mongoose.Schema({
     paymentNetwork: String,
     paymentMode: String,
     gatewayResponse: mongoose.Schema.Types.Mixed,
+
+    // §3.10.4 — marks a Payment that has no gateway leg behind it.
+    //
+    // Free-tournament registrations mint a Payment row so downstream reporting
+    // has something to join against, but no money moved. That row used to carry
+    // `gatewayResponse: { status: "success" }`, which any future reconciliation
+    // job would read as a real settlement. These two fields let a synthetic row
+    // be excluded explicitly instead of being indistinguishable from a real one.
+    isSynthetic: { type: Boolean, default: false },
+    syntheticReason: { type: String, default: null },
   },
   pendingReason: String,
   processingTimeout: Date,

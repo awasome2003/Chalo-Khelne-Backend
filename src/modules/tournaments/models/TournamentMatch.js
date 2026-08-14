@@ -47,4 +47,9 @@ const TournamentMatch = mongoose.model(
   tournamentMatchSchema
 );
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// aggregated on every leaderboard load, over the fastest-growing collection in the system
+tournamentMatchSchema.index({ tournamentId: 1 });
+
 module.exports = TournamentMatch;

@@ -17,6 +17,9 @@ const escapeRegex = require("../utils/escapeRegex");
 const { computeIsMinor } = require("../utils/contactGuard");
 
 
+// §3.10.3 — list endpoints are paginated with a default limit.
+const { paginatedFind } = require("../utils/pagination");
+
 // ===== TOURNAMENT BOOKING ROUTES =====
 
 // Route to fetch tournament teams
@@ -397,7 +400,7 @@ router.get("/search-players", allowUserOrManager, async (req, res) => {
     }
 
     // Escape special regex characters in searchQuery
-    const escapedQuery = searchQuery.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const escapedQuery = searchQuery.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 
     const players = await User.aggregate([
       // Initial match to filter Players
@@ -788,9 +791,9 @@ router.get("/payments/check", allowUserOrManager, async (req, res) => {
 // Get Payment History
 router.get("/payment-history", requireSuperAdmin, async (req, res) => {
   try {
-    const payments = await Payment.find()
-      .sort({ createdAt: -1 }) // Most recent first
-      .select({
+    const payments = await paginatedFind(Payment, req, res, {
+      sort: { createdAt: -1 }, // Most recent first
+      select: {
         _id: 1,
         orderId: 1,
         amount: 1,
@@ -801,7 +804,8 @@ router.get("/payment-history", requireSuperAdmin, async (req, res) => {
         createdAt: 1,
         paymentId: 1,
         transactionDetails: 1,
-      });
+      },
+    });
 
     res.json({
       success: true,
@@ -929,6 +933,12 @@ router.post("/turf-bookings/create", authenticate, forceSelfBody("userId"), asyn
 
     if (!turf.isActive) {
       return res.status(400).json({ success: false, message: "This turf is currently not available" });
+    }
+
+    // SuperAdmin contact-only switch: online booking disabled → players must
+    // contact the turf directly. Enforced here so the API can't be bypassed.
+    if (turf.bookingDisabled) {
+      return res.status(403).json({ success: false, message: "This turf is not accepting online bookings. Please contact the turf directly.", contactOnly: true });
     }
 
     // Get sport pricing

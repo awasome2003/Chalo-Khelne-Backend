@@ -4,6 +4,12 @@ const sportController = require("../controllers/sportController");
 const { requireSuperAdmin } = require("../middleware/authMiddleware");
 
 // Read endpoints — public catalog
+// §6.1 — scoring type + labels for every sport, so the web and mobile clients
+// stop each maintaining their own drifting copy. Public: it is display
+// metadata, and both clients need it before a user is necessarily signed in.
+// Registered BEFORE "/" so it is not shadowed by a param route.
+router.get("/scoring-config", sportController.getScoringConfig);
+
 router.get("/", sportController.getAllSports);
 router.get("/active", sportController.getActiveSports);
 router.get("/presets", sportController.getSportPresets);

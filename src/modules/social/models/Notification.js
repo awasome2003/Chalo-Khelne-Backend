@@ -45,4 +45,13 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// the manager notification inbox the dashboard POLLS — was a collection scan
+notificationSchema.index({ managerId: 1, createdAt: -1 });
+// per-tournament notifications
+notificationSchema.index({ tournamentId: 1 });
+// a player's own notifications
+notificationSchema.index({ userId: 1, createdAt: -1 });
+
 module.exports = mongoose.model("Notification", notificationSchema);

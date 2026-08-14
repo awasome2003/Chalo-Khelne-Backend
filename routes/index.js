@@ -41,6 +41,7 @@ const ROUTES = [
   ["/api/sport-library",            "./sportLibraryRoutes"],
   ["/api/debug",                    "./debugRoutes"],
   ["/api/payments",                 "./managerPaymentRoutes"],
+  ["/api/razorpay",                 "./razorpayRoutes"],
   ["/api/corporate",                "./corporateRoutes"],
   ["/api/inquiries",                "./inquiryRoutes"],
   ["/api/news",                     "./newsRoutes"],

@@ -50,4 +50,9 @@ const CorporateClubAdminSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// corporate admin lookup
+HrContactSchema.index({ email: 1 });
+
 module.exports = mongoose.model("CorporateClubAdmin", CorporateClubAdminSchema);

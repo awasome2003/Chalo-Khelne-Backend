@@ -32,4 +32,11 @@ const postSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+
+// ── Indexes (§7.3 — this model declared none) ──────────────────────────
+// the social feed
+postSchema.index({ createdAt: -1 });
+// a user's posts
+postSchema.index({ user: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Post', postSchema);

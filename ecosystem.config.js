@@ -14,7 +14,9 @@
  *   • Dedicated cron worker (worker.js), gated by RUN_CRON
  * To flip, do ALL of the following together:
  *   1) Provision Redis and set REDIS_URL (enables cross-instance sockets +
- *      rate limits) and `npm install @socket.io/redis-adapter`.
+ *      rate limits). @socket.io/redis-adapter is now INSTALLED (§3.6) — it was
+ *      the only missing piece; utils/socketAdapter.js attaches it automatically
+ *      as soon as REDIS_URL is present, so this step is now just provisioning.
  *   2) Set the web app to cluster mode with RUN_CRON=false, e.g.:
  *        instances: "max", exec_mode: "cluster", env: { RUN_CRON: "false" }
  *   3) Add the cron worker app below (uncomment) so jobs fire in exactly ONE

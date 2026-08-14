@@ -32,16 +32,21 @@ const TeamKnockoutTeams = require("../src/modules/tournaments/models/TeamKnockou
 // DirectKnockoutMatch.round is a string enum — map to an order + a label.
 const DK_ROUND_ORDER = {
   "round-of-128": 1, "round-of-64": 2, "round-of-32": 3, "round-of-16": 4,
-  "round-of-8": 5, "round-of-4": 6, "quarter-final": 7, "semi-final": 8, "final": 9,
+  "round-of-8": 5, "round-of-4": 6, "quarter-final": 7, "semi-final": 8,
+  // Ordered just before the final so it lists above it in the results table,
+  // matching how printed draw sheets present the play-off.
+  "third-place": 8.5, "final": 9,
 };
 const DK_ROUND_LABEL = {
   "round-of-128": "Round of 128", "round-of-64": "Round of 64", "round-of-32": "Round of 32",
   "round-of-16": "Round of 16", "round-of-8": "Round of 8", "round-of-4": "Round of 4",
-  "quarter-final": "Quarter-final", "semi-final": "Semi-final", "final": "Final",
+  "quarter-final": "Quarter-final", "semi-final": "Semi-final",
+  "third-place": "Third-place play-off", "final": "Final",
 };
 
 const isFinalLabel = (l) => String(l || "").trim().toLowerCase() === "final";
 const isSemiLabel = (l) => /semi[\s-]*final/i.test(String(l || ""));
+const isThirdPlaceLabel = (l) => /third[\s-]*place/i.test(String(l || ""));
 
 function dkScore(m) {
   const fs = m.result && m.result.finalScore;
@@ -80,17 +85,26 @@ function computePodium(matches) {
   const ranks = matches.map((m) => m.rank || 0);
   const maxRank = ranks.length ? Math.max(...ranks) : 0;
 
-  // The final: an explicit "Final"-labelled completed match, else the highest-rank completed match.
+  // The final: an explicit "Final"-labelled completed match, else the
+  // highest-rank completed match. A third-place play-off must never be mistaken
+  // for it — it shares the final's round number, so exclude it explicitly.
+  const playoff = matches.find((m) => isThirdPlaceLabel(m.label) && m.winner) || null;
   const finalMatch =
     matches.find((m) => isFinalLabel(m.label) && m.winner) ||
-    matches.filter((m) => (m.rank || 0) === maxRank && m.winner)[0] ||
+    matches.filter((m) => (m.rank || 0) === maxRank && m.winner && !isThirdPlaceLabel(m.label))[0] ||
     null;
   if (!finalMatch || !finalMatch.winner) return null;
 
   const champion = finalMatch.winner;
   const runnerUp = loserOf(finalMatch);
 
-  // Semi-finalists (third place, tied): losers of the semi-final round.
+  // Third place. When a play-off has been played it decides it outright —
+  // that is the whole point of staging one. Otherwise both semi-final losers
+  // share third, which is the standard result when no play-off is held.
+  if (playoff) {
+    return { champion, runnerUp, thirdPlace: [playoff.winner], playoffPlayed: true };
+  }
+
   let semis = matches.filter((m) => isSemiLabel(m.label) && m.winner);
   if (semis.length === 0) {
     const semiRank = (finalMatch.rank || maxRank) - 1;
@@ -98,7 +112,7 @@ function computePodium(matches) {
   }
   const thirdPlace = [...new Set(semis.map(loserOf).filter(Boolean))];
 
-  return { champion, runnerUp, thirdPlace };
+  return { champion, runnerUp, thirdPlace, playoffPlayed: false };
 }
 
 // Group a flat list of normalized matches into ordered rounds + podium.

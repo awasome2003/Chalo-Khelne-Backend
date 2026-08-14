@@ -16,6 +16,8 @@ const SuperMatch = require("../src/modules/tournaments/models/SuperMatch");
 const TeamKnockoutMatch = require("../src/modules/tournaments/models/TeamKnockoutMatches");
 const KnockoutMatch = require("../src/modules/tournaments/models/KnockoutMatch");
 const SemifinalMatch = require("../src/modules/tournaments/models/semifinal"); // model "Semifinals" (team-based legacy)
+const SwissMatch = require("../src/modules/tournaments/models/SwissMatch");
+const mongoose = require("mongoose");
 
 // Canonical match-kind labels — the single LOGICAL "polymorphic matchType" for
 // the whole system. Physical collections stay separate (Phase 2 decision: the
@@ -30,6 +32,7 @@ const MATCH_KINDS = Object.freeze({
   TEAM_KNOCKOUT: "TEAM_KNOCKOUT",
   KNOCKOUT: "KNOCKOUT",
   SEMIFINAL: "SEMIFINAL",
+  SWISS: "SWISS",
 });
 
 // All match models in search priority order.
@@ -43,6 +46,10 @@ const MATCH_MODELS = [
   { model: TeamKnockoutMatch, name: "TeamKnockoutMatch", kind: MATCH_KINDS.TEAM_KNOCKOUT },
   { model: KnockoutMatch, name: "KnockoutMatch", kind: MATCH_KINDS.KNOCKOUT },
   { model: SemifinalMatch, name: "Semifinals", kind: MATCH_KINDS.SEMIFINAL },
+  // Swiss lives in its own collection so the group-stage queries cannot pick it
+  // up; registering it here is what keeps the shared finders and leaderboards
+  // aware of it without any of them needing to know Swiss exists.
+  { model: SwissMatch, name: "SwissMatch", kind: MATCH_KINDS.SWISS },
 ];
 
 // schemaName → kind, derived from the single registry above. Keyed by BOTH the
@@ -61,6 +68,14 @@ const SCHEMA_TO_KIND = MATCH_MODELS.reduce((m, e) => {
  * Returns { match, schemaName } or null.
  */
 const findMatchById = async (matchId) => {
+  // Direct Knockout matches use custom string IDs (e.g. "DK-<tournamentId>-R1-M2").
+  // findById() will cast-error on these, so query by the custom `matchId` field directly.
+  if (!mongoose.Types.ObjectId.isValid(matchId)) {
+    const match = await DirectKnockoutMatch.findOne({ matchId }).catch(() => null);
+    if (match) return { match, schemaName: "DirectKnockoutMatch" };
+    return null;
+  }
+
   for (const { model, name } of MATCH_MODELS) {
     try {
       const match = await model.findById(matchId);

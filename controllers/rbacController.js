@@ -3,6 +3,7 @@ const Permission = require("../src/modules/identity/models/Permission");
 const mongoose = require("mongoose");
 const User = require("../src/modules/identity/models/User");
 const { Manager } = require("../src/modules/identity/models/ClubManager");
+const { parsePaging, pageMeta, searchFilter } = require("../utils/paginate");
 
 // ═══════════════════════════════════════════════════════════════
 // USER-LIFECYCLE HELPERS — suspend / reject / reactivate
@@ -608,7 +609,10 @@ const rbacController = {
 
   // GET /api/roles/users — list every user (active + suspended + rejected) for
   // the SA "User Access" tab. Supports ?role= and ?status= filters and a
-  // basic ?search= match on name/email. Soft cap: 500 rows per request.
+  // name/email search (legacy ?search= or shared ?q=). Soft cap: 500 rows per
+  // collection. Pagination is NON-BREAKING: when neither ?page= nor ?limit= is
+  // present the exact legacy { success, total, items } shape is returned; when
+  // present, the merged/sorted list is sliced and pageMeta is attached.
   listUsers: async (req, res) => {
     try {
       const { role, status, search } = req.query;
@@ -618,10 +622,16 @@ const rbacController = {
       }
       const userFilter = { ...filter };
       const managerFilter = { ...filter };
-      if (search) {
+      // Prefer the shared ?q= search filter; fall back to legacy ?search=.
+      const shared = searchFilter(req, ["name", "email"]);
+      let searchOr = shared.$or;
+      if (!searchOr && search) {
         const rx = new RegExp(String(search).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-        userFilter.$or = [{ name: rx }, { email: rx }];
-        managerFilter.$or = [{ name: rx }, { email: rx }];
+        searchOr = [{ name: rx }, { email: rx }];
+      }
+      if (searchOr) {
+        userFilter.$or = searchOr;
+        managerFilter.$or = searchOr;
       }
       // Role filter — "manager" routes to Manager collection; everything else
       // filters by the role field inside User. If no role specified, query both.
@@ -670,7 +680,16 @@ const rbacController = {
         })),
       ].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
-      return res.json({ success: true, total: items.length, items });
+      // NON-BREAKING: no ?page=/?limit= → exact legacy shape.
+      const { paged, page, limit, skip } = parsePaging(req);
+      if (!paged) {
+        return res.json({ success: true, total: items.length, items });
+      }
+      // Paged: the two collections are merged + name-sorted in memory, so slice
+      // the assembled list rather than skip/limit per collection.
+      const total = items.length;
+      const pageItems = items.slice(skip, skip + limit);
+      return res.json({ success: true, ...pageMeta(total, page, limit), items: pageItems });
     } catch (err) {
       return res.status(500).json({ success: false, message: err.message });
     }

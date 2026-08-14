@@ -35,12 +35,12 @@ const TEAMS = [
 
 (async () => {
   await mongoose.connect(process.env.MONGO_URI);
-  require("./src/modules/tournaments/models/Tournament");
+  require("../../src/modules/tournaments/models/Tournament");
   const Tournament = mongoose.model("Tournament");
-  const BookingGroup = require("./src/modules/tournaments/models/bookinggroup");
-  const Match = require("./src/modules/tournaments/models/Tournnamentmatch");
-  const GroupStandings = require("./src/modules/tournaments/models/GroupStandings");
-  const { recalculateGroupStandings } = require("./controllers/groupStageScoreboardController");
+  const BookingGroup = require("../../src/modules/tournaments/models/bookinggroup");
+  const Match = require("../../src/modules/tournaments/models/Tournnamentmatch");
+  const GroupStandings = require("../../src/modules/tournaments/models/GroupStandings");
+  const { recalculateGroupStandings } = require("../../controllers/groupStageScoreboardController");
 
   const tId = OID(T_ID);
   const sId = OID(FOOTBALL_SPORT_ID);

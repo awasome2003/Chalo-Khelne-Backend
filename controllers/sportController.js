@@ -130,6 +130,40 @@ exports.updateSportConfig = async (req, res) => {
 };
 
 // 4. Get all sports (with optional category filter)
+// §6.1 — the canonical sport→scoringType map and its display labels.
+//
+// Both clients used to carry their own hardcoded copy of this table and the
+// three had drifted (Carrom rendered differently on web and mobile; Foosball
+// was unknown to both and silently labelled as a racquet match). They now read
+// it from here.
+//
+// The response merges two sources:
+//   • the static SPORT_SCORING_TYPES map, which the scoring engine itself uses;
+//   • any Sport document whose `scoringType` is set, so a sport added through
+//     the admin UI is picked up without a code change.
+// The database wins where both are present — it is the newer of the two.
+exports.getScoringConfig = async (_req, res) => {
+  try {
+    const { getScoringConfig } = require("../utils/matchFormatUtils");
+    const config = getScoringConfig();
+
+    const dbSports = await Sport.find({ scoringType: { $ne: null } })
+      .select("name scoringType")
+      .lean();
+    for (const s of dbSports) {
+      if (s.name && s.scoringType) config.sports[s.name] = s.scoringType;
+    }
+
+    // Long-lived: this changes only when a sport is added or reconfigured.
+    res.set("Cache-Control", "public, max-age=300");
+    res.json({ success: true, data: config });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
+  }
+};
+
 exports.getAllSports = async (req, res) => {
   try {
     const { category } = req.query;

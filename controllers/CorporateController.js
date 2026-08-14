@@ -95,9 +95,9 @@ exports.updateCorporateProfile = async (req, res) => {
 
         // Build update object for User
         const userUpdateFields = {};
-        if (req.body.hasOwnProperty("name")) userUpdateFields.name = name;
-        if (req.body.hasOwnProperty("email")) userUpdateFields.email = email;
-        if (req.body.hasOwnProperty("mobile")) userUpdateFields.mobile = mobile;
+        if (Object.prototype.hasOwnProperty.call(req.body, "name")) userUpdateFields.name = name;
+        if (Object.prototype.hasOwnProperty.call(req.body, "email")) userUpdateFields.email = email;
+        if (Object.prototype.hasOwnProperty.call(req.body, "mobile")) userUpdateFields.mobile = mobile;
 
         // Update User document
         const updatedUser = await User.findByIdAndUpdate(

@@ -7,11 +7,13 @@ const Match = require("../src/modules/tournaments/models/Tournnamentmatch");
 const tournamentController = require("../controllers/tournamentController");
 const exportController = require("../controllers/exportController");
 const bookingController = require("../controllers/BookingController");
+const attendanceController = require("../controllers/attendanceController");
 const bookingGroupController = require("../controllers/booking groupcontroller");
 const matchController = require("../controllers/matchController");
 const knockoutController = require("../controllers/knockoutController");
 const groupStageScoreboardController = require("../controllers/groupStageScoreboardController");
 const directKnockoutController = require("../controllers/directKnockoutController");
+const swissController = require("../controllers/swissController");
 const courtController = require("../controllers/courtController");
 const { uploadMiddleware } = require("../middleware/uploads");
 
@@ -31,6 +33,10 @@ const { requirePermission } = require("../middleware/rbacMiddleware");
 // ANY tournamentId in the body and manage/score a tournament they don't own.
 // (Routes with :matchId are already scoped by the router.param("matchId") guard.)
 const ownsBodyTournament = requireTournamentOwner({ idBody: "tournamentId" });
+
+// Same guard for routes that carry the id in the PATH as :tournamentId
+// (the attendance routes below). The default idParam is "id".
+const ownsParamTournament = requireTournamentOwner({ idParam: "tournamentId" });
 
 // ── Auth gate ─────────────────────────────────────────────────────────
 // Every state-changing tournament route (create/edit/delete/score/group/court/
@@ -61,10 +67,15 @@ router.param("matchId", async (req, res, next, matchId) => {
     const me = req.user?.id || req.user?._id;
     if (!me) return res.status(401).json({ success: false, message: "Authentication required" });
     if (req.userRole === "SuperAdmin") return next();
-    if (!mongoose.Types.ObjectId.isValid(matchId)) {
+    // Direct Knockout matches use custom string IDs (e.g. "DK-<tournamentId>-R1-M2"),
+    // not MongoDB ObjectIds. Skip the ObjectId check for those and look them up
+    // by their custom matchId field. All other match types still require a valid ObjectId.
+    const isDkMatch = typeof matchId === "string" && matchId.startsWith("DK-");
+    if (!isDkMatch && !mongoose.Types.ObjectId.isValid(matchId)) {
       return res.status(400).json({ success: false, message: "Invalid match id" });
     }
     const { findMatchById } = require("../utils/matchUtils");
+    // For DK IDs, findMatchById searches by the custom matchId field (DirectKnockoutMatch.findOne({ matchId })).
     const result = await findMatchById(matchId);
     if (!result) return res.status(404).json({ success: false, message: "Match not found" });
     const tournamentId = result.match?.tournamentId;
@@ -188,6 +199,48 @@ router.delete(
   tournamentController.deleteTournament
 );
 
+//*TOURNAMENT-DAY ATTENDANCE / CHECK-IN*//
+//
+// Solves "53 registered, 22 turned up": the draw is built from who is PRESENT.
+// Reads are open to any authenticated principal (a player needs to see their
+// own status); every write that affects someone ELSE requires tournament:manage
+// and tournament ownership. Self check-in is the one write a player may do, and
+// the controller restricts it to their own booking and to "checked_in" only.
+router.get("/:tournamentId/attendance", allowUserOrManager, attendanceController.getRoster);
+router.get("/:tournamentId/attendance/summary", allowUserOrManager, attendanceController.getSummary);
+router.get("/:tournamentId/attendance/me", allowUserOrManager, attendanceController.getMyAttendance);
+
+router.post(
+  "/:tournamentId/attendance/self",
+  allowUserOrManager,
+  attendanceController.selfCheckIn
+);
+
+router.post(
+  "/:tournamentId/attendance/mark",
+  requirePermission("tournament:manage"),
+  ownsParamTournament,
+  attendanceController.markAttendance
+);
+router.post(
+  "/:tournamentId/attendance/bulk",
+  requirePermission("tournament:manage"),
+  ownsParamTournament,
+  attendanceController.bulkMarkAttendance
+);
+router.post(
+  "/:tournamentId/attendance/mark-remaining",
+  requirePermission("tournament:manage"),
+  ownsParamTournament,
+  attendanceController.markRemaining
+);
+router.post(
+  "/:tournamentId/attendance/walk-in",
+  requirePermission("tournament:bulk_register"),
+  ownsParamTournament,
+  attendanceController.registerWalkIn
+);
+
 //*ROUND 2 PROGRESSION ROUTES*//
 router.get("/round2/status/:tournamentId", tournamentController.getRound2Status);
 router.post("/round2/initiate", requirePermission("tournament:manage"), ownsBodyTournament, tournamentController.initiateRound2);
@@ -292,11 +345,37 @@ router.post(
   directKnockoutController.giveBye
 );
 
-// Edit player name in a match
+// Reopen a completed match so its score can be corrected. Retracts the winner
+// from the next round; pass { cascade: true } to also clear later matches that
+// were played on the back of this result. Ownership is enforced by the
+// router.param("matchId") scorer guard above.
+router.post(
+  "/direct-knockout/matches/:matchId/reopen",
+  requirePermission("tournament:manage"),
+  directKnockoutController.reopenMatch
+);
+
+// Edit player name in a match (label only — does NOT move playerId)
 router.put(
   "/direct-knockout/matches/:matchId/player-name",
   requirePermission("tournament:manage"),
   directKnockoutController.updatePlayerName
+);
+
+// Swap two players between bracket slots (drag-and-drop on the bracket).
+//
+// Deliberately a separate endpoint from player-name: this moves the WHOLE slot
+// including playerId, because progression and result attribution key on the id.
+// Reusing the rename endpoint for a swap would leave the bracket showing one
+// player while the engine advanced another.
+//
+// :matchId is the SOURCE match, so the router.param("matchId") guard authorises
+// the source tournament; the controller then requires the target match to be in
+// that same tournament.
+router.put(
+  "/direct-knockout/matches/:matchId/swap-player",
+  requirePermission("tournament:manage"),
+  directKnockoutController.swapPlayers
 );
 
 // Bulk score upload for Direct Knockout
@@ -305,6 +384,48 @@ router.post(
   requirePermission("tournament:score"),
   ownsBodyTournament,
   directKnockoutController.bulkUploadScores
+);
+
+//*SWISS SYSTEM ROUTES*//
+// Fixed number of rounds, nobody eliminated, standings decide the result.
+// Rounds are generated one at a time because round N's pairings depend on
+// round N-1's results. Keyed by tournament, so ownership is enforced with the
+// explicit tournament-owner guard.
+router.post(
+  "/swiss/:tournamentId/start",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  swissController.startSwissEvent
+);
+router.post(
+  "/swiss/:tournamentId/next-round",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  swissController.generateNextRound
+);
+// Read-only: spectators and players may view rounds and standings.
+router.get("/swiss/:tournamentId", swissController.getSwissEvent);
+router.delete(
+  "/swiss/:tournamentId",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  swissController.resetSwissEvent
+);
+
+// Third-place play-off — create between the two semi-final losers, or remove it
+// again while unplayed. Keyed by tournament (not matchId), so ownership needs
+// the explicit tournament-owner guard.
+router.post(
+  "/direct-knockout/:tournamentId/third-place",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  directKnockoutController.createThirdPlaceMatch
+);
+router.delete(
+  "/direct-knockout/:tournamentId/third-place",
+  requirePermission("tournament:manage"),
+  requireTournamentOwner({ idParam: "tournamentId" }),
+  directKnockoutController.deleteThirdPlaceMatch
 );
 
 // Reset bracket

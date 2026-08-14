@@ -46,6 +46,58 @@ function getScoringType(sportName) {
 }
 
 // ════════════════════════════════════
+// SCORING LABELS — the single source of truth (§6.1)
+// ════════════════════════════════════
+//
+// The sport→scoringType mapping above and these labels used to exist THREE
+// times, once per codebase, as hardcoded object literals — and the three copies
+// had drifted:
+//
+//   Sport          Server   Web app          Mobile app
+//   Carrom         board    single           board
+//   Foosball       sets     absent → null    absent → null
+//   Snooker        —        single           single
+//   Turf Games     —        single           single
+//   Cricket Nets   —        single           single
+//
+// The web app's label table had no `board` entry at all, so a Carrom match the
+// server recorded board-by-board was collapsed into one value under "Game /
+// Result" headings, while the mobile app rendered the same document correctly.
+// Two clients, one match, two different scores on screen — and Carrom is a live
+// client sport. Foosball was worse: neither client knew it, so `getScoringType`
+// returned null and the web app's `|| LABELS.sets` fallback silently labelled a
+// Foosball match as a racquet match, with "Set"/"Game"/"Sets" headings over
+// what the server had stored as goals within games.
+//
+// These are now served to both clients over /api/sports/scoring-config, and the
+// client tables are gone. Adding a sport is one edit here, not three.
+const SCORING_LABELS = {
+  sets:    { round: "Set",     subRound: "Game", score: "Points", result: "Sets" },
+  time:    { round: "Period",  subRound: null,   score: "Goals",  result: "Score" },
+  innings: { round: "Innings", subRound: "Over", score: "Runs",   result: "Score" },
+  board:   { round: "Board",   subRound: null,   score: "Points", result: "Boards" },
+  single:  { round: "Game",    subRound: null,   score: "Result", result: "Result" },
+};
+
+// The fallback a client uses for a sport the server does not know. "single" is
+// deliberately chosen over "sets": a generic Result/Game rendering is honest
+// about not knowing the format, whereas the old `|| LABELS.sets` invented a
+// racquet scoreline for anything unmapped.
+const DEFAULT_SCORING_TYPE = "single";
+
+/**
+ * The full scoring configuration both clients consume.
+ * @returns {{sports: Record<string,string>, labels: object, defaultScoringType: string}}
+ */
+function getScoringConfig() {
+  return {
+    sports: { ...SPORT_SCORING_TYPES },
+    labels: SCORING_LABELS,
+    defaultScoringType: DEFAULT_SCORING_TYPE,
+  };
+}
+
+// ════════════════════════════════════
 // FIELD WHITELISTS PER SCORING TYPE
 // ════════════════════════════════════
 
@@ -115,6 +167,42 @@ const SAFE_DEFAULTS = {
   scoringType: null,
   formatVersion: 1,
 };
+
+// ════════════════════════════════════
+// SETS-TO-WIN RESOLUTION
+// ════════════════════════════════════
+
+/**
+ * How many sets actually win the match, for a stored matchFormat.
+ *
+ * Best-of-N means first to ceil(N/2) — 2 of 3, 3 of 5, 4 of 7. Never all N.
+ *
+ * Two stored values can be wrong and both are handled here:
+ *  • setsToWin missing        → derive from the container.
+ *  • setsToWin too large      → every match model defaults it to 3 (paired with
+ *                               maxSets: 5). A best-of-3 match that never had
+ *                               its format written therefore claims "win 3
+ *                               sets", making a legitimate 2-0 result look
+ *                               incomplete and rejecting the upload.
+ *
+ * The container is totalSets when present, else maxSets — the models declare
+ * the set container as maxSets and only recently gained totalSets.
+ *
+ * @param {object} format matchFormat (stored or frozen)
+ * @returns {number} sets required to win, always >= 1
+ */
+function resolveSetsToWin(format) {
+  const f = format || {};
+  const num = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+
+  const container = num(f.totalSets) ?? num(f.maxSets);
+  const stored = num(f.setsToWin);
+
+  if (!container) return stored || 1;
+  const derived = Math.ceil(container / 2);
+  if (!stored) return derived;
+  return Math.min(stored, derived);
+}
 
 // ════════════════════════════════════
 // SANITIZE BY SPORT TYPE
@@ -466,8 +554,19 @@ function readMatchFormat(match) {
     throw new Error(`Match ${matchId} has no matchFormat. Cannot score without format configuration.`);
   }
 
-  // Case 2: matchFormat exists — validate and fill gaps
-  const result = { ...fmt._doc || fmt }; // Handle Mongoose subdocuments
+  // Case 2: matchFormat exists — validate and fill gaps.
+  //
+  // NEVER read fmt._doc here. `matchFormat` is declared as a NESTED PATH (not a
+  // subdocument schema) on the match models, and a nested path has no _doc of
+  // its own — the lookup walks the prototype chain and resolves the PARENT
+  // match's _doc. The old `{ ...fmt._doc || fmt }` therefore spread the entire
+  // match document, which carries no setsToWin/totalSets, so every value below
+  // was "filled" from defaults: totalSets=1 → setsToWin=1. Net effect: every
+  // set-based match was scored best-of-1 and per-round bestOf was discarded.
+  // toObject() (hydrated docs) and a plain spread (lean/POJO) both yield the
+  // matchFormat itself, and are correct for real subdocuments too.
+  const raw = typeof fmt.toObject === "function" ? fmt.toObject() : fmt;
+  const result = { ...raw };
   const filled = [];
   const scoringType = result.scoringType || null;
   const isSetBased = scoringType === "sets" || scoringType === null; // null = legacy TT matches
@@ -476,7 +575,23 @@ function readMatchFormat(match) {
   // Shape-aware: flat-set sports (TT, Badminton) legitimately have null totalGames/gamesToWin.
   const nested = _hasNestedGamesShape(result);
 
-  if (result.totalSets == null) { result.totalSets = isSetBased ? (SAFE_DEFAULTS.totalSets || 1) : 1; filled.push("totalSets"); }
+  // totalSets: LEGACY FALLBACK ONLY. The match models now declare totalSets
+  // (see models/shared/matchFormatFields.js), so newly created matches carry
+  // it. Documents written before that schema fix do not — they only have the
+  // `maxSets` container and a derived `setsToWin`. Derive from whichever of
+  // those IS present before reaching for the legacy default, or a stored
+  // setsToWin=2 lands on totalSets=1 and trips the "setsToWin cannot exceed
+  // totalSets" validation on every score of an older match.
+  if (result.totalSets == null) {
+    if (result.maxSets != null) {
+      result.totalSets = result.maxSets; filled.push("totalSets(from maxSets)");
+    } else if (result.setsToWin != null) {
+      // Best-of-N ⇒ N = 2·(sets needed) − 1.
+      result.totalSets = (result.setsToWin * 2) - 1; filled.push("totalSets(from setsToWin)");
+    } else {
+      result.totalSets = isSetBased ? (SAFE_DEFAULTS.totalSets || 1) : 1; filled.push("totalSets");
+    }
+  }
   // totalGames: only auto-fill for nested-game sports. Flat-set: null is legitimate.
   if (result.totalGames == null && nested) { result.totalGames = SAFE_DEFAULTS.totalGames || 1; filled.push("totalGames"); }
   // pointsToWinGame and marginToWin: only fill for set-based sports (legacy compat)
@@ -486,6 +601,19 @@ function readMatchFormat(match) {
 
   // Derive ONLY if missing — do NOT override existing values.
   if (result.setsToWin == null) { result.setsToWin = Math.ceil(result.totalSets / 2); filled.push("setsToWin(derived)"); }
+
+  // ...but a stored setsToWin that exceeds ceil(totalSets / 2) is not a real
+  // configuration. Best-of-N means first to ceil(N/2): 2 of 3, 3 of 5, 4 of 7.
+  // Every match model defaults matchFormat.setsToWin to 3 (paired with
+  // maxSets: 5), so a match created without an explicit format silently claims
+  // "win 3 sets" — which on a best-of-3 demands ALL THREE, and the match can
+  // never be won 2-0. Clamp to the container so old documents carrying the
+  // default behave like the best-of-N they actually are.
+  const _maxWinnable = Math.ceil(result.totalSets / 2);
+  if (Number.isFinite(_maxWinnable) && _maxWinnable > 0 && result.setsToWin > _maxWinnable) {
+    filled.push(`setsToWin(clamped ${result.setsToWin}→${_maxWinnable})`);
+    result.setsToWin = _maxWinnable;
+  }
   // gamesToWin: only derive for nested-game sports. Flat-set: null is legitimate.
   if (result.gamesToWin == null && nested && result.totalGames != null) {
     result.gamesToWin = Math.ceil(result.totalGames / 2); filled.push("gamesToWin(derived)");
@@ -521,6 +649,12 @@ module.exports = {
   freezeMatchFormat,
   readMatchFormat,
   readMatchFormatField,
+  resolveSetsToWin,
   SAFE_DEFAULTS,
   FIELD_WHITELIST,
+  // §6.1 — the scoring config both clients read instead of hardcoding it.
+  SPORT_SCORING_TYPES,
+  SCORING_LABELS,
+  DEFAULT_SCORING_TYPE,
+  getScoringConfig,
 };

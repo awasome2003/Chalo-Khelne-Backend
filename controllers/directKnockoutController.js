@@ -4,8 +4,9 @@ const Tournament = require("../src/modules/tournaments/models/Tournament");
 const TopPlayers = require("../src/modules/tournaments/models/TopPlayers");
 const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
 const { readMatchFormat } = require("../utils/matchFormatUtils");
-const { createKnockoutMatch, resolveMatchFormat } = require("../factories/MatchFactory");
+const { createKnockoutMatch } = require("../factories/MatchFactory");
 const { getSeedOrder, buildR1SlotAssignment } = require("../utils/seedingUtils");
+const { shuffle } = require("../utils/shuffle");
 const { assertSportInTournament, handleSportContextError } = require("../middleware/requireSportContext");
 
 // In-memory lock to reject duplicate in-flight generate requests for the same
@@ -20,6 +21,45 @@ const isPowerOfTwo = (n) => {
 
 const getValidTournamentSizes = () => {
   return [4, 8, 16, 32, 64, 128]; // Supported bracket sizes
+};
+
+// ── Bracket scoping (multi-sport + multi-category) ────────────────────────
+// A tournament can hold several independent DK brackets: one per (sport,
+// category) pair. These two helpers are the single source of truth for
+// keeping them apart.
+
+// Normalizes a category input to either a trimmed string or null. "ALL" and
+// blanks mean "this sport's one undifferentiated bracket", not a category.
+const normalizeBracketCategory = (raw) => {
+  const v = (raw == null ? "" : String(raw)).trim();
+  if (!v || v.toUpperCase() === "ALL") return null;
+  return v;
+};
+
+// Delete/read filter for one bracket.
+//   category null  → every bracket for this sport (legacy behaviour; also
+//                    sweeps up pre-category docs so regenerating stays clean)
+//   category set   → only that category's bracket, leaving siblings intact
+const bracketFilter = (tournamentId, sportId, category) => {
+  const filter = { tournamentId };
+  if (sportId) filter.sportId = sportId;
+  if (category) filter.category = category;
+  return filter;
+};
+
+// matchId discriminator. matchId is globally unique, so two brackets in the
+// same tournament MUST NOT generate the same one — without this, the second
+// bracket's insertMany dies on a duplicate key. Legacy brackets (no sportId,
+// no category) keep the original `DK-<tid>-R1-M1` shape, so old data and old
+// nextMatchId pointers stay valid.
+const bracketKey = (sportId, category) => {
+  const parts = [];
+  if (sportId) parts.push(`S${String(sportId).slice(-6)}`);
+  if (category) {
+    const slug = String(category).toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 12);
+    if (slug) parts.push(`C${slug}`);
+  }
+  return parts.length ? `-${parts.join("-")}` : "";
 };
 
 // 🔥 Validate Player Selection for Direct Knockout
@@ -145,7 +185,7 @@ const generateBracketStructure = (players, drawMethod = "standard", seededPlayer
 
   if (drawMethod === "random") {
     // Shuffle all players randomly
-    rankedPlayers = [...players].sort(() => Math.random() - 0.5);
+    rankedPlayers = shuffle(players);
   } else if (drawMethod === "standard") {
     // Standard: input order = seed order (seed 1 = index 0, seed 2 = index 1, etc.)
     rankedPlayers = [...players];
@@ -153,7 +193,7 @@ const generateBracketStructure = (players, drawMethod = "standard", seededPlayer
     // Top N players keep their order (fixed seeding positions), rest are shuffled
     const seedCount = Math.min(numberOfSeeds, playerCount);
     const seeded = players.slice(0, seedCount);
-    const unseeded = players.slice(seedCount).sort(() => Math.random() - 0.5);
+    const unseeded = shuffle(players.slice(seedCount));
     rankedPlayers = [...seeded, ...unseeded];
   } else {
     // Standard: input order = seed order (seed 1 = index 0, seed 2 = index 1, etc.)
@@ -288,6 +328,19 @@ const createDirectKnockoutMatches = async (req, res) => {
       });
     }
 
+    // Lower bound — mirrors the standalone endpoint, which already enforced it.
+    // Below half the draw + 1, some first-round match gets BYEs on BOTH sides:
+    // neither auto-BYE branch fires, so it sits SCHEDULED forever and its
+    // winner slot in the next round is never filled — the bracket stalls with
+    // no way forward short of a full reset.
+    const minPlayersRequired = Math.ceil(requestedDraw / 2) + 1;
+    if (getValidTournamentSizes().includes(requestedDraw) && selectedPlayers.length < minPlayersRequired) {
+      return res.status(400).json({
+        success: false,
+        message: `Need at least ${minPlayersRequired} players for a ${requestedDraw}-draw. Currently: ${selectedPlayers.length}`,
+      });
+    }
+
     // Extract dynamic match format from tournament settings.
     // STEP 17b.iv — read per-sport (req.body.sportId is asserted below;
     // here we use it pre-assert for the validation gate).
@@ -299,7 +352,8 @@ const createDirectKnockoutMatches = async (req, res) => {
         message: "Tournament matchFormat is not configured. Please set match format before creating knockout matches."
       });
     }
-    const matchFormat = _trackMF;
+    // _trackMF is reused below for the set-based check — the match documents
+    // themselves get their format from MatchFactory, not from here.
 
     // STEP 16d — sportId required at the boundary. Direct knockout has
     // no group context (tournament-level bracket); manager UI sends
@@ -316,12 +370,17 @@ const createDirectKnockoutMatches = async (req, res) => {
     const bracket = generateBracketStructure(selectedPlayers, drawMethod || "standard", seededPlayers || [], numberOfSeeds || 0, requestedDraw);
     const totalRounds = bracket.length;
 
-    // Clear any existing direct knockout matches for this tournament to prevent duplicates
-    const existingCount = await DirectKnockoutMatch.countDocuments({ tournamentId });
+    // Clear THIS bracket's existing matches to prevent duplicates. Scoped to
+    // (sport, category) so regenerating one bracket never destroys a sibling
+    // bracket belonging to another sport or category in the same tournament.
+    const _dkCategory = normalizeBracketCategory(req.body.category);
+    const _dkScope = bracketFilter(tournamentId, _dkSportId, _dkCategory);
+    const existingCount = await DirectKnockoutMatch.countDocuments(_dkScope);
     if (existingCount > 0) {
-      await DirectKnockoutMatch.deleteMany({ tournamentId });
-      console.log(`[DK] Cleared ${existingCount} existing matches for tournament ${tournamentId}`);
+      await DirectKnockoutMatch.deleteMany(_dkScope);
+      console.log(`[DK] Cleared ${existingCount} existing matches for ${JSON.stringify(_dkScope)}`);
     }
+    const _dkKey = bracketKey(_dkSportId, _dkCategory);
 
     // Parse base date/time ONCE (Q5 cleanup — was inline inside the inner
     // loop, recomputed per match even though inputs never changed).
@@ -356,8 +415,9 @@ const createDirectKnockoutMatches = async (req, res) => {
     const { assignKnockoutSlots, bestOfToSetFormat } = require("../utils/courtScheduling");
     // Per-round bestOf override (Step 3 of flexible bestOf). Set-based sports
     // get matchFormat patched per round; other scoringTypes ignore bestOf.
-    const _activeSportFormat = require("../utils/sportTrackUtils").getMatchFormat(tournament, _dkSportId) || {};
-    const _isSetBased = (_activeSportFormat.scoringType || "").toLowerCase() === "sets";
+    // Reuses _trackMF from the validation gate above — same (tournament, sport)
+    // pair, so a second getMatchFormat lookup would return the same object.
+    const _isSetBased = (_trackMF.scoringType || "").toLowerCase() === "sets";
     const slots = assignKnockoutSlots({
       bracket: normalizedBracket,
       courtPool,
@@ -379,14 +439,14 @@ const createDirectKnockoutMatches = async (req, res) => {
         const match = round.matches[i];
         const slot = slots[slotIdx++];
         const dbRoundNumber = round.roundNumber + roundOffset;
-        const matchId = `DK-${tournamentId}-R${dbRoundNumber}-M${match.matchNumber}`;
+        const matchId = `DK-${tournamentId}${_dkKey}-R${dbRoundNumber}-M${match.matchNumber}`;
 
         // Calculate Next Match ID
         let nextMatchId = null;
         if (round.roundNumber < totalRounds) {
           const nextRound = dbRoundNumber + 1;
           const nextMatchNum = Math.ceil(match.matchNumber / 2);
-          nextMatchId = `DK-${tournamentId}-R${nextRound}-M${nextMatchNum}`;
+          nextMatchId = `DK-${tournamentId}${_dkKey}-R${nextRound}-M${nextMatchNum}`;
         }
 
         // Round 1 null slots are BYEs (no opponent). Later-round null slots
@@ -417,6 +477,7 @@ const createDirectKnockoutMatches = async (req, res) => {
           matchFormatOverride: _override,
           nextMatchId,
           bracketPosition: match.bracketPosition,
+          category: _dkCategory,
         }));
       }
     }
@@ -431,7 +492,7 @@ const createDirectKnockoutMatches = async (req, res) => {
     // auto-advance the real player to the next round
     let byeCount = 0;
     const firstRoundMatches = await DirectKnockoutMatch.find({
-      tournamentId,
+      ..._dkScope,
       roundNumber: 1,
     });
 
@@ -553,8 +614,12 @@ const getDirectKnockoutMatches = async (req, res) => {
       });
     }
 
-    // Multi-sport: strict sportId match.
-    const matchFilter = sportId ? { tournamentId, sportId } : { tournamentId };
+    // Multi-sport + multi-category: strict scope match.
+    const matchFilter = bracketFilter(
+      tournamentId,
+      sportId,
+      normalizeBracketCategory(req.query.category)
+    );
     let matches = await DirectKnockoutMatch.find(matchFilter)
       .populate('player1.playerId', 'name profileImage')
       .populate('player2.playerId', 'name profileImage')
@@ -601,7 +666,10 @@ const getDirectKnockoutMatches = async (req, res) => {
         }
       }
       if (healed) {
-        matches = await DirectKnockoutMatch.find({ tournamentId })
+        // Re-fetch with the SAME scope as the original query — a bare
+        // { tournamentId } here leaked every sport's/category's matches into
+        // the response whenever a heal ran.
+        matches = await DirectKnockoutMatch.find(matchFilter)
           .populate('player1.playerId', 'name profileImage')
           .populate('player2.playerId', 'name profileImage')
           .sort({ roundNumber: 1, matchNumber: 1 });
@@ -657,12 +725,15 @@ const getDirectKnockoutMatches = async (req, res) => {
       const obj = m.toObject();
       const p1Id = obj.player1?.playerId?._id?.toString?.() || obj.player1?.playerId?.toString?.();
       const p2Id = obj.player2?.playerId?._id?.toString?.() || obj.player2?.playerId?.toString?.();
+      // Stored category (stamped at generation) is authoritative. The
+      // BookingGroup/TopPlayers lookup is only a fallback for pre-category
+      // brackets, where DirectKnockoutMatch carried no category of its own.
       const cat =
+        obj.category ||
         idToCategory[p1Id] ||
         idToCategory[p2Id] ||
         nameToCategory[obj.player1?.playerName] ||
         nameToCategory[obj.player2?.playerName] ||
-        obj.category ||
         null;
       if (cat) obj.category = normalizeCategory(cat);
       return obj;
@@ -919,8 +990,19 @@ const createStandaloneKnockout = async (req, res) => {
       });
     }
 
-    // Clear any existing direct knockout matches for this tournament
-    await DirectKnockoutMatch.deleteMany({ tournamentId });
+    // Require explicit confirmation parameter in body before destructive create
+    if (req.body.confirm !== true) {
+      const bracketSizePreview = drawSize || getBracketSize(players.length);
+      const byePreview = bracketSizePreview - players.length;
+      return res.status(400).json({
+        success: false,
+        confirmationRequired: true,
+        message: "Confirmation required to create bracket. Re-submit with { confirm: true } to proceed.",
+        playerCount: players.length,
+        bracketSize: bracketSizePreview,
+        byes: byePreview,
+      });
+    }
 
     const bracketSize = drawSize || getBracketSize(players.length);
 
@@ -940,9 +1022,9 @@ const createStandaloneKnockout = async (req, res) => {
         message: "Tournament matchFormat is not configured. Please set match format before creating knockout matches."
       });
     }
-    const mf = _track2MF;
-    // MatchFactory resolves format from tournament config — no inline building
-    const matchFormatResolved = resolveMatchFormat(tournament, req.body.sportId);
+    // No format is built here on purpose — MatchFactory resolves and freezes it
+    // per match. _track2MF exists only as the "is it configured?" gate above and
+    // for the set-based check further down.
 
     // STEP 16d — sportId required at the boundary (standalone knockout
     // is tournament-level, no group context).
@@ -953,6 +1035,15 @@ const createStandaloneKnockout = async (req, res) => {
       throw err;
     }
     const _standaloneSportId = req.body.sportId;
+
+    // Clear THIS bracket only — scoped to (sport, category) so generating the
+    // Above-40 draw never wipes the Open draw, or Carrom's bracket Badminton's.
+    // Deliberately runs AFTER the sport assertion: a rejected request must not
+    // destroy an existing bracket on its way out.
+    const _skCategory = normalizeBracketCategory(req.body.category);
+    const _skScope = bracketFilter(tournamentId, _standaloneSportId, _skCategory);
+    await DirectKnockoutMatch.deleteMany(_skScope);
+    const _skKey = bracketKey(_standaloneSportId, _skCategory);
 
     // Generate bracket
     const bracket = generateBracketStructure(normalizedPlayers, drawMethod || "standard", seededPlayers || [], numberOfSeeds || 0, bracketSize);
@@ -968,12 +1059,19 @@ const createStandaloneKnockout = async (req, res) => {
     if (isNaN(baseDateTime.getTime())) baseDateTime = new Date();
 
     // ── Court + time scheduling (Sub-step 4) ──────────────────────────────
-    // Same shared util as generateKnockoutMatches and createDirectKnockoutMatches.
-    // Empty pool → legacy single-court fallback.
-    const courtPool = (tournament.courts || [])
-      .filter((c) => c.isActive !== false)
-      .filter((c) => !c.sportId || String(c.sportId) === String(_standaloneSportId))
-      .map((c) => c.name);
+    // Prefer explicit courtCount from request (manager modal). Falls back to
+    // tournament.courts if present. Empty pool → legacy single-court fallback.
+    let courtPool = [];
+    const bodyCourtCount = parseInt(req.body.courtCount, 10);
+    if (Number.isFinite(bodyCourtCount) && bodyCourtCount > 0) {
+      // Name courts as sequential numbers ("1", "2", ...).
+      courtPool = Array.from({ length: bodyCourtCount }, (_, i) => String(i + 1));
+    } else {
+      courtPool = (tournament.courts || [])
+        .filter((c) => c.isActive !== false)
+        .filter((c) => !c.sportId || String(c.sportId) === String(_standaloneSportId))
+        .map((c) => c.name);
+    }
 
     const normalizedBracket = {
       rounds: bracket.map((r) => ({
@@ -984,17 +1082,36 @@ const createStandaloneKnockout = async (req, res) => {
 
     const { assignKnockoutSlots, bestOfToSetFormat } = require("../utils/courtScheduling");
     // Per-round bestOf override (Step 3 of flexible bestOf).
-    const _activeSportFormat = require("../utils/sportTrackUtils").getMatchFormat(tournament, _standaloneSportId) || {};
-    const _isSetBased = (_activeSportFormat.scoringType || "").toLowerCase() === "sets";
+    // Reuses _track2MF from the validation gate above — same (tournament, sport)
+    // pair, so a second getMatchFormat lookup would return the same object.
+    const _isSetBased = (_track2MF.scoringType || "").toLowerCase() === "sets";
+
+    // Derive per-round/legacy scheduling values. Accept explicit matchDurationMinutes
+    // and gapMinutes from the request (manager-supplied fields in the modal).
+    const bodyMatchDur = Number(req.body.matchDurationMinutes);
+    const bodyGap = Number(req.body.gapMinutes);
+
+    const slotDurationMinutes = (sched.slotDurationMinutes != null)
+      ? sched.slotDurationMinutes
+      : (Number.isFinite(bodyMatchDur) && Number.isFinite(bodyGap) ? (bodyMatchDur + bodyGap) : undefined);
+
+    const matchDurationMinutes = (sched.matchDurationMinutes != null)
+      ? sched.matchDurationMinutes
+      : (Number.isFinite(bodyMatchDur) ? bodyMatchDur : undefined);
+
+    const breakBetweenRoundsMinutes = (sched.breakBetweenRoundsMinutes != null)
+      ? sched.breakBetweenRoundsMinutes
+      : (Number.isFinite(bodyGap) ? bodyGap : 0);
+
     const slots = assignKnockoutSlots({
       bracket: normalizedBracket,
       courtPool,
       legacyCourtNumber: sched.courtNumber,
       baseTime: baseDateTime,
       rounds: sched.rounds,
-      slotDurationMinutes: sched.slotDurationMinutes,
-      matchDurationMinutes: sched.matchDurationMinutes,
-      breakBetweenRoundsMinutes: sched.breakBetweenRoundsMinutes,
+      slotDurationMinutes,
+      matchDurationMinutes,
+      breakBetweenRoundsMinutes,
     });
 
     const allMatchDocs = [];
@@ -1003,12 +1120,12 @@ const createStandaloneKnockout = async (req, res) => {
     for (const round of bracket) {
       for (const match of round.matches) {
         const slot = slots[slotIdx++];
-        const matchId = `DK-${tournamentId}-R${round.roundNumber}-M${match.matchNumber}`;
+        const matchId = `DK-${tournamentId}${_skKey}-R${round.roundNumber}-M${match.matchNumber}`;
 
         let nextMatchId = null;
         if (round.roundNumber < totalRounds) {
           const nextMatchNum = Math.ceil(match.matchNumber / 2);
-          nextMatchId = `DK-${tournamentId}-R${round.roundNumber + 1}-M${nextMatchNum}`;
+          nextMatchId = `DK-${tournamentId}${_skKey}-R${round.roundNumber + 1}-M${nextMatchNum}`;
         }
 
         const _override = _isSetBased ? bestOfToSetFormat(slot.bestOf) : null;
@@ -1033,6 +1150,7 @@ const createStandaloneKnockout = async (req, res) => {
           nextMatchId,
           bracketPosition: match.bracketPosition,
           mode: "direct-knockout",
+          category: _skCategory,
         }));
       }
     }
@@ -1040,10 +1158,11 @@ const createStandaloneKnockout = async (req, res) => {
     const saved = await DirectKnockoutMatch.insertMany(allMatchDocs);
 
     // Auto-BYE: For first-round matches where one player is TBD (null),
-    // auto-advance the real player to the next round
+    // auto-advance the real player to the next round. Scoped to this bracket —
+    // an unscoped roundNumber:1 query would sweep sibling brackets too.
     let byeCount = 0;
     const firstRoundMatches = await DirectKnockoutMatch.find({
-      tournamentId,
+      ..._skScope,
       roundNumber: 1,
     });
 
@@ -1207,8 +1326,16 @@ const completeGame = async (req, res) => {
     // sports (time/innings/single) submit the FINAL match totals in a single
     // call — the higher score wins and completes the match outright. No sets.
     const scoringType = (match.scoringType || fmt.scoringType || "sets").toLowerCase();
+    // "board" (Carrom) belongs here too — it was previously omitted, so the
+    // SAME match stored a different shape depending on whether it was scored
+    // live or bulk-uploaded (bulkUploadScores already treated board as
+    // non-set). Non-set is the canonical reading: matchUtils labels board
+    // results in "Boards" with no sub-round, validateMatchResult gives it its
+    // own _validateBoard, and the group-stage scoreboard treats it as non-set
+    // in every generic check.
     const isNonSetSport =
-      scoringType === "time" || scoringType === "innings" || scoringType === "single";
+      scoringType === "time" || scoringType === "innings" ||
+      scoringType === "single" || scoringType === "board";
 
     if (isNonSetSport) {
       // A knockout match can't end level. Time/innings ties are decided by the
@@ -1559,6 +1686,21 @@ const bulkUploadScores = async (req, res) => {
           if (p1SetsWon >= setsToWin || p2SetsWon >= setsToWin) matchDone = true;
         }
 
+        // The uploaded sets must actually DECIDE the match. Without this check
+        // an incomplete row (e.g. one set of a best-of-3) fell through the
+        // ternary below and silently handed the match to player2 — then
+        // progressed them into the next round.
+        if (!matchDone) {
+          errors.push({
+            matchId,
+            error: `Incomplete score — neither player reached ${setsToWin} set(s). ` +
+              `Got ${p1SetsWon}-${p2SetsWon} from ${setScores.length} set(s).`,
+          });
+          // Nothing was persisted for this row: match.sets/status were only
+          // mutated in memory and we never call save() on this path.
+          continue;
+        }
+
         const matchWinner = p1SetsWon >= setsToWin ? match.player1 : match.player2;
         match.status = "COMPLETED";
         match.result = {
@@ -1640,7 +1782,14 @@ const giveBye = async (req, res) => {
       });
     }
 
-    if (!winner?.playerId) {
+    // "Empty" means no real opponent — an unfilled TBD slot or a BYE
+    // placeholder. It does NOT mean a null playerId: guest-booking tournaments
+    // (manager Excel upload, no user accounts) legitimately store every player
+    // with playerId: null and identify them by name, exactly as the
+    // progression logic already does.
+    const winnerName = (winner?.playerName || "").trim();
+    const winnerIsReal = !!winnerName && winnerName !== "TBD" && winnerName !== "BYE";
+    if (!winnerIsReal) {
       return res.status(400).json({ success: false, message: "Cannot give BYE — the other player slot is empty" });
     }
 
@@ -1684,14 +1833,364 @@ const giveBye = async (req, res) => {
   }
 };
 
+// ── Third-place play-off ─────────────────────────────────────────────────
+//
+// Optional extra match between the two semi-final losers, whose winner takes
+// 3rd place. Created on demand rather than during generation: it is the
+// manager's choice, and the two entrants aren't known until both semis finish.
+//
+// Terminal by construction — no nextMatchId — so it scores through the normal
+// completeGame / bulk-upload paths without progressing anyone.
+
+// The loser of a completed match, or null if it can't be determined (a BYE, or
+// a winner that matches neither slot).
+const loserOfMatch = (match) => {
+  const winner = match.result?.winner || match.matchResult?.winner;
+  if (!winner) return null;
+  const wId = winner.playerId ? String(winner.playerId) : null;
+  const wName = winner.playerName || null;
+
+  const isWinner = (p) => {
+    if (!p) return false;
+    if (wId && p.playerId && String(p.playerId) === wId) return true;
+    return !!wName && p.playerName === wName;
+  };
+
+  const other = isWinner(match.player1) ? match.player2
+    : isWinner(match.player2) ? match.player1
+    : null;
+  return isRealEntrant(other) ? other : null;
+};
+
+const createThirdPlaceMatch = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const sportId = req.body?.sportId || req.query?.sportId || null;
+    const category = normalizeBracketCategory(req.body?.category ?? req.query?.category);
+    const scope = bracketFilter(tournamentId, sportId, category);
+
+    const tournament = await Tournament.findById(tournamentId);
+    if (!tournament) {
+      return res.status(404).json({ success: false, message: "Tournament not found" });
+    }
+
+    const bracket = await DirectKnockoutMatch.find(scope);
+    if (bracket.length === 0) {
+      return res.status(404).json({ success: false, message: "No bracket found for this sport/category." });
+    }
+
+    const existing = bracket.find((m) => m.round === "third-place");
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "A third-place match already exists for this bracket.",
+        matchId: existing.matchId,
+      });
+    }
+
+    // Semi-finals are the round below the deepest one. Derive the depth from
+    // the bracket itself rather than assuming a draw size — and ignore any
+    // third-place match when measuring (it shares the final's roundNumber).
+    const mainRounds = bracket.filter((m) => m.round !== "third-place");
+    const totalRounds = Math.max(...mainRounds.map((m) => m.roundNumber));
+    const semis = mainRounds
+      .filter((m) => m.roundNumber === totalRounds - 1)
+      .sort((a, b) => a.matchNumber - b.matchNumber);
+
+    if (semis.length !== 2) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This bracket has no semi-final round, so there is no third place to play for. " +
+          "A third-place match needs a draw of 4 or more.",
+      });
+    }
+
+    const unfinished = semis.filter((m) => String(m.status).toUpperCase() !== "COMPLETED");
+    if (unfinished.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Both semi-finals must be completed first (${unfinished.length} still pending).`,
+        pending: unfinished.map((m) => m.matchId),
+      });
+    }
+
+    const losers = semis.map(loserOfMatch);
+    if (losers.some((l) => !l)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Could not determine both semi-final losers — a semi may have been decided by a BYE, " +
+          "which leaves no opponent to play for third place.",
+      });
+    }
+
+    // The play-off belongs to the SAME bracket as its semi-finals, so derive
+    // the category from the semis rather than trusting the request body. A null
+    // or omitted request category (e.g. created from an "All categories" view)
+    // would otherwise store the play-off uncategorised — so per-category lookup
+    // (delete / scoping) could never find it, and two categories' play-offs
+    // would collide on the same matchId. semis[0].category is authoritative.
+    const bracketCategory = semis[0]?.category ?? category;
+
+    // Schedule: default to just after the final on the same court, so the
+    // play-off doesn't collide with it. Overridable from the request.
+    const final = mainRounds.find((m) => m.roundNumber === totalRounds);
+    const gapMinutes = Number(req.body?.gapMinutes);
+    const gapMs = (Number.isFinite(gapMinutes) && gapMinutes >= 0 ? gapMinutes : 0) * 60000;
+    let startTime = req.body?.matchStartTime ? new Date(req.body.matchStartTime) : null;
+    if (!startTime || isNaN(startTime.getTime())) {
+      startTime = final?.matchStartTime ? new Date(new Date(final.matchStartTime).getTime() + gapMs) : new Date();
+    }
+    const durationMs = final?.matchStartTime && final?.matchEndTime
+      ? new Date(final.matchEndTime).getTime() - new Date(final.matchStartTime).getTime()
+      : 45 * 60000;
+
+    const _sportId = sportId || final?.sportId || bracket[0].sportId;
+    const key = bracketKey(_sportId, bracketCategory);
+    // Shares the final's roundNumber but takes matchNumber 2, so the generated
+    // matchId cannot collide with the final's.
+    const matchId = `DK-${tournamentId}${key}-R${totalRounds}-M2`;
+
+    const doc = createKnockoutMatch({
+      tournament,
+      tournamentId,
+      sportId: _sportId,
+      matchId,
+      round: "third-place",
+      roundNumber: totalRounds,
+      matchNumber: 2,
+      player1: { playerId: losers[0].playerId || null, playerName: losers[0].playerName },
+      player2: { playerId: losers[1].playerId || null, playerName: losers[1].playerName },
+      courtNumber: req.body?.courtNumber || final?.courtNumber || "1",
+      matchStartTime: startTime,
+      matchEndTime: new Date(startTime.getTime() + durationMs),
+      // Terminal — nobody advances out of a third-place play-off.
+      nextMatchId: null,
+      bracketPosition: `R${totalRounds}M2`,
+      category: bracketCategory,
+      // Match the final's format so the play-off is played to the same length.
+      matchFormatOverride: final?.matchFormat
+        ? { totalSets: final.matchFormat.totalSets, setsToWin: final.matchFormat.setsToWin }
+        : null,
+    });
+
+    const [saved] = await DirectKnockoutMatch.insertMany([doc]);
+
+    return res.status(201).json({
+      success: true,
+      message: `Third-place match created: ${losers[0].playerName} vs ${losers[1].playerName}`,
+      match: saved,
+    });
+  } catch (err) {
+    console.error("[DK_THIRD_PLACE] Error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Remove the third-place play-off (manager changed their mind). Only allowed
+// while it is still unplayed — a completed play-off should be reopened first,
+// so clearing a real result is always a deliberate, separate act.
+const deleteThirdPlaceMatch = async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const sportId = req.body?.sportId || req.query?.sportId || null;
+    const category = normalizeBracketCategory(req.body?.category ?? req.query?.category);
+
+    const match = await DirectKnockoutMatch.findOne({
+      ...bracketFilter(tournamentId, sportId, category),
+      round: "third-place",
+    });
+    if (!match) {
+      return res.status(404).json({ success: false, message: "No third-place match for this bracket." });
+    }
+    if (String(match.status).toUpperCase() === "COMPLETED") {
+      return res.status(400).json({
+        success: false,
+        message: "This third-place match has been played. Reopen it first if you want to remove it.",
+      });
+    }
+
+    await DirectKnockoutMatch.deleteOne({ _id: match._id });
+    return res.json({ success: true, message: "Third-place match removed." });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ── Reopen a completed match (re-score / undo) ───────────────────────────
+//
+// Until now a completed match was final: completeGame rejects anything already
+// COMPLETED and there was no correction path, so one mistyped score meant
+// resetting the entire bracket and re-entering every result.
+//
+// Undo is not just "clear the result" — completing a match ALSO advances the
+// winner into the next round. So reopening must retract that too, and if the
+// next match has already been played then its result was produced by a player
+// who may not belong there. Those downstream results are therefore invalidated
+// as well, which is destructive enough to require an explicit opt-in
+// (`cascade: true`) rather than happening silently.
+
+// A slot holds a real entrant (not an unfilled TBD or an empty-draw BYE).
+const isRealEntrant = (p) => {
+  const n = p?.playerName;
+  return !!n && n !== "TBD" && n !== "BYE";
+};
+
+// Clear this match's winner out of its next-round slot. Only clears when the
+// slot actually holds this winner — never clobbers an unrelated entrant.
+const retractWinnerFromNext = async (match) => {
+  if (!match.nextMatchId) return null;
+  const next = await DirectKnockoutMatch.findOne({ matchId: match.nextMatchId });
+  if (!next) return null;
+
+  const slot = match.matchNumber % 2 !== 0 ? "player1" : "player2";
+  const winner = match.result?.winner || match.matchResult?.winner;
+  if (!winner) return null;
+
+  const occupant = next[slot];
+  const sameId =
+    winner.playerId && occupant?.playerId &&
+    String(occupant.playerId) === String(winner.playerId);
+  const sameName =
+    winner.playerName && occupant?.playerName === winner.playerName;
+  if (!sameId && !sameName) return null; // someone else is there — leave it
+
+  next[slot] = { playerId: null, playerName: "TBD" };
+  await next.save({ validateModifiedOnly: true });
+  return next.matchId;
+};
+
+// Wipe a match back to an unplayed state, in place. Caller saves.
+const clearMatchResult = (match) => {
+  match.status = "SCHEDULED";
+  match.result = {
+    winner: { playerId: null, playerName: null },
+    finalScore: { player1Sets: 0, player2Sets: 0 },
+    matchDuration: 0,
+    completedAt: null,
+  };
+  match.matchResult = null;
+  match.sets = [];
+  match.currentSet = 1;
+  match.currentGame = 1;
+  match.liveScore = { player1Points: 0, player2Points: 0 };
+  // Drop the auto-generated BYE note; a manager's own note is left alone.
+  if (typeof match.notes === "string" && match.notes.startsWith("BYE —")) {
+    match.notes = "";
+  }
+};
+
+// Walk forward from `match`, collecting the matches its result feeds. Stops at
+// the first unplayed match — nothing beyond that depends on this result.
+const collectDownstream = async (match) => {
+  const chain = [];
+  let cur = match;
+  const guard = new Set([match.matchId]); // cycle safety on malformed data
+  while (cur?.nextMatchId && !guard.has(cur.nextMatchId)) {
+    guard.add(cur.nextMatchId);
+    const next = await DirectKnockoutMatch.findOne({ matchId: cur.nextMatchId });
+    if (!next) break;
+    chain.push(next);
+    if (String(next.status).toUpperCase() !== "COMPLETED") break;
+    cur = next;
+  }
+  return chain;
+};
+
+const reopenMatch = async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const cascade = req.body?.cascade === true;
+
+    const match = await DirectKnockoutMatch.findOne({ matchId });
+    if (!match) {
+      return res.status(404).json({ success: false, message: "Match not found" });
+    }
+    if (String(match.status).toUpperCase() !== "COMPLETED") {
+      return res.status(400).json({
+        success: false,
+        message: "Only a completed match can be reopened.",
+      });
+    }
+    // An automatic BYE has no opponent to play — reopening it would just leave
+    // a match that can never be completed and stalls the round above it.
+    if (!isRealEntrant(match.player1) || !isRealEntrant(match.player2)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This match was decided by an automatic BYE — there is no opponent to play. " +
+          "Regenerate the bracket to change it.",
+      });
+    }
+
+    const downstream = await collectDownstream(match);
+    const played = downstream.filter(
+      (m) => String(m.status).toUpperCase() === "COMPLETED"
+    );
+
+    if (played.length > 0 && !cascade) {
+      return res.status(409).json({
+        success: false,
+        cascadeRequired: true,
+        message:
+          `${played.length} later match(es) have already been played using this result. ` +
+          `Reopening this match will clear them too. Re-submit with { cascade: true } to confirm.`,
+        affectedMatches: played.map((m) => ({
+          matchId: m.matchId,
+          round: m.round,
+          matchNumber: m.matchNumber,
+          player1: m.player1?.playerName,
+          player2: m.player2?.playerName,
+          winner: m.result?.winner?.playerName || null,
+        })),
+      });
+    }
+
+    // Clear deepest-first so each match's winner is retracted from a slot that
+    // still exists in a known state.
+    const reopened = [];
+    for (const m of [...played].reverse()) {
+      await retractWinnerFromNext(m);
+      clearMatchResult(m);
+      await m.save({ validateModifiedOnly: true });
+      reopened.push(m.matchId);
+    }
+
+    await retractWinnerFromNext(match);
+    clearMatchResult(match);
+    await match.save({ validateModifiedOnly: true });
+    reopened.push(match.matchId);
+
+    return res.json({
+      success: true,
+      message:
+        reopened.length > 1
+          ? `Reopened ${reopened.length} matches. Re-enter the scores.`
+          : "Match reopened. Re-enter the score.",
+      reopened,
+      match: {
+        matchId: match.matchId,
+        status: match.status,
+        player1: match.player1?.playerName,
+        player2: match.player2?.playerName,
+      },
+    });
+  } catch (err) {
+    console.error("[DK_REOPEN] Error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // Reset direct knockout bracket for a tournament.
-// Multi-sport: when a sportId is supplied, only that sport's bracket is wiped
-// so resetting one sport never destroys another sport's matches.
+// Multi-sport / multi-category: when a sportId (and optionally a category) is
+// supplied, only that bracket is wiped so resetting one never destroys another.
 const resetBracket = async (req, res) => {
   try {
     const { tournamentId } = req.params;
     const sportId = req.query.sportId || req.body?.sportId || null;
-    const filter = sportId ? { tournamentId, sportId } : { tournamentId };
+    const category = normalizeBracketCategory(req.query.category ?? req.body?.category);
+    const filter = bracketFilter(tournamentId, sportId, category);
     const deleted = await DirectKnockoutMatch.deleteMany(filter);
     return res.json({
       success: true,
@@ -1744,6 +2243,139 @@ const updatePlayerName = async (req, res) => {
   }
 };
 
+/**
+ * Swap two players between bracket slots (drag-and-drop on the bracket).
+ *
+ * WHY THIS IS NOT updatePlayerName
+ * --------------------------------
+ * updatePlayerName rewrites `playerName` and nothing else — it is a LABEL edit,
+ * which is the right shape for fixing a typo. A drag-and-drop swap must move
+ * the whole slot including `playerId`, or the bracket's identity linkage rots:
+ * progression, standings and result attribution all key on playerId, so a
+ * name-only swap would show one player in the slot while the system still
+ * advanced the other.
+ *
+ * SAFETY RULES (all enforced here, none trusted to the client)
+ *   • Both matches must belong to the SAME tournament. The router.param
+ *     ("matchId") guard covers the SOURCE match's ownership; without this check
+ *     a manager could name a target match in a tournament they do not own and
+ *     pull a player across tenants.
+ *   • Neither match may be IN_PROGRESS or COMPLETED. Swapping a player out of a
+ *     live or finished match would invalidate a real result and any progression
+ *     already written from it.
+ *   • The write is transactional when two different matches are involved —
+ *     a half-applied swap would duplicate one player and lose another.
+ *
+ * Dropping onto an empty ("TBD") slot is a MOVE: the swap simply carries the
+ * placeholder back the other way, which is the behaviour a manager expects.
+ */
+const SWAPPABLE_STATUSES = ["SCHEDULED", "CANCELLED"];
+
+const findDkMatch = (id) =>
+  DirectKnockoutMatch.findOne({
+    $or: [
+      { matchId: id },
+      { _id: mongoose.Types.ObjectId.isValid(id) ? id : undefined },
+    ].filter(Boolean),
+  });
+
+const swapPlayers = async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const { fromSlot, toMatchId, toSlot } = req.body;
+
+    const SLOTS = ["player1", "player2"];
+    if (!SLOTS.includes(fromSlot) || !SLOTS.includes(toSlot)) {
+      return res.status(400).json({
+        success: false,
+        message: "fromSlot and toSlot must be 'player1' or 'player2'",
+      });
+    }
+    if (!toMatchId) {
+      return res.status(400).json({ success: false, message: "toMatchId is required" });
+    }
+
+    const sourceMatch = await findDkMatch(matchId);
+    if (!sourceMatch) {
+      return res.status(404).json({ success: false, message: "Source match not found" });
+    }
+
+    const sameMatch = String(toMatchId) === String(matchId)
+      || String(toMatchId) === String(sourceMatch._id)
+      || String(toMatchId) === String(sourceMatch.matchId);
+
+    const targetMatch = sameMatch ? sourceMatch : await findDkMatch(toMatchId);
+    if (!targetMatch) {
+      return res.status(404).json({ success: false, message: "Target match not found" });
+    }
+
+    // Cross-tournament guard. The param guard authorised the SOURCE tournament
+    // only; the target must be the same one.
+    if (String(sourceMatch.tournamentId) !== String(targetMatch.tournamentId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Both matches must belong to the same tournament",
+      });
+    }
+
+    // Swapping into or out of a live/finished match would invalidate a real
+    // result and anything already progressed from it.
+    for (const m of sameMatch ? [sourceMatch] : [sourceMatch, targetMatch]) {
+      if (!SWAPPABLE_STATUSES.includes(m.status)) {
+        return res.status(409).json({
+          success: false,
+          message: `Cannot move players in a match that is ${m.status}. Reset the match first.`,
+          matchId: m.matchId || String(m._id),
+          status: m.status,
+        });
+      }
+    }
+
+    if (sameMatch && fromSlot === toSlot) {
+      return res.status(400).json({ success: false, message: "Source and target are the same slot" });
+    }
+
+    // Deep-copy the whole slot — playerId AND playerName travel together.
+    const plain = (slot) => ({
+      playerId: slot?.playerId || undefined,
+      playerName: slot?.playerName || "TBD",
+    });
+
+    const sourcePlayer = plain(sourceMatch[fromSlot]);
+    const targetPlayer = plain(targetMatch[toSlot]);
+
+    if (sameMatch) {
+      sourceMatch[fromSlot] = targetPlayer;
+      sourceMatch[toSlot] = sourcePlayer;
+      sourceMatch.markModified(fromSlot);
+      sourceMatch.markModified(toSlot);
+      await sourceMatch.save({ validateModifiedOnly: true });
+    } else {
+      sourceMatch[fromSlot] = targetPlayer;
+      targetMatch[toSlot] = sourcePlayer;
+      sourceMatch.markModified(fromSlot);
+      targetMatch.markModified(toSlot);
+
+      // Both writes land or neither does — a half-applied swap would duplicate
+      // one player into two slots and drop the other entirely.
+      const { runInTransaction } = require("../src/platform/db");
+      await runInTransaction(async (session) => {
+        await sourceMatch.save({ validateModifiedOnly: true, session });
+        await targetMatch.save({ validateModifiedOnly: true, session });
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: `Moved ${sourcePlayer.playerName} ↔ ${targetPlayer.playerName}`,
+      matches: sameMatch ? [sourceMatch] : [sourceMatch, targetMatch],
+    });
+  } catch (err) {
+    console.error("[DK_SWAP_PLAYERS] Error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   // Original (post-group stage)
   validatePlayerSelection,
@@ -1760,8 +2392,12 @@ module.exports = {
   completeGame,
   bulkUploadScores,
   giveBye,
+  reopenMatch,
+  createThirdPlaceMatch,
+  deleteThirdPlaceMatch,
   resetBracket,
   updatePlayerName,
+  swapPlayers,
 
   // Utilities
   isPowerOfTwo,

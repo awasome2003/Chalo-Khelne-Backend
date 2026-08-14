@@ -18,8 +18,15 @@
  *  • true            = ENFORCE — actually injects { field: clubId } into the
  *    filter. Flip to this per-model only AFTER backfilling + verifying.
  *
- * Notes / current limitations (addressed in later steps):
- *  • aggregate() is NOT scoped yet.
+ * §3.9 — aggregate() IS now scoped (see the pre("aggregate") hook below).
+ * Previously it was not, and the gap was closed by hand: a tenantMatchStage()
+ * helper existed and was used correctly at 10 of 27 aggregate() call sites. The
+ * other 17 were safe only transitively — they constrained on an id list that
+ * had itself been produced by a plugin-scoped query. That is not isolation, it
+ * is a property that has to be re-established by reading each pipeline, and
+ * nothing failed when a new aggregate was added without the stage.
+ *
+ * Notes / current limitations:
  *  • upsert-on-update does not stamp the inserted doc yet.
  */
 const mongoose = require("mongoose");
@@ -117,4 +124,62 @@ module.exports = function tenantScope(schema, opts = {}) {
   }
 
   QUERY_OPS.forEach((op) => schema.pre(op, queryScope));
+
+  // ── aggregate() scoping (§3.9) ─────────────────────────────────────────
+  //
+  // Injects the same { field: clubId } constraint as a leading $match, so a
+  // pipeline is isolated whether or not its author remembered
+  // tenantMatchStage(). Structural, not conventional.
+  //
+  // Deliberate details:
+  //  • Skipped entirely when the pipeline already has an explicit $match on
+  //    `field` — a call site that scopes itself (or intentionally reaches
+  //    across tenants with an explicit filter) keeps its own behaviour, and the
+  //    10 existing tenantMatchStage() call sites do not get a duplicate stage.
+  //  • Unshifted to the FRONT so it filters before $lookup/$group/$unwind,
+  //    which is both correct and the cheapest position.
+  //  • Same escape hatches as queryScope: no context, cross-tenant actor, or
+  //    SuperAdmin → untouched.
+  //  • Honours `enforce`, so a model still in shadow mode is not silently
+  //    changed by this hook.
+  schema.pre("aggregate", function (next) {
+    const t = getTenant();
+    if (!t || t.isSuperAdmin || !t.clubId) return next();
+
+    const pipeline = this.pipeline();
+    if (!Array.isArray(pipeline)) return next();
+
+    // Already scoped by hand? Leave it alone.
+    const alreadyScoped = pipeline.some(
+      (stage) =>
+        stage &&
+        stage.$match &&
+        Object.prototype.hasOwnProperty.call(stage.$match, field)
+    );
+    if (alreadyScoped) return next();
+
+    // $merge / $out write results elsewhere; prepending a filter to those is
+    // still correct, but a $geoNear MUST remain the first stage, so bail rather
+    // than produce an invalid pipeline.
+    if (pipeline.length > 0 && pipeline[0] && pipeline[0].$geoNear) {
+      console.warn(
+        `[tenantScope] ${this._model?.modelName || "?"}.aggregate starts with ` +
+          `$geoNear — cannot prepend a tenant $match. Add tenantMatchStage() by hand.`
+      );
+      return next();
+    }
+
+    if (enforce) {
+      pipeline.unshift({
+        $match: { [field]: new mongoose.Types.ObjectId(String(t.clubId)) },
+      });
+    } else if (process.env.TENANT_SHADOW_LOG === "1") {
+      try {
+        console.log(
+          `[tenantScope:shadow] ${this._model?.modelName}.aggregate → would scope ${field}=${t.clubId}`
+        );
+      } catch (_) {}
+    }
+    next();
+  });
 };

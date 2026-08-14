@@ -8,6 +8,11 @@ const synonymMap = {
   password: ["password", "pwd", "pass"],
   role: ["role", "usertype", "designation"],
   playerId: ["playerid", "userid", "user_id"],
+  // Required for the age-gated roles (Player/Trainer/Referee). Without these
+  // synonyms a "DOB" or "Date of Birth" column does not resolve by string
+  // similarity, so every imported row failed schema validation.
+  dateOfBirth: ["dateofbirth", "dob", "birthdate", "birthday", "dateofbirthddmmyyyy"],
+  sex: ["sex", "gender"],
 };
 
 function buildSynonymLookup() {

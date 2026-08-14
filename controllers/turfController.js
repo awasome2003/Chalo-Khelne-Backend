@@ -2,7 +2,8 @@ const Turf = require("../src/modules/org/models/Turf");
 const User = require("../src/modules/identity/models/User");
 const escapeRegex = require("../utils/escapeRegex");
 const { Manager } = require("../src/modules/identity/models/ClubManager");
-const { cleanupFile, turfsDir } = require("../middleware/uploads");
+const { cleanupFile, turfsDir, uploadsDir } = require("../middleware/uploads");
+const { parsePaging, pageMeta, searchFilter } = require("../utils/paginate");
 const path = require("path");
 
 // Authorizes the authenticated caller (managerAuth → req.user.id) to act on a turf:
@@ -189,11 +190,20 @@ const turfController = {
   // SuperAdmin: list turfs awaiting approval.
   getPendingTurfs: async (req, res) => {
     try {
-      const turfs = await Turf.find({ isApproved: false })
-        .populate("owner", "name email mobile")
-        .sort({ createdAt: -1 })
-        .lean();
-      return res.json({ turfs, total: turfs.length });
+      const filter = { isApproved: false, ...searchFilter(req, ["name", "clubName", "address.city", "address.fullAddress"]) };
+      const { paged, page, limit, skip } = parsePaging(req);
+      if (!paged) {
+        const turfs = await Turf.find(filter)
+          .populate("owner", "name email mobile")
+          .sort({ createdAt: -1 })
+          .lean();
+        return res.json({ turfs, total: turfs.length });
+      }
+      const [turfs, total] = await Promise.all([
+        Turf.find(filter).populate("owner", "name email mobile").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Turf.countDocuments(filter),
+      ]);
+      return res.json({ turfs, ...pageMeta(total, page, limit) });
     } catch (error) {
       console.error("Error fetching pending turfs:", error);
       return res.status(500).json({ message: "Failed to fetch pending turfs", error: error.message });
@@ -201,6 +211,69 @@ const turfController = {
   },
 
   // SuperAdmin: approve (or unapprove) a turf for the public marketplace.
+  // SuperAdmin: list ALL turfs (approved + pending) with owner + booking mode.
+  getAllTurfsAdmin: async (req, res) => {
+    try {
+      const filter = { ...searchFilter(req, ["name", "clubName", "address.city", "address.fullAddress"]) };
+      const { paged, page, limit, skip } = parsePaging(req);
+      if (!paged) {
+        const turfs = await Turf.find(filter)
+          .populate("owner", "name email clubName role mobile")
+          .sort({ createdAt: -1 })
+          .lean();
+        return res.json({ success: true, count: turfs.length, turfs });
+      }
+      // Marketplace-wide counts (ignore search/page) power the bulk toolbar.
+      const [turfs, total, allTotal, disabledTotal] = await Promise.all([
+        Turf.find(filter).populate("owner", "name email clubName role mobile").sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Turf.countDocuments(filter),
+        Turf.countDocuments({}),
+        Turf.countDocuments({ bookingDisabled: true }),
+      ]);
+      return res.json({ success: true, turfs, ...pageMeta(total, page, limit), stats: { total: allTotal, disabled: disabledTotal } });
+    } catch (error) {
+      console.error("Error listing all turfs (admin):", error);
+      return res.status(500).json({ success: false, message: "Failed to fetch turfs" });
+    }
+  },
+
+  // SuperAdmin: toggle the contact-only switch. bookingDisabled=true → players
+  // see "Contact Turf" and the booking API rejects create attempts on this turf.
+  toggleBookingMode: async (req, res) => {
+    try {
+      const { bookingDisabled } = req.body;
+      const turf = await Turf.findByIdAndUpdate(
+        req.params.id,
+        { bookingDisabled: bookingDisabled === true || bookingDisabled === "true" },
+        { new: true }
+      ).select("_id name bookingDisabled");
+      if (!turf) return res.status(404).json({ success: false, message: "Turf not found" });
+      return res.json({ success: true, turfId: turf._id, bookingDisabled: turf.bookingDisabled });
+    } catch (error) {
+      console.error("Error toggling turf booking mode:", error);
+      return res.status(500).json({ success: false, message: "Failed to update booking mode" });
+    }
+  },
+
+  // SuperAdmin bulk switch — flip online booking for EVERY turf in one call.
+  // bookingDisabled=true → all turfs become contact-only; false → all bookable.
+  bulkToggleBookingMode: async (req, res) => {
+    try {
+      const { bookingDisabled } = req.body;
+      const disabled = bookingDisabled === true || bookingDisabled === "true";
+      const result = await Turf.updateMany({}, { bookingDisabled: disabled });
+      return res.json({
+        success: true,
+        bookingDisabled: disabled,
+        matched: result.matchedCount ?? result.n ?? 0,
+        modified: result.modifiedCount ?? result.nModified ?? 0,
+      });
+    } catch (error) {
+      console.error("Error bulk-toggling turf booking mode:", error);
+      return res.status(500).json({ success: false, message: "Failed to update booking mode" });
+    }
+  },
+
   approveTurf: async (req, res) => {
     try {
       const approved = req.body.approved !== false; // default true
@@ -543,6 +616,48 @@ const turfController = {
   },
 
   // Add a review to a turf
+  // Turf-owner payment collection (UPI / QR) + contact fallback. Turf booking
+  // money goes to the OWNER, so this is deliberately outside the central
+  // Razorpay flow. Ownership-guarded. Accepts JSON or multipart (QR image).
+  updateTurfPaymentDetails: async (req, res) => {
+    try {
+      const turf = await Turf.findById(req.params.id);
+      if (!turf) return res.status(404).json({ message: "Turf not found" });
+      if (!(await callerOwnsTurf(req, turf))) {
+        return res.status(403).json({ message: "You do not own this turf" });
+      }
+      if (!turf.ownerPayment) turf.ownerPayment = {};
+      if (!turf.contact) turf.contact = {};
+      if (req.body.upiId !== undefined) turf.ownerPayment.upiId = String(req.body.upiId).trim();
+      if (req.body.contactName !== undefined) turf.contact.name = String(req.body.contactName).trim();
+      if (req.body.contactPhone !== undefined) turf.contact.phone = String(req.body.contactPhone).trim();
+      if (req.body.contactWhatsapp !== undefined) turf.contact.whatsapp = String(req.body.contactWhatsapp).trim();
+
+      // Optional QR image (multer single field "qrImage"); or explicit removal.
+      if (req.file) {
+        if (turf.ownerPayment.qrImage) {
+          await cleanupFile(path.join(uploadsDir, turf.ownerPayment.qrImage)).catch(() => {});
+        }
+        turf.ownerPayment.qrImage = path.relative(uploadsDir, req.file.path).replace(/\\/g, "/");
+      } else if (req.body.removeQr === "true" || req.body.removeQr === true) {
+        if (turf.ownerPayment.qrImage) await cleanupFile(path.join(uploadsDir, turf.ownerPayment.qrImage)).catch(() => {});
+        turf.ownerPayment.qrImage = "";
+      }
+
+      await turf.save();
+      return res.json({
+        success: true,
+        message: "Payment details updated",
+        ownerPayment: turf.ownerPayment,
+        contact: turf.contact,
+        hasPaymentDetails: Boolean(turf.ownerPayment.upiId || turf.ownerPayment.qrImage),
+      });
+    } catch (error) {
+      console.error("Error updating turf payment details:", error);
+      return res.status(500).json({ message: "Failed to update payment details" });
+    }
+  },
+
   addReview: async (req, res) => {
     try {
       const { rating, comment, userId } = req.body;
