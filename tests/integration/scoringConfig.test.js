@@ -47,6 +47,40 @@ const MOBILE_SEED = path.join(
   OLD_VERSION, "client", "src", "utils", "scoringConfig.ts"
 );
 
+/**
+ * These assertions read files from OUTSIDE this repository.
+ *
+ * sports_app/ and client/ are separate GitHub repos (Chalo-Khelne-Frontend and
+ * the mobile app) that happen to sit beside this one in a local checkout. CI
+ * checks out Chalo-Khelne-Backend on its own, so those paths do not exist on
+ * the runner — and no path inside this repo can ever reach them.
+ *
+ * So the cross-repo checks run where they have value (a developer editing one
+ * of the seeds by hand is caught before it ships) and no-op where they are
+ * impossible. The warning below exists so a permanently-skipped block is
+ * visible in the log rather than quietly passing forever.
+ *
+ * The durable fix is to stop duplicating the table at all: the server already
+ * serves it at GET /api/sports/scoring-config, so the seeds could be dropped
+ * once both clients fetch it, or published as a shared package that CI can
+ * install. Until then this is the honest boundary of what a single-repo build
+ * can verify.
+ */
+const SIBLING_REPOS = [
+  path.join(OLD_VERSION, "sports_app"),
+  path.join(OLD_VERSION, "client"),
+];
+const SIBLINGS_PRESENT = SIBLING_REPOS.every((p) => fs.existsSync(p));
+const describeCrossRepo = SIBLINGS_PRESENT ? describe : describe.skip;
+
+if (!SIBLINGS_PRESENT) {
+  console.warn(
+    "[scoringConfig] Skipping the cross-repo seed checks — sports_app/ and " +
+      "client/ are separate repositories and are not present in this checkout. " +
+      "They run in a local tree that has all three side by side."
+  );
+}
+
 let app;
 beforeAll(async () => {
   app = await startTxApp();
@@ -79,7 +113,7 @@ function readSeed(file) {
   return { sports, labels, raw: src };
 }
 
-describe("client seeds match the server table (§6.1)", () => {
+describeCrossRepo("client seeds match the server table (§6.1)", () => {
   const clients = [
     ["web", WEB_SEED],
     ["mobile", MOBILE_SEED],
@@ -124,7 +158,7 @@ describe("client seeds match the server table (§6.1)", () => {
   });
 });
 
-describe("the client tables are gone (§6.1)", () => {
+describeCrossRepo("the client tables are gone (§6.1)", () => {
   const utils = [
     path.join(OLD_VERSION, "sports_app", "src", "shared", "utils", "matchResultUtils.js"),
     path.join(OLD_VERSION, "client", "src", "utils", "matchResultUtils.ts"),
