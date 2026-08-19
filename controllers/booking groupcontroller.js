@@ -2,6 +2,7 @@ const BookingGroup = require("../src/modules/tournaments/models/bookinggroup");
 const Tournament = require("../src/modules/tournaments/models/Tournament");
 const Booking = require("../src/modules/tournaments/models/BookingModel");
 const { assertSportInTournament, handleSportContextError } = require("../middleware/requireSportContext");
+const { pairDisplayName, normalizeName } = require("../utils/doublesPair");
 
 exports.createBookingGroup = async (req, res) => {
   try {
@@ -51,7 +52,19 @@ exports.createBookingGroup = async (req, res) => {
 
         // Support guest bookings (userId is null) — use booking._id and userName
         const resolvedPlayerId = booking.userId?._id || booking._id;
-        const resolvedUserName = booking.userId?.name || booking.userName || "Player";
+        const baseName = booking.userId?.name || booking.userName || "Player";
+
+        // Doubles: the entrant is the PAIR, so the row is named "A & B".
+        //
+        // The partner is stored per (booking, category) — one booking covers
+        // several categories and the partner differs between them — so it is
+        // read from the selection matching THIS group's category. A singles
+        // category has no partner and pairDisplayName returns baseName
+        // unchanged, which is exactly the previous behaviour.
+        const selection = (booking.sportSelections || []).find(
+          (s) => normalizeName(s.categoryName) === normalizeName(category)
+        );
+        const resolvedUserName = pairDisplayName(baseName, selection?.partnerName);
 
         playerDocs.push({
           playerId: resolvedPlayerId,

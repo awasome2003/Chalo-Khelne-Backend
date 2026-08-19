@@ -189,6 +189,13 @@ const bookingController = {
           sportId: resolvedSportId,
           sportName: resolvedSportName,
           categoryName: s.categoryName,
+          // Doubles partner for THIS category. Validated against the
+          // category's resolved format below; ignored for singles.
+          partnerName: String(s.partnerName || "").trim() || null,
+          partnerUserId:
+            s.partnerUserId && mongoose.isValidObjectId(s.partnerUserId)
+              ? s.partnerUserId
+              : null,
           // NOTE: no `fee` here on purpose. It is resolved from the tournament
           // below — see the category-resolution pass. `s.fee` from the request
           // body is never read.
@@ -273,6 +280,99 @@ const bookingController = {
           message: "Not eligible for one or more selected categories",
           ineligible: eligibilityFailures,
         });
+      }
+
+      // ── Doubles: a pair is ONE entrant, and a person enters a category once ──
+      //
+      // Two rules, both enforced here because the client cannot be trusted and
+      // because a doubles entrant with no partner is unplayable: it reaches the
+      // draw as a lone name with nobody to partner.
+      //
+      //   1. A doubles category requires a partner name.
+      //   2. Neither half of the pair may already be in that category — whether
+      //      they registered it themselves or were named as somebody else's
+      //      partner. The existing-booking check above only catches the same
+      //      userId booking twice; it cannot see a person named as a partner.
+      //
+      // "Doubles" is resolved per category, so Men's Doubles requires a partner
+      // while Men's Singles in the same booking does not.
+      {
+        const { getGroupStageFormat, getKnockoutFormat } = require("../utils/sportTrackUtils");
+        const { pairDisplayName, namesInEntry, normalizeName } = require("../utils/doublesPair");
+
+        // A category played as doubles in EITHER stage must be entered as a
+        // pair — a singles group stage that feeds a doubles knockout still
+        // needs both names from the start.
+        const requiresPartner = (sel) =>
+          getGroupStageFormat(tournament, sel.sportId, sel.categoryName) === "Doubles" ||
+          getKnockoutFormat(tournament, sel.sportId, sel.categoryName) === "Doubles";
+
+        const doublesSelections = _sportSelections.filter(requiresPartner);
+
+        const missingPartner = doublesSelections
+          .filter((sel) => !sel.partnerName)
+          .map((sel) => ({ sportName: sel.sportName, categoryName: sel.categoryName }));
+
+        if (missingPartner.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: "A partner is required to enter a doubles category",
+            missingPartner,
+          });
+        }
+
+        if (doublesSelections.length > 0) {
+          // Who is already in each category, by (sportId, category).
+          const catKey = (sportId, categoryName) =>
+            `${String(sportId)}::${normalizeName(categoryName)}`;
+
+          const existing = await Booking.find({ tournamentId })
+            .select("userName sportSelections")
+            .lean();
+
+          const takenBy = new Map();
+          for (const b of existing) {
+            for (const s of b.sportSelections || []) {
+              const key = catKey(s.sportId, s.categoryName);
+              if (!takenBy.has(key)) takenBy.set(key, new Set());
+              const people = takenBy.get(key);
+              // Both halves of an existing entrant count as taken.
+              for (const person of namesInEntry(pairDisplayName(b.userName, s.partnerName))) {
+                people.add(person);
+              }
+            }
+          }
+
+          const conflicts = [];
+          for (const sel of doublesSelections) {
+            const people = takenBy.get(catKey(sel.sportId, sel.categoryName));
+            if (!people) continue;
+            for (const person of namesInEntry(pairDisplayName(userName, sel.partnerName))) {
+              if (people.has(person)) {
+                conflicts.push({
+                  sportName: sel.sportName,
+                  categoryName: sel.categoryName,
+                  name: person,
+                });
+              }
+            }
+          }
+
+          if (conflicts.length > 0) {
+            return res.status(409).json({
+              success: false,
+              message:
+                "Already entered in this category. A player can appear only once " +
+                "per category, including as somebody else's partner.",
+              conflicts,
+            });
+          }
+        }
+
+        // Singles entries never carry a partner, whatever the client sent.
+        _sportSelections = _sportSelections.map((sel) =>
+          requiresPartner(sel) ? sel : { ...sel, partnerName: null, partnerUserId: null }
+        );
       }
 
       // totalFee is server-authoritative — every `fee` above came from
@@ -833,14 +933,10 @@ const bookingController = {
       // partners: without it, "Rahul & Amit" and "Amit & Rahul" are two
       // bookings and the pair enters the bracket twice. Mirrors entryKey() in
       // sports_app/src/Manager/bulkParse.js.
-      const nameKey = (raw) => {
-        const parts = String(raw == null ? "" : raw)
-          .split("&")
-          .map((p) => p.trim().toLowerCase().replace(/\s+/g, " "))
-          .filter(Boolean);
-        if (parts.length < 2) return parts[0] || "";
-        return parts.sort().join(" & ");
-      };
+      // utils/doublesPair owns this — it was duplicated here and as entryKey()
+      // in sports_app/src/Manager/bulkParse.js, and the two had to be kept in
+      // step by hand.
+      const { pairKey: nameKey } = require("../utils/doublesPair");
 
       const existingBookings = await Booking.find({ tournamentId });
       const existingNames = new Set(existingBookings.map(b => nameKey(b.userName)));

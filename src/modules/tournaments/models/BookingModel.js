@@ -133,6 +133,25 @@ const BookingSchema = new mongoose.Schema(
       sportName:    { type: String },
       categoryName: { type: String },
       fee:          { type: Number, default: 0 },
+
+      // ── Doubles partner ──
+      //
+      // A doubles entry is ONE entrant made of two people, and the partner
+      // belongs to this (booking, category) pair — not to the booking. One
+      // booking covers several categories, so a player entering Men's Doubles
+      // and Mixed Doubles has a different partner in each, and the booking's
+      // single `userName` cannot express that.
+      //
+      // Null for every singles entry. When set, the entrant's display name is
+      // "<booking.userName> & <partnerName>" — the shape the rest of the
+      // platform already expects of a doubles entrant (see BookingController's
+      // nameKey, which sorts the two halves so "A & B" and "B & A" dedupe to
+      // the same pair, and bulkParse.js's entryKey on the web side).
+      partnerName:   { type: String, default: null, trim: true },
+      // Set when the partner was picked from the player search rather than
+      // typed free-hand. Lets the restriction check work on ids instead of
+      // names, and survives a later rename of that user.
+      partnerUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     }],
     // Total across all sportSelections (plus any other charges). Set by
     // the booking controller; falls back to paymentAmount for legacy

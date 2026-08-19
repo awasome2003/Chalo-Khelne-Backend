@@ -330,6 +330,22 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
   const isDoubles =
     getGroupStageFormat(tournament, group?.sportId, group?.category) === "Doubles";
   const players = group.players;
+
+  // Are the group's entrants ALREADY pairs?
+  //
+  // Doubles registration enters a pair as ONE entrant named "A & B" (see
+  // utils/doublesPair), so a doubles group's player list holds one row per
+  // pair and pairing it again below would put two pairs — four people — on one
+  // side of a match.
+  //
+  // Older tournaments were built the other way round: each player entered
+  // separately and this generator paired them, storing the second as
+  // `partner`. Both shapes exist in the database, so detect rather than
+  // assume — an entrant naming two people is already a pair.
+  const { splitPair } = require("../utils/doublesPair");
+  const entrantsArePairs = (players || []).some(
+    (p) => splitPair(p?.userName).length > 1
+  );
   const matchDocuments = [];
   let matchCount = 0;
   const baseTime = startTime ? new Date(startTime) : new Date();
@@ -380,7 +396,10 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
     return { courtNumber: courtName, startTime, endTime };
   };
 
-  if (isDoubles) {
+  // Legacy shape only: individuals were entered separately and get paired here.
+  // Pre-paired entrants fall through to the round-robin below, which is the
+  // correct fixture set for them — N pair-entrants play each other once.
+  if (isDoubles && !entrantsArePairs) {
     if (players.length % 2 !== 0) {
       return {
         ok: false, status: 400, reason: "invalid",
@@ -450,7 +469,9 @@ const _runGenerateMatchesForGroup = async (tournament, group, opts = {}) => {
           matchEndTime: slot.endTime,
           matchFormatOverride: matchFormatOverride2,
         });
-        doc.matchType = "singles";
+        // Each entrant may be a pair ("A & B") — the fixture is still one
+        // round-robin meeting, but the match is a doubles match.
+        doc.matchType = isDoubles ? "doubles" : "singles";
         matchDocuments.push(doc);
       }
     }
@@ -656,12 +677,27 @@ const transitionToKnockout = async (req, res) => {
 
     // Get standings for each group and pick top N.
     // STEP 17b.iv — qualifyPerGroup read per-sport from track.
+    // Now resolved PER GROUP, not once for the whole sport: a track can
+    // advance the top 3 of Men's Doubles and the top 2 of Women's Singles.
+    // BookingGroup.category is the only link to the category row, and
+    // getQualifyPerGroup falls back to the track value when the category
+    // sets none — so a tournament that configures nothing per category
+    // behaves exactly as before.
     const GroupStandings = require("../src/modules/tournaments/models/GroupStandings");
     const { getQualifyPerGroup } = require("../utils/sportTrackUtils");
-    const qualifyPerGroup = getQualifyPerGroup(tournament, sportId);
     const qualifiedPlayers = [];
+    const qualifyByCategory = new Map();
 
     for (const group of groups) {
+      // Prefer the group's own sportId: `groups` is not filtered by sport, so
+      // in a multi-sport tournament resolving against the requested sportId
+      // would read a category name against the wrong track.
+      const qualifyPerGroup = getQualifyPerGroup(
+        tournament,
+        group.sportId || sportId,
+        group.category
+      );
+      qualifyByCategory.set(group.category || "uncategorised", qualifyPerGroup);
       let standings = await GroupStandings.findOne({ tournamentId, groupId: group._id });
 
       // Recalculate if missing
@@ -710,11 +746,22 @@ const transitionToKnockout = async (req, res) => {
     const { setCurrentStage: _setStage } = require("../utils/sportTrackUtils");
     await _setStage(tournamentId, sportId, "knockout");
 
+    // One cutoff for every category reads as before; a mixed configuration is
+    // spelled out per category so the manager can see what was applied.
+    const distinctCutoffs = [...new Set(qualifyByCategory.values())];
+    const cutoffSummary =
+      distinctCutoffs.length <= 1
+        ? `top ${distinctCutoffs[0] ?? 2} per group`
+        : [...qualifyByCategory.entries()]
+            .map(([category, n]) => `${category}: top ${n}`)
+            .join(", ");
+
     res.status(200).json({
       success: true,
-      message: `${qualifiedPlayers.length} players qualified for knockout (top ${qualifyPerGroup} per group).`,
+      message: `${qualifiedPlayers.length} players qualified for knockout (${cutoffSummary}).`,
       currentStage: "knockout",
       qualifiedPlayers,
+      qualifyPerGroupByCategory: Object.fromEntries(qualifyByCategory),
       nextStep: "Call POST /api/tournaments/direct-knockout/create-matches with these players to generate the bracket.",
     });
   } catch (error) {

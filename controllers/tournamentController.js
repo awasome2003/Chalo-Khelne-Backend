@@ -491,6 +491,79 @@ exports.resetRound2Progress = async (req, res) => {
   }
 };
 
+// Normalize one category row from the wizard payload.
+//
+// Shared by createTournament and editTournament — the two used to carry
+// identical copies of this mapping, which is how per-category fields get added
+// to one path and forgotten on the other.
+//
+// The structural fields (type / groupStageFormat / knockoutFormat /
+// qualifyPerGroup / drawSize) are per-category OVERRIDES: null means "inherit
+// from the sport track", and that is what the resolvers in sportTrackUtils
+// expect. An empty string from a <select> is therefore normalized to null, not
+// persisted — otherwise it would fail the enum and, worse, read as an
+// intentional override of the track value.
+const CATEGORY_TYPES = ["knockout", "group stage", "knockout + group stage", "swiss"];
+const GROUP_STAGE_FORMATS = ["Singles", "Doubles", "Teams"];
+const KNOCKOUT_FORMATS = ["Singles", "Doubles", "Teams", "Teams Knockout", "Davis Cup"];
+const DRAW_SIZES = [16, 32, 64];
+
+const normalizeCategoryRow = (c) => {
+  const toIntOrNull = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  // Only keep a value the schema enum accepts; anything else becomes null
+  // (inherit) rather than throwing a validation error on save.
+  const oneOf = (list, v) => (list.includes(v) ? v : null);
+
+  const g = (c.gender || "any").toString().toLowerCase();
+  const qualify = toIntOrNull(c.qualifyPerGroup);
+  const draw = toIntOrNull(c.drawSize);
+
+  return {
+    templateId: c.templateId || null,
+    name: c.name,
+    fee: Number(c.fee || 0),
+    minAge: toIntOrNull(c.minAge),
+    maxAge: toIntOrNull(c.maxAge),
+    gender: ["male", "female", "any"].includes(g) ? g : "any",
+
+    // Per-category overrides — null everywhere means the track applies, which
+    // is exactly how every tournament created before this behaved.
+    type: oneOf(CATEGORY_TYPES, c.type),
+    groupStageFormat: oneOf(GROUP_STAGE_FORMATS, c.groupStageFormat),
+    knockoutFormat: oneOf(KNOCKOUT_FORMATS, c.knockoutFormat),
+    // A cutoff has to be at least 1 to mean anything.
+    qualifyPerGroup: qualify != null && qualify >= 1 ? qualify : null,
+    drawSize: DRAW_SIZES.includes(draw) ? draw : null,
+  };
+};
+
+/**
+ * Stamp the server's scoringType onto a client-supplied matchFormat.
+ *
+ * The wizard computes scoringType and folds it into matchFormat, and this
+ * controller used to persist that verbatim. When the web app's hardcoded
+ * sport→scoringType table drifted from the server's, every tournament created
+ * for the affected sport was saved with the wrong value — Carrom was stored as
+ * "single" (one collapsed result) instead of "board" (scored board by board),
+ * so the wrong scorer opened for the rest of the tournament's life.
+ *
+ * §6.1 already made the server the single source of that mapping and serves it
+ * at GET /api/sports/scoring-config. Deriving it here as well means a stale or
+ * hand-rolled client cannot reintroduce the drift.
+ *
+ * The client value is kept only when the server has no mapping — a custom sport
+ * created on the fly, where getScoringType legitimately returns null.
+ */
+const withServerScoringType = (matchFormat, sportName) => {
+  const serverType = getScoringType(sportName);
+  if (!serverType) return matchFormat || null;
+  return { ...(matchFormat || {}), scoringType: serverType };
+};
+
 //*Create Tournament*//
 
 exports.createTournament = async (req, res) => {
@@ -789,27 +862,14 @@ exports.createTournament = async (req, res) => {
           sportSlug: sportDoc.slug || slugify(s.sportName),
           tournamentLevel: perSportLevel,
           type: s.type || null,
-          categories: s.categories.map((c) => {
-            const g = (c.gender || "any").toString().toLowerCase();
-            const toIntOrNull = (v) => {
-              if (v === null || v === undefined || v === "") return null;
-              const n = Number(v);
-              return Number.isFinite(n) ? n : null;
-            };
-            return {
-              name: c.name,
-              fee: Number(c.fee || 0),
-              minAge: toIntOrNull(c.minAge),
-              maxAge: toIntOrNull(c.maxAge),
-              gender: ["male", "female", "any"].includes(g) ? g : "any",
-            };
-          }),
+          categories: s.categories.map(normalizeCategoryRow),
+          formatScope: s.formatScope === "category" ? "category" : "sport",
           groupStageFormat: s.groupStageFormat || null,
           knockoutFormat: s.knockoutFormat || null,
           davisCupFormatId: s.davisCupFormatId || null,
           qualifyPerGroup: Number(s.qualifyPerGroup ?? 2),
           drawSize: s.drawSize ? Number(s.drawSize) : null,
-          matchFormat: s.matchFormat || null,
+          matchFormat: withServerScoringType(s.matchFormat, s.sportName),
           // Frozen rule-book copy resolved per-sport at attach time above.
           // Falls back to client-supplied s.sportRules for backward compat.
           sportRules: sportRulesBySportName[s.sportName] || s.sportRules || null,
@@ -1369,27 +1429,14 @@ exports.editTournament = async (req, res) => {
           sportSlug: sportDoc.slug || slugifyMS(s.sportName),
           tournamentLevel: perSportLevel,
           type: s.type || null,
-          categories: s.categories.map((c) => {
-            const g = (c.gender || "any").toString().toLowerCase();
-            const toIntOrNull = (v) => {
-              if (v === null || v === undefined || v === "") return null;
-              const n = Number(v);
-              return Number.isFinite(n) ? n : null;
-            };
-            return {
-              name: c.name,
-              fee: Number(c.fee || 0),
-              minAge: toIntOrNull(c.minAge),
-              maxAge: toIntOrNull(c.maxAge),
-              gender: ["male", "female", "any"].includes(g) ? g : "any",
-            };
-          }),
+          categories: s.categories.map(normalizeCategoryRow),
+          formatScope: s.formatScope === "category" ? "category" : "sport",
           groupStageFormat: s.groupStageFormat || null,
           knockoutFormat: s.knockoutFormat || null,
           davisCupFormatId: s.davisCupFormatId || null,
           qualifyPerGroup: Number(s.qualifyPerGroup ?? 2),
           drawSize: s.drawSize ? Number(s.drawSize) : null,
-          matchFormat: s.matchFormat || null,
+          matchFormat: withServerScoringType(s.matchFormat, s.sportName),
           sportRules: editSportRules,
           currentStage: s.currentStage || "registration",
           stageConfig: s.stageConfig || {},

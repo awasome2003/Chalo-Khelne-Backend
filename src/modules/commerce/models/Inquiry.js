@@ -17,7 +17,10 @@ const InquirySchema = new mongoose.Schema(
         inquiryType: {
             type: String,
             required: true,
-            enum: ["Product", "Service", "Partnership", "Register Club", "Other"],
+            // "Tournament" is the /for-organizers form. Kept as its own type so
+            // organizer leads can be filtered out of the general inbox — any
+            // admin UI that lists types by hand needs it adding there too.
+            enum: ["Product", "Service", "Partnership", "Register Club", "Tournament", "Other"],
         },
         message: {
             type: String,
@@ -30,6 +33,18 @@ const InquirySchema = new mongoose.Schema(
         },
         sports: {
             type: String,
+        },
+        // ── Tournament-organizer qualification ────────────────────────────
+        // The date is the single most useful field on the form: an organizer
+        // with an event five weeks out is a live deal, one with no date is a
+        // newsletter subscriber. Sorting the inbox by it turns a pile of
+        // messages into a pipeline. Optional, so the general form is unaffected.
+        eventDate: {
+            type: Date,
+        },
+        expectedEntries: {
+            type: Number,
+            min: 0,
         },
         status: {
             type: String,

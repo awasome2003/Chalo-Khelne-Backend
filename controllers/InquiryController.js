@@ -17,11 +17,22 @@ const transporter = nodemailer.createTransport({
 
 exports.createInquiry = async (req, res) => {
     try {
-        const { name, email, phone, inquiryType, message, clubName, city, sports } = req.body;
+        const {
+            name, email, phone, inquiryType, message, clubName, city, sports,
+            eventDate, expectedEntries,
+        } = req.body;
 
         if (!name || !email || !phone || !inquiryType) {
             return res.status(400).json({ message: "All required fields must be provided." });
         }
+
+        // Tournament-organizer fields (/for-organizers). Both optional, and
+        // coerced here rather than trusted: an unparseable date or a
+        // non-numeric count is dropped instead of failing the whole submission
+        // — losing a lead over a malformed optional field would be the worse
+        // outcome of the two.
+        const parsedDate = eventDate ? new Date(eventDate) : null;
+        const entries = Number(expectedEntries);
 
         const newInquiry = new Inquiry({
             name,
@@ -32,6 +43,8 @@ exports.createInquiry = async (req, res) => {
             clubName,
             city,
             sports,
+            eventDate: parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : undefined,
+            expectedEntries: Number.isFinite(entries) && entries >= 0 ? entries : undefined,
         });
 
         await newInquiry.save();

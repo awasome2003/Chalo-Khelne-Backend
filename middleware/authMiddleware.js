@@ -150,6 +150,12 @@ exports.authenticate = async (req, res, next) => {
 
     return res.status(401).json({ message: "User not found." });
   } catch (error) {
+    // Distinguish expiry from a malformed/forged token, as rbacMiddleware does.
+    // Collapsing both into "Invalid token." sent us hunting a secret mismatch
+    // when the real cause was a client shipping the string "Bearer null".
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Token expired." });
+    }
     return res.status(401).json({ message: "Invalid token." });
   }
 };

@@ -1609,6 +1609,21 @@ const teamKnockoutController = {
         else if (req.body.format.includes("Doubles")) finalPlayFormat = "Doubles";
       }
 
+      // Still nothing? Ask the tournament before falling back to a hardcoded
+      // "Singles". A track configured as Doubles used to silently generate a
+      // singles next round whenever the client omitted playFormat — the
+      // configured format was never consulted at all.
+      //
+      // Resolved at SPORT level only: TeamKnockoutMatches carries no category
+      // field, so there is no category in scope here. If per-category team
+      // formats are ever needed, the match model needs a category first.
+      if (!finalPlayFormat) {
+        const { getKnockoutFormat: _gkf } = require("../utils/sportTrackUtils");
+        const trackFormat = _gkf(tournament, sportId);
+        if (trackFormat && /doubles/i.test(trackFormat)) finalPlayFormat = "Doubles";
+        else if (trackFormat && /singles/i.test(trackFormat)) finalPlayFormat = "Singles";
+      }
+
       // Default to Singles if still missing or invalid
       if (!finalPlayFormat || (finalPlayFormat !== "Singles" && finalPlayFormat !== "Single" && finalPlayFormat !== "Doubles" && finalPlayFormat !== "Double")) {
         finalPlayFormat = "Singles";

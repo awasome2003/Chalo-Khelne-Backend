@@ -83,21 +83,35 @@ function getSportName(tournament, sportId) {
 // STEP 17b.i — per-sport readers for fields that used to live on the
 // Tournament root. All resolve via getSportTrack so they inherit the
 // legacy-fallback path until 17d removes synthesizeLegacyTrack.
-function getTournamentType(tournament, sportId) {
+// The three structural getters below take an OPTIONAL categoryName. When one
+// is passed and that category carries its own value, the category wins;
+// otherwise the track value applies, exactly as before. Callers with no
+// category in hand keep the old two-argument behaviour, so nothing that
+// already works changes.
+function getTournamentType(tournament, sportId, categoryName) {
   const track = getSportTrack(tournament, sportId);
-  return track?.type || null;
+  const category = getCategory(tournament, sportId, categoryName);
+  return category?.type || track?.type || null;
 }
 function getCategories(tournament, sportId) {
   const track = getSportTrack(tournament, sportId);
   return Array.isArray(track?.categories) ? track.categories : [];
 }
-function getQualifyPerGroup(tournament, sportId) {
+function getQualifyPerGroup(tournament, sportId, categoryName) {
   const track = getSportTrack(tournament, sportId);
-  return track?.qualifyPerGroup ?? 2;
+  const category = getCategory(tournament, sportId, categoryName);
+  return category?.qualifyPerGroup ?? track?.qualifyPerGroup ?? 2;
 }
-function getDrawSize(tournament, sportId) {
+function getDrawSize(tournament, sportId, categoryName) {
   const track = getSportTrack(tournament, sportId);
-  return track?.drawSize ?? null;
+  const category = getCategory(tournament, sportId, categoryName);
+  return category?.drawSize ?? track?.drawSize ?? null;
+}
+// Authoring mode for the wizard — see the schema note on sportTrack.formatScope.
+// Never gates resolution; a category override is honoured in either mode.
+function getFormatScope(tournament, sportId) {
+  const track = getSportTrack(tournament, sportId);
+  return track?.formatScope === "category" ? "category" : "sport";
 }
 // Find one category row on a sport track by name. Matching is
 // case-insensitive and whitespace-trimmed because the name is the only link
@@ -200,6 +214,7 @@ module.exports = {
   getCategory,
   getQualifyPerGroup,
   getDrawSize,
+  getFormatScope,
   getGroupStageFormat,
   getKnockoutFormat,
   getDavisCupFormatId,

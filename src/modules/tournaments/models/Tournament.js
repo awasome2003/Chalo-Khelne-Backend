@@ -109,7 +109,33 @@ const sportTrackSchema = new mongoose.Schema(
         enum: ["Singles", "Doubles", "Teams", "Teams Knockout", "Davis Cup", null],
         default: null,
       },
+
+      // Structural progression settings, per category. A track carries one
+      // qualifyPerGroup/drawSize for every category, which cannot express
+      // "Men's Doubles advances the top 3, Women's Singles the top 2" inside
+      // one track. Null means "use the track value" — same override rule as
+      // the two format fields above, resolved through
+      // sportTrackUtils.getQualifyPerGroup / getDrawSize.
+      qualifyPerGroup: { type: Number, default: null },
+      // Unlike the track-level field this one allows null in the enum: the
+      // track's default is null-with-no-null-in-enum (see the note there),
+      // but here null is the meaningful "inherit from track" value and has to
+      // survive validation.
+      drawSize: { type: Number, enum: [16, 32, 64, null], default: null },
     }],
+
+    // Which level the manager declares format at for THIS sport, chosen in
+    // step 2 of the create/edit wizard. "sport" keeps the historical flow
+    // (one format for the whole track); "category" renders the format fields
+    // under each category row instead. Purely a UI/authoring mode — the
+    // resolvers below always prefer a category value when one is set, so a
+    // track can be switched between modes without invalidating stored data.
+    // Defaults to "sport" so every existing tournament is unchanged.
+    formatScope: {
+      type: String,
+      enum: ["sport", "category"],
+      default: "sport",
+    },
 
     groupStageFormat: {
       type: String,
