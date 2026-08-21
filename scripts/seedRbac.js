@@ -170,12 +170,17 @@ const DEFAULT_ROLES = [
     name: "Referee",
     slug: "referee",
     authorityLevel: 3,
-    description: "Match referee. Can view assigned matches and update scores.",
+    description: "Match referee. Can view assigned matches and update scores, and can enter tournaments as a competitor.",
     color: "#F59E0B",
     icon: "flag",
     isSystem: true,
     permissionKeys: [
       "tournament:read", "tournament:score",
+      // A referee is also a person who plays. Officiating one tournament does
+      // not stop them entering another, and Trainer — the other non-Player
+      // participant role — has always been able to self-register. Without this
+      // a referee's booking was rejected with a bare "Access denied".
+      "tournament:register",
       "referee:read",
       "player:read",
     ],
@@ -258,3 +263,7 @@ async function seedRbac(req, res) {
 }
 
 module.exports = seedRbac;
+// Exposed for tests and for the targeted grant script — the function stays the
+// default export so `require(...)` still works as an Express handler.
+module.exports.DEFAULT_ROLES = DEFAULT_ROLES;
+module.exports.DEFAULT_PERMISSIONS = DEFAULT_PERMISSIONS;

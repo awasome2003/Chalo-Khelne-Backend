@@ -1,5 +1,6 @@
 const ManagerPayment = require("../src/modules/commerce/models/managerPaymentSchema");
 const Notification = require("../src/modules/social/models/Notification");
+const Booking = require("../src/modules/tournaments/models/BookingModel");
 const User = require('../src/modules/identity/models/User');
 const path = require("path");
 const fs = require("fs");
@@ -309,9 +310,95 @@ exports.getNotificationsForManager = async (req, res) => {
             .populate({
                 path: "userId",
                 select: "_id name email mobile gender dob image role sports win lose draw",
-            });
+            })
+            .lean();
 
-        res.json({ success: true, notifications });
+        // ── One registration = one row ────────────────────────────────────
+        //
+        // /notify is idempotent now, but the collection still holds the rows
+        // minted before it was: 8 (player, tournament) pairs with duplicates,
+        // one of them 7 rows deep. A player can only ever hold ONE booking per
+        // tournament, so every extra row is noise — collapse them here so old
+        // data reads the same as new data, rather than making the manager
+        // dismiss the same registration several times.
+        //
+        // Newest row wins (it carries the freshest message/amount); the ones it
+        // absorbs are reported as `duplicateCount` so the UI can say so, and
+        // their ids ride along in `duplicateIds` for anything that needs to
+        // address the underlying documents.
+        const byPair = new Map();
+        for (const n of notifications) {
+            const key = `${n.userId?._id || n.userId}|${n.tournamentId}`;
+            const kept = byPair.get(key);
+            if (!kept) {
+                byPair.set(key, { ...n, duplicateCount: 1, duplicateIds: [String(n._id)] });
+                continue;
+            }
+            kept.duplicateCount += 1;
+            kept.duplicateIds.push(String(n._id));
+            // A decided row outranks a pending one. Accept/decline used to
+            // update a single arbitrary duplicate, so the same registration
+            // could sit in the collection as "accepted" AND "pending" at once.
+            if (kept.transactionStatus === "pending" && n.transactionStatus !== "pending") {
+                kept.transactionStatus = n.transactionStatus;
+            }
+        }
+        const rows = [...byPair.values()];
+
+        // ── The booking is the source of truth for the status ─────────────
+        //
+        // transactionStatus is a copy kept on the notification, and copies
+        // drift: the duplicates above are one way, a status changed through any
+        // path that doesn't touch notifications is another. The player's actual
+        // registration state lives on the Booking, so overlay it where one
+        // exists. `hasBooking: false` marks an inbox row whose booking is gone
+        // (48 such orphans exist) — deleting one clears the row only.
+        if (rows.length) {
+            // Raw collection on purpose: bookingTrashController deletes through
+            // the raw handle too (tenantScope's clubId filter would hide the
+            // 331 legacy bookings that carry no clubId). Both paths must agree
+            // on whether a booking exists — otherwise the delete dialog
+            // promises to remove "just the notification" and takes the booking
+            // with it.
+            const bookings = await Booking.collection
+                .find(
+                    {
+                        $or: rows.map((r) => ({
+                            userId: r.userId?._id || r.userId,
+                            tournamentId: r.tournamentId,
+                        })),
+                    },
+                    {
+                        projection: {
+                            userId: 1, tournamentId: 1, status: 1,
+                            paymentStatus: 1, totalFee: 1, paymentAmount: 1,
+                        },
+                    }
+                )
+                .toArray();
+
+            const bookingByPair = new Map(
+                bookings.map((b) => [`${b.userId}|${b.tournamentId}`, b])
+            );
+            const STATUS_FROM_BOOKING = {
+                confirmed: "accepted",
+                cancelled: "rejected",
+                pending: "pending",
+            };
+
+            for (const row of rows) {
+                const booking = bookingByPair.get(`${row.userId?._id || row.userId}|${row.tournamentId}`);
+                row.hasBooking = !!booking;
+                if (!booking) continue;
+                row.bookingId = booking._id;
+                row.bookingStatus = booking.status;
+                row.paymentStatus = booking.paymentStatus;
+                row.transactionStatus =
+                    STATUS_FROM_BOOKING[booking.status] || row.transactionStatus;
+            }
+        }
+
+        res.json({ success: true, notifications: rows });
     } catch (error) {
         console.error("Error fetching notifications:", error);
         res.status(500).json({ success: false, message: "Failed to fetch notifications" });

@@ -182,15 +182,45 @@ const requirePermission = (...permissionKeys) => {
     // Suspension gate — between SA bypass and the permission check.
     if (await rejectIfSuspended(req, res)) return;
 
+    // All three failure paths below return the same opaque DENY, which is right
+    // for the client but left nothing to debug from: a role lookup that THREW
+    // (a database hiccup) is indistinguishable from a role that genuinely
+    // lacks the permission. Log the reason server-side; the response is
+    // unchanged.
+    const deny = (reason, extra) => {
+      console.warn(
+        `[rbac] 403 ${req.method} ${req.originalUrl} — ${reason}` +
+          (extra ? ` ${JSON.stringify(extra)}` : "")
+      );
+      // Outside production, include the reason in the response too. The opaque
+      // DENY is correct for real users, but during development the 403 is all
+      // the operator sees — the server log is in another window, or scrolled
+      // away, and three unrelated causes look identical from the client.
+      if (process.env.NODE_ENV !== "production") {
+        return res.status(403).json({ ...DENY, rbacReason: reason, rbacDetail: extra || null });
+      }
+      return res.status(403).json(DENY);
+    };
+
     let role;
     try {
       role = await resolveCallerRole(req);
     } catch (err) {
-      return res.status(403).json(DENY);
+      // Includes Mongo being unreachable — the role query throws and every
+      // permissioned route starts answering "Access denied", which reads as a
+      // permissions problem when the database is the actual fault.
+      return deny("role lookup failed", { error: err.message });
     }
 
-    if (!role || !role.permissions) {
-      return res.status(403).json(DENY);
+    if (!role) {
+      return deny("no Role document for this caller", {
+        userRole: req.userRole || null,
+        legacyRole: req.user?.role || null,
+      });
+    }
+
+    if (!role.permissions) {
+      return deny("role has no permissions array (populate failed?)", { slug: role.slug });
     }
 
     const grantedKeys = new Set(
@@ -201,7 +231,11 @@ const requirePermission = (...permissionKeys) => {
 
     const missing = permissionKeys.filter((k) => !grantedKeys.has(k));
     if (missing.length > 0) {
-      return res.status(403).json(DENY);
+      return deny("role is missing required permission(s)", {
+        slug: role.slug,
+        missing,
+        granted: [...grantedKeys],
+      });
     }
 
     next();

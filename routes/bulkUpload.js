@@ -267,15 +267,30 @@ async function processUserUpload(jsonArray) {
     delete userObj.permissions;
 
     try {
-      const missing = REQUIRED_COLUMNS.filter((f) => !userObj[f]);
-      if (missing.length > 0) {
+      // Distinguish "the sheet has no such column" from "this row's cell is
+      // blank". Both used to report as "Missing required value", which reads
+      // like bad data when the real cause is a header the mapper did not
+      // recognise — and with 200+ identical failures there was nothing in the
+      // response to tell the operator which it was.
+      const mappedTargets = new Set(Object.values(fieldMap));
+      const absentColumns = REQUIRED_COLUMNS.filter((f) => !mappedTargets.has(f));
+      const blankCells = REQUIRED_COLUMNS.filter(
+        (f) => mappedTargets.has(f) && !userObj[f]
+      );
+
+      if (absentColumns.length > 0 || blankCells.length > 0) {
         errorCount++;
-        addRow(
-          i,
-          userObj.email,
-          "failed",
-          `Missing required ${missing.length === 1 ? "value" : "values"}: ${missing.join(", ")}`
-        );
+        const parts = [];
+        if (absentColumns.length > 0) {
+          parts.push(
+            `No column found for: ${absentColumns.join(", ")}. ` +
+              `Columns detected in your file: ${entryKeys.join(", ")}`
+          );
+        }
+        if (blankCells.length > 0) {
+          parts.push(`Empty value: ${blankCells.join(", ")}`);
+        }
+        addRow(i, userObj.email, "failed", parts.join(" | "));
         continue;
       }
 

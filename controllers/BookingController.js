@@ -803,10 +803,14 @@ const bookingController = {
 
       await booking.save();
 
-      await Notification.findOneAndUpdate(
+      // updateMany, not findOneAndUpdate: /notify used to mint a row per call,
+      // so a (tournament, player) pair can hold several notifications. Matching
+      // one of them left the rest pending — the manager pressed Accept, the row
+      // they pressed it on stayed put, and a second identical row still asked
+      // to be decided. Every copy of this registration moves together.
+      await Notification.updateMany(
         { tournamentId, userId },
-        { transactionStatus: decision },
-        { new: true }
+        { $set: { transactionStatus: decision } }
       );
 
       // Notify player about registration status change

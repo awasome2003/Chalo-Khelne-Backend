@@ -9,6 +9,7 @@ const {
     getNotificationsForManager,
 } = require("../controllers/managerPaymentController");
 const bookingController = require("../controllers/BookingController");
+const bookingTrashController = require("../controllers/bookingTrashController");
 const {
     getManagerPendingPayments,
     verifyPayment,
@@ -37,6 +38,23 @@ router.get("/setup/:managerId/:tournamentId?", managerAuth, requireSelf("manager
 router.delete("/setup/delete", managerAuth, forceSelfBody("managerId"), deletePaymentOption);
 router.patch("/booking/update-status", managerAuth, bookingController.updateBookingStatus);
 router.patch("/booking/bulk-update", managerAuth, bookingController.bulkUpdateBookingStatus);
+
+// ── Delete stack (recycle bin) for registrations ──
+//
+// Deleting from the manager's inbox is NOT destructive: the booking and its
+// notifications are snapshotted into DeleteStack first, and restore puts them
+// back byte-for-byte. Both routes take one item or many — the UI's single-row
+// button and its bulk bar hit the same endpoint.
+//
+// Ownership is checked per tournament inside the controller (the caller must
+// be in Tournament.managerId), so these deliberately do NOT use forceSelfBody:
+// the body carries the PLAYER's userId, not the caller's.
+router.post("/booking/delete", managerAuth, bookingTrashController.deleteRegistrations);
+router.post("/booking/restore", managerAuth, bookingTrashController.restoreEntries);
+// Empties the bin for good — the only step in this flow with no way back.
+// Entries also clear themselves once their tournament has ended; see
+// cron/deleteStackPurgeCron.js.
+router.post("/booking/purge", managerAuth, bookingTrashController.purgeEntries);
 
 // ── Payment-proof submission (player) ──
 //
@@ -88,6 +106,8 @@ router.get("/:managerId/:tournamentId/qr-codes", allowUserOrManager, getQrCodes)
 router.get("/:managerId/:tournamentId/upi-ids", allowUserOrManager, getUpiIds);
 router.get("/:managerId/:tournamentId/offline", allowUserOrManager, getOfflinePayments);
 router.get("/:managerId/notifications", managerAuth, requireSelf("managerId"), getNotificationsForManager);
+// The caller's own delete stack. requireSelf keeps one manager out of another's bin.
+router.get("/:managerId/trash", managerAuth, requireSelf("managerId"), bookingTrashController.listDeleted);
 
 // Notify manager about a new booking/payment (called by the paying player)
 router.post("/:managerId/:tournamentId/notify", allowUserOrManager, async (req, res) => {
@@ -112,19 +132,50 @@ router.post("/:managerId/:tournamentId/notify", allowUserOrManager, async (req, 
       .lean();
     const amount = booking ? booking.totalFee || booking.paymentAmount || 0 : 0;
 
-    const notification = await Notification.create({
-      managerId,
-      tournamentId,
-      userId,
-      registrationId: registrationId || `reg_${Date.now()}`,
-      amount,
-      paymentMethod: paymentMethod === "online" ? "online" : "cash",
-      message: `${user?.name || "A player"} registered for "${tournament?.title || "tournament"}" via ${paymentMethod || "cash"} (₹${amount})`,
-    });
+    // ── One registration, one inbox row (idempotent notify) ──
+    //
+    // This used to be Notification.create(), which minted a NEW row on every
+    // call. A player who tapped register twice, retried after a network blip,
+    // or re-entered the payment screen produced 2-7 identical rows for the same
+    // (manager, tournament, player) — 8 such pairs in the collection, worst
+    // case 7 rows. The manager then had to accept each one, and accepting one
+    // left the rest pending because updateBookingStatus only ever matched a
+    // single row.
+    //
+    // The upsert makes the call safe to repeat: the same three ids always land
+    // on the same document. The message and amount are refreshed (the fee or
+    // the tournament title may have changed since the first attempt), but
+    // transactionStatus is NOT — a re-notify must never quietly reopen a
+    // registration the manager has already accepted or declined. registrationId
+    // is set only on insert so the reference the player was shown survives.
+    const existing = await Notification.findOne({ managerId, tournamentId, userId })
+      .select("_id")
+      .lean();
+
+    const notification = await Notification.findOneAndUpdate(
+      { managerId, tournamentId, userId },
+      {
+        $set: {
+          amount,
+          paymentMethod: paymentMethod === "online" ? "online" : "cash",
+          message: `${user?.name || "A player"} registered for "${tournament?.title || "tournament"}" via ${paymentMethod || "cash"} (₹${amount})`,
+        },
+        $setOnInsert: {
+          registrationId: registrationId || `reg_${Date.now()}`,
+          transactionStatus: "pending",
+        },
+      },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    const isNew = !existing;
 
     res.json({
       success: true,
-      message: "Manager notified",
+      // The mobile clients branch on this string containing "already notified"
+      // to show an info toast instead of a success one.
+      message: isNew ? "Manager notified" : "Manager already notified",
+      alreadyNotified: !isNew,
       notificationId: notification._id,
       notification: notification.message,
     });

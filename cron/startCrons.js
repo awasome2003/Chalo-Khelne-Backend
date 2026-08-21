@@ -2,6 +2,7 @@
 const { startPlannerReminderCron } = require("./plannerReminderCron");
 const { startStoryCleanupCron } = require("./storyCleanupCron");
 const startNotificationCron = require("./notificationCron");
+const { startDeleteStackPurgeCron } = require("./deleteStackPurgeCron");
 
 /**
  * Start all scheduled background jobs. MUST run in exactly ONE process.
@@ -16,6 +17,7 @@ function startAllCrons() {
     ["planner-reminder", startPlannerReminderCron],
     ["story-cleanup", startStoryCleanupCron],
     ["notification", startNotificationCron],
+    ["delete-stack-purge", startDeleteStackPurgeCron],
   ];
   for (const [name, start] of jobs) {
     try {

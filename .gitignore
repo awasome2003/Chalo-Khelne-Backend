@@ -1,20 +1,34 @@
 # Dependencies
 node_modules/
 
-# Environment files (NEVER commit real secrets)
+# ── Environment (NEVER commit real secrets) ───────────────────────────
+# Blanket-ignore every .env variant, then re-admit the committed template.
+# The previous list enumerated .env.local / .env.production / .env.development
+# / .env.*.local, which left .env.test and .env.staging trackable.
 .env
-.env.local
-.env.production
-.env.development
-.env.*.local
+.env.*
 !.env.example
 
-# Credentials / service accounts / keys
+# ── Credentials / service accounts / keys (NEVER commit) ──────────────
+# `credentials.json` is listed explicitly: `*-credentials.json` requires a dash
+# before "credentials" and does NOT match the bare filename. That exact gap is
+# how the mobile repo ended up with its release keystore passwords in git.
+#
+# NOTE: a .gitignore rule does NOT untrack an already-tracked file. When adding
+# a secret here, also run: git rm --cached <file>
+credentials.json
+credentials/
 firebase-admin_sdk.json
 *-credentials.json
 *-service-account.json
 serviceAccountKey.json
+google-services.json
 *.pem
+*.key
+*.crt
+*.p12
+*.jks
+*.keystore
 
 # Logs
 logs/
@@ -31,7 +45,10 @@ dist-ssr/
 build/
 *.local
 
-# Uploads (local disk storage)
+# Test coverage (jest)
+coverage/
+
+# Uploads (local disk storage — user content, never source)
 uploads/
 
 # Scratch / debug artifacts
